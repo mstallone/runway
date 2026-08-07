@@ -324,6 +324,46 @@ enum InteractiveKeychainReadGate {
         case ephemeralSignature
     }
 
+    /// How long a quiet read may wait behind OTHER quiet reads. They are ms-scale (no UI can
+    /// appear), so this only bites when securityd is wedged — then every waiter falls back to the
+    /// metadata-only path instead of stacking up.
+    private static let quietWait: TimeInterval = 2
+    /// Whether the gate's current holder is a quiet (suppressed-UI) turn rather than a
+    /// dialog-capable one. Guarded by `condition`'s lock.
+    nonisolated(unsafe) private static var quietHolder = false
+
+    /// Turn for a background read that runs with keychain UI globally suppressed. Returns `nil` —
+    /// no gate taken, `body` not run — whenever a dialog-capable operation is queued or in flight:
+    /// the UI switch is process-global, so a quiet read overlapping a user-attended read would
+    /// silently fail the dialog the user is waiting on. Behind another QUIET holder it briefly
+    /// waits instead — at launch every keychain provider races here at once, and skipping would
+    /// park the losers on the Connect state for a full refresh cycle. While a quiet read holds the
+    /// gate (milliseconds — no UI can appear), a manual read queues behind it exactly like behind
+    /// another dialog. Quiet turns skip the durable-signature check: with UI provably off there is
+    /// no approval to squander, so even an ad-hoc build may read silently.
+    static func withQuietTurn<T>(_ body: () throws -> T) rethrows -> T? {
+        condition.lock()
+        let deadline = Date().addingTimeInterval(quietWait)
+        while inFlight, quietHolder, interactiveQueue.isEmpty, Date() < deadline {
+            condition.wait(until: deadline)
+        }
+        if inFlight || !interactiveQueue.isEmpty {
+            condition.unlock()
+            return nil
+        }
+        inFlight = true
+        quietHolder = true
+        condition.unlock()
+        defer {
+            condition.lock()
+            inFlight = false
+            quietHolder = false
+            condition.broadcast()
+            condition.unlock()
+        }
+        return try body()
+    }
+
     static func withTurn<T>(_ body: (_ turn: Turn) throws -> T) rethrows -> T {
         guard processCanHoldDurableApprovals() else {
             AppLog.warn(.keychain, "interactive keychain read refused: this build is ad-hoc signed, so an Always Allow approval would die with the next rebuild; use a signed build (script/build_and_run.sh) to connect keychain-backed providers")
@@ -362,6 +402,18 @@ enum InteractiveKeychainReadGate {
     }
 }
 
+/// The single call site of the deprecated process-global keychain UI switch. Deprecated since
+/// macOS 12, but still Apple's documented answer for keychain requests that target ANOTHER app's
+/// items (developer.apple.com/forums/thread/693148) — the modern `kSecUseAuthenticationUI` only
+/// governs your own data-protection items, and `LAContext.interactionNotAllowed` provably fails to
+/// suppress classic login-keychain ACL dialogs (verified on macOS 26.6: with this switch off, an
+/// unauthorized secret read fails errSecAuthFailed in milliseconds, dialog-free).
+enum LegacyKeychainUISwitch {
+    static func set(_ allowed: Bool) -> OSStatus {
+        SecKeychainSetUserInteractionAllowed(allowed)
+    }
+}
+
 /// Per-query UI suppression for metadata-only Keychain checks. The macOS 26.6 experiment showed
 /// that this context does not suppress a classic item's ACL dialog when secret data is requested,
 /// so automatic paths never use it for secrets. Metadata checks do not evaluate that item ACL, but
@@ -390,6 +442,7 @@ struct SecurityKeychainAccessor: KeychainReading {
     private let metadataNow: @Sendable () -> Date
     private let waitForMetadataStability: @Sendable (TimeInterval) -> Void
     private let copyMatching: @Sendable (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus
+    private let setUserInteractionAllowed: @Sendable (Bool) -> OSStatus
 
     init(
         coordinator: KeychainReadCoordinator = .shared,
@@ -399,12 +452,16 @@ struct SecurityKeychainAccessor: KeychainReading {
         },
         copyMatching: @escaping @Sendable (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus = {
             SecItemCopyMatching($0, $1)
+        },
+        setUserInteractionAllowed: @escaping @Sendable (Bool) -> OSStatus = {
+            LegacyKeychainUISwitch.set($0)
         }
     ) {
         self.coordinator = coordinator
         self.metadataNow = metadataNow
         self.waitForMetadataStability = waitForMetadataStability
         self.copyMatching = copyMatching
+        self.setUserInteractionAllowed = setUserInteractionAllowed
     }
 
     /// The plain throwing reads are protocol requirements that exist for mocks; no auth store calls
@@ -543,10 +600,17 @@ struct SecurityKeychainAccessor: KeychainReading {
         account: String?,
         ticket: KeychainReadCoordinator.ReadTicket
     ) -> NonInteractiveKeychainRead {
+        // An automatic path may request secret data ONLY with keychain UI provably suppressed.
         // `LAContext.interactionNotAllowed` does not suppress classic login-keychain ACL dialogs on
-        // macOS 26.6. Automatic paths therefore inspect metadata only and never request secret data.
-        // An explicit user action seeds the coordinator's process-lifetime in-memory cache;
-        // unchanged items are served from that cache before this method is reached.
+        // macOS 26.6, but the process-global switch does (verified: an unauthorized read fails
+        // errSecAuthFailed in milliseconds, dialog-free). So a granted item loads silently on any
+        // background refresh — no per-session Connect click — while an unapproved one falls to the
+        // neutral deferral, and only an explicit user action may ever show the dialog.
+        if let outcome = quietSecretRead(service: service, account: account, ticket: ticket) {
+            return outcome
+        }
+        // The quiet window was unavailable (a dialog is open or queued, or the UI switch failed).
+        // Fall back to the metadata-only classification; the next cycle retries the quiet read.
         switch rawGenericPasswordExists(service: service, account: account) {
         case true:
             // The item exists and was deliberately not read — a neutral deferral, NOT a denial:
@@ -561,6 +625,54 @@ struct SecurityKeychainAccessor: KeychainReading {
             AppLog.debug(.keychain, "automatic secret read unavailable for service '\(service)'; metadata probe failed")
             return .unavailable
         }
+    }
+
+    /// One UI-suppressed secret read, or `nil` when the suppressed window could not be entered.
+    /// The gate's quiet turn guarantees no user-attended dialog is open or queued while the
+    /// process-global switch is off, and the switch is restored before the turn is released.
+    private func quietSecretRead(
+        service: String,
+        account: String?,
+        ticket: KeychainReadCoordinator.ReadTicket
+    ) -> NonInteractiveKeychainRead? {
+        let outcome: NonInteractiveKeychainRead?? = InteractiveKeychainReadGate.withQuietTurn {
+            guard setUserInteractionAllowed(false) == errSecSuccess else { return nil }
+            defer { _ = setUserInteractionAllowed(true) }
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecMatchLimit as String: kSecMatchLimitOne,
+                kSecReturnData as String: true,
+            ].merging(account.map { [kSecAttrAccount as String: $0] } ?? [:]) { current, _ in current }
+            var item: CFTypeRef?
+            let status = copyMatching(query as CFDictionary, &item)
+            switch status {
+            case errSecSuccess:
+                AppLog.debug(.keychain, "quiet read hit service=\(service)")
+                guard let data = item as? Data, let value = String(data: data, encoding: .utf8) else {
+                    return NonInteractiveKeychainRead.value("")
+                }
+                return .value(value)
+            case errSecItemNotFound:
+                return NonInteractiveKeychainRead.missing
+            case errSecAuthFailed:
+                // securityd wanted to ask and was forbidden to. The user has denied nothing, so
+                // this stays the neutral deferral — a manual read remains the path to approval.
+                coordinator.recordFailureCategory(ticket, category: .manualReadDeferred)
+                AppLog.debug(.keychain, "quiet read needs approval for service '\(service)'; manual read required")
+                return NonInteractiveKeychainRead.unavailable
+            case errSecInteractionNotAllowed:
+                // The keychain itself needed UI (a locked login keychain) — approval cannot fix it.
+                coordinator.recordFailureCategory(ticket, category: .unreadable)
+                AppLog.debug(.keychain, "quiet read unavailable for service '\(service)' (keychain locked)")
+                return NonInteractiveKeychainRead.unavailable
+            default:
+                coordinator.recordFailureCategory(ticket, category: .unreadable)
+                AppLog.warn(.keychain, "quiet read failed for service '\(service)' (status \(status))")
+                return NonInteractiveKeychainRead.unavailable
+            }
+        }
+        return outcome.flatMap { $0 }
     }
 
     /// Attributes-only existence probe used on the launch path: an in-process Security-framework

@@ -97,7 +97,7 @@ final class KeychainAccessorTests: XCTestCase {
         XCTAssertNil(try accessor.readGenericPassword(service: "RunwayTests.absent.\(UUID().uuidString)"))
     }
 
-    func testAutomaticReadNeverRequestsSecretData() {
+    func testQuietAutomaticReadReportsAMissingItemAndRestoresTheUISwitch() {
         let requestedSecretData = Locked(false)
         let blockedAuthenticationUI = Locked(false)
         let accessor = SecurityKeychainAccessor(
@@ -107,11 +107,11 @@ final class KeychainAccessorTests: XCTestCase {
                 if attributes[kSecReturnData] as? Bool == true {
                     requestedSecretData.withLock { $0 = true }
                 }
-                if let context = attributes[kSecUseAuthenticationContext] as? LAContext,
-                   context.interactionNotAllowed {
-                    blockedAuthenticationUI.withLock { $0 = true }
-                }
                 return errSecItemNotFound
+            },
+            setUserInteractionAllowed: { allowed in
+                blockedAuthenticationUI.withLock { $0 = !allowed }
+                return errSecSuccess
             }
         )
 
@@ -119,24 +119,63 @@ final class KeychainAccessorTests: XCTestCase {
             accessor.readGenericPasswordWithoutUserInteraction(service: "service"),
             .missing
         )
-        XCTAssertFalse(
-            requestedSecretData.withLock { $0 },
-            "automatic reads may inspect metadata but must never request foreign secret data"
-        )
         XCTAssertTrue(
+            requestedSecretData.withLock { $0 },
+            "the quiet automatic read asks for the secret (with UI provably off)"
+        )
+        XCTAssertFalse(
             blockedAuthenticationUI.withLock { $0 },
-            "metadata probes must fail instead of presenting login-keychain authentication UI"
+            "the process-global UI switch must be restored after the quiet read"
+        )
+    }
+
+    func testAutomaticReadRequestsSecretsOnlyWhileUIIsSuppressed() {
+        // The automatic path may request secret data, but ONLY inside the quiet window — the
+        // process-global switch off, so an approval-needing item fails errSecAuthFailed instead
+        // of showing a dialog — and the switch must be restored afterwards.
+        let suppressed = Locked(false)
+        let unsuppressedSecretRequests = Locked(0)
+        let accessor = SecurityKeychainAccessor(
+            coordinator: KeychainReadCoordinator(),
+            copyMatching: { query, _ in
+                if (query as NSDictionary)[kSecReturnData] as? Bool == true {
+                    if !suppressed.withLock({ $0 }) {
+                        unsuppressedSecretRequests.withLock { $0 += 1 }
+                    }
+                    return errSecAuthFailed
+                }
+                return errSecSuccess
+            },
+            setUserInteractionAllowed: { allowed in
+                suppressed.withLock { $0 = !allowed }
+                return errSecSuccess
+            }
+        )
+
+        XCTAssertEqual(
+            accessor.readGenericPasswordWithoutUserInteraction(service: "service"),
+            .unavailable
+        )
+        XCTAssertEqual(
+            unsuppressedSecretRequests.withLock { $0 }, 0,
+            "an automatic read may request secret data only while keychain UI is suppressed"
+        )
+        XCTAssertFalse(
+            suppressed.withLock { $0 },
+            "the process-global switch must be restored after the quiet read"
         )
     }
 
     func testDeferredAutomaticReadRecordsANeutralCategoryNotADenial() {
-        // "An item exists, but the automatic read intentionally didn't inspect it" is NOT
-        // "keychain permission is required": nothing asked securityd for the secret, so nothing
-        // can have been denied. The deferral must be remembered as `.manualReadDeferred` so
-        // providers offer the neutral Connect affordance instead of a permission warning.
+        // A quiet read that securityd answers errSecAuthFailed means "I wanted to ask and was
+        // forbidden to" — the USER denied nothing. It must be remembered as `.manualReadDeferred`
+        // so providers offer the neutral Connect affordance instead of a permission warning.
         let accessor = SecurityKeychainAccessor(
             coordinator: KeychainReadCoordinator(),
-            copyMatching: { _, _ in errSecSuccess }
+            copyMatching: { query, _ in
+                (query as NSDictionary)[kSecReturnData] as? Bool == true ? errSecAuthFailed : errSecSuccess
+            },
+            setUserInteractionAllowed: { _ in errSecSuccess }
         )
 
         XCTAssertEqual(
@@ -204,19 +243,25 @@ final class KeychainAccessorTests: XCTestCase {
         XCTAssertEqual(state.withLock { $0.secretReads }, 1, "automatic reuse must not request secret data")
     }
 
-    func testAutomaticSafeStorageReadersRequestMetadataOnly() {
-        let claudeRequestedSecretData = Locked(false)
-        let claudeBlockedAuthenticationUI = Locked(false)
+    func testAutomaticSafeStorageReadersReadSecretsOnlyWhileUIIsSuppressed() {
+        // The Safe Storage readers share the quiet-read rule: the automatic path may ask for the
+        // key only inside the suppressed-UI window, an approval-needing key stays the neutral
+        // deferral (never a dialog, never a denial), and the switch is restored afterwards.
+        let claudeSuppressed = Locked(false)
+        let claudeUnsuppressedSecretRequests = Locked(0)
         let claude = ClaudeDesktopSafeStorageKeyReader(
             coordinator: KeychainReadCoordinator(),
             copyMatching: { query, _ in
                 if (query as NSDictionary)[kSecReturnData] as? Bool == true {
-                    claudeRequestedSecretData.withLock { $0 = true }
+                    if !claudeSuppressed.withLock({ $0 }) {
+                        claudeUnsuppressedSecretRequests.withLock { $0 += 1 }
+                    }
+                    return errSecAuthFailed
                 }
-                if let context = (query as NSDictionary)[kSecUseAuthenticationContext] as? LAContext,
-                   context.interactionNotAllowed {
-                    claudeBlockedAuthenticationUI.withLock { $0 = true }
-                }
+                return errSecSuccess
+            },
+            setUserInteractionAllowed: { allowed in
+                claudeSuppressed.withLock { $0 = !allowed }
                 return errSecSuccess
             }
         )
@@ -225,21 +270,24 @@ final class KeychainAccessorTests: XCTestCase {
                 return XCTFail("expected the deferred-read outcome, got \($0)")
             }
         }
-        XCTAssertFalse(claudeRequestedSecretData.withLock { $0 })
-        XCTAssertTrue(claudeBlockedAuthenticationUI.withLock { $0 })
+        XCTAssertEqual(claudeUnsuppressedSecretRequests.withLock { $0 }, 0)
+        XCTAssertFalse(claudeSuppressed.withLock { $0 })
 
-        let sakanaRequestedSecretData = Locked(false)
-        let sakanaBlockedAuthenticationUI = Locked(false)
+        let sakanaSuppressed = Locked(false)
+        let sakanaUnsuppressedSecretRequests = Locked(0)
         let sakana = SakanaSafeStorageKeyReader(
             coordinator: KeychainReadCoordinator(),
             copyMatching: { query, _ in
                 if (query as NSDictionary)[kSecReturnData] as? Bool == true {
-                    sakanaRequestedSecretData.withLock { $0 = true }
+                    if !sakanaSuppressed.withLock({ $0 }) {
+                        sakanaUnsuppressedSecretRequests.withLock { $0 += 1 }
+                    }
+                    return errSecAuthFailed
                 }
-                if let context = (query as NSDictionary)[kSecUseAuthenticationContext] as? LAContext,
-                   context.interactionNotAllowed {
-                    sakanaBlockedAuthenticationUI.withLock { $0 = true }
-                }
+                return errSecSuccess
+            },
+            setUserInteractionAllowed: { allowed in
+                sakanaSuppressed.withLock { $0 = !allowed }
                 return errSecSuccess
             }
         )
@@ -250,8 +298,8 @@ final class KeychainAccessorTests: XCTestCase {
                 return XCTFail("expected the deferred-read outcome, got \($0)")
             }
         }
-        XCTAssertFalse(sakanaRequestedSecretData.withLock { $0 })
-        XCTAssertTrue(sakanaBlockedAuthenticationUI.withLock { $0 })
+        XCTAssertEqual(sakanaUnsuppressedSecretRequests.withLock { $0 }, 0)
+        XCTAssertFalse(sakanaSuppressed.withLock { $0 })
     }
 
     @MainActor
@@ -364,7 +412,7 @@ final class KeychainAccessorTests: XCTestCase {
         wait(for: [nextDone], timeout: 5)
     }
 
-    func testManualReadSeedsAutomaticCacheAndDistinguishesMissingItems() throws {
+    func testQuietAutomaticReadLoadsAccessibleItemsAndDistinguishesMissingOnes() throws {
         let accessor = SecurityKeychainAccessor(coordinator: KeychainReadCoordinator())
         let service = "RunwayTests.keychain-ui.\(UUID().uuidString)"
         let add: [String: Any] = [
@@ -387,17 +435,12 @@ final class KeychainAccessorTests: XCTestCase {
         XCTAssertEqual(accessor.genericPasswordExists(service: service), true)
         XCTAssertEqual(
             accessor.readGenericPasswordWithoutUserInteraction(service: service),
-            .unavailable,
-            "automatic refresh must not read a foreign secret, even when its ACL already allows it"
+            .value("stored-secret"),
+            "an item macOS grants without UI must load on the quiet automatic path — no Connect click"
         )
         XCTAssertEqual(
             try accessor.readGenericPasswordAllowingUserInteraction(service: service),
             "stored-secret"
-        )
-        XCTAssertEqual(
-            accessor.readGenericPasswordWithoutUserInteraction(service: service),
-            .value("stored-secret"),
-            "a deliberate read should seed the in-process cache for later automatic refreshes"
         )
         XCTAssertEqual(
             accessor.readGenericPasswordWithoutUserInteraction(service: "\(service).missing"),
@@ -405,10 +448,11 @@ final class KeychainAccessorTests: XCTestCase {
         )
     }
 
-    func testChangeGatedReadRequiresAnotherManualReadAfterAnItemUpdate() throws {
+    func testChangeGatedCachePicksUpARotatedSecretOnTheNextQuietRead() throws {
         // End-to-end over a real login-keychain item: a deliberate read seeds the cache, the
         // coordinator serves it while metadata is unchanged, and a credential rotation invalidates
-        // it without letting the automatic path request the replacement secret.
+        // it — the next quiet automatic read then loads the replacement silently (the test host
+        // created the item, so macOS grants the read without UI).
         let accessor = SecurityKeychainAccessor(coordinator: KeychainReadCoordinator())
         let service = "RunwayTests.keychain-fingerprint.\(UUID().uuidString)"
         let add: [String: Any] = [
@@ -445,11 +489,52 @@ final class KeychainAccessorTests: XCTestCase {
 
         XCTAssertEqual(
             accessor.readGenericPasswordWithoutUserInteraction(service: service),
-            .unavailable,
-            "an updated item must invalidate the old cache without being read automatically"
+            .value("second-secret"),
+            "a rotated secret must invalidate the old cache and load fresh on the quiet automatic read"
         )
         XCTAssertEqual(try accessor.readGenericPasswordAllowingUserInteraction(service: service), "second-secret")
-        XCTAssertEqual(accessor.readGenericPasswordWithoutUserInteraction(service: service), .value("second-secret"))
+    }
+
+    func testQuietTurnWaitsBehindAnotherQuietReadButSkipsBehindADialog() {
+        // Behind another quiet holder (ms-scale, no UI possible) a quiet turn waits its turn —
+        // otherwise the launch storm parks every gate-race loser on the Connect state for a full
+        // refresh cycle. Behind a dialog-capable holder it must skip immediately: that hold is
+        // unbounded, and suppressing UI there would fail the dialog the user is waiting on.
+        let firstHolding = expectation(description: "first quiet turn holding")
+        let release = DispatchSemaphore(value: 0)
+        let firstDone = expectation(description: "first quiet turn done")
+        DispatchQueue.global().async {
+            let ran = InteractiveKeychainReadGate.withQuietTurn { () -> Bool in
+                firstHolding.fulfill()
+                release.wait()
+                return true
+            }
+            XCTAssertEqual(ran, true)
+            firstDone.fulfill()
+        }
+        wait(for: [firstHolding], timeout: 5)
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.15) { release.signal() }
+        let second = InteractiveKeychainReadGate.withQuietTurn { true }
+        XCTAssertEqual(second, true, "a quiet turn must wait out another quiet holder")
+        wait(for: [firstDone], timeout: 5)
+
+        let dialogHolding = expectation(description: "dialog turn holding")
+        let dialogRelease = DispatchSemaphore(value: 0)
+        let dialogDone = expectation(description: "dialog turn done")
+        DispatchQueue.global().async {
+            InteractiveKeychainReadGate.withTurn { _ in
+                dialogHolding.fulfill()
+                dialogRelease.wait()
+            }
+            dialogDone.fulfill()
+        }
+        wait(for: [dialogHolding], timeout: 5)
+        XCTAssertNil(
+            InteractiveKeychainReadGate.withQuietTurn { true },
+            "a quiet turn must not wait behind a dialog-capable holder"
+        )
+        dialogRelease.signal()
+        wait(for: [dialogDone], timeout: 5)
     }
 
     func testGateRefusesTheTurnWhenApprovalsCannotPersist() {

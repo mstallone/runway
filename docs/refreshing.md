@@ -5,17 +5,17 @@
 - All enabled providers refresh together: once at launch, then every 5 minutes (a fixed cadence — there's no setting for it). Opening the popover does not start a second automatic pass. Providers fetch in parallel, so fast cards update without waiting for a slow one. Results that land close together coalesce briefly (a fraction of a second), so a burst publishes as one update. The batch itself still finishes only after every provider returns; notifications, history sync, and the next five-minute wait begin after that point.
 - Turning a provider on (yourself in Customize, or automatically by first-launch/new-provider detection) fetches it promptly instead of waiting out the interval — even when the change lands in the middle of a refresh that's already running.
 - The dashboard footer shows a compact countdown to the next update (like `5m` or `45s`). **Clicking it (or pressing ⌘R while that footer is present)** refreshes immediately, skipping the cache. If several providers need Keychain approval, their dialogs appear one at a time during that same refresh; Runway never opens two approval dialogs together.
-- Automatic refreshes never request secret data from another app's Keychain item. After launch,
-  or when a Keychain credential changes, connect the login once (the neutral key glyph or the
-  card's **Connect** button — an ordinary manual refresh); Runway then reuses that value in memory
-  for the rest of the running app session while the item's non-secret metadata remains unchanged.
-  Relaunching Runway or changing the Keychain item asks you to connect again. That waiting state is
-  not an error — nothing is broken and nothing was denied — so it never shows a warning triangle.
-  **Always Allow** can prevent a dialog on a
-  future manual read, but automatic refreshes still do not initiate Keychain secret reads.
-  Runway only shows an approval dialog when the approval can actually last: a build whose code
-  signature can't hold one (an unsigned developer build) skips the dialog and stays on the neutral
-  Connect state instead, with the reason in the log.
+- Automatic refreshes never show Keychain UI. Once you've approved Runway for a login with
+  **Always Allow**, background refreshes read it silently — including right after a relaunch, so an
+  approved login needs no clicks at all. A login macOS would have to ask about (a new item, or one
+  you haven't approved yet) is never asked about in the background: its card shows the neutral key
+  glyph / **Connect** button instead, and the single dialog appears only when you click it. Under
+  the hood, background reads run with Keychain UI explicitly suppressed, so a read that would have
+  prompted fails silently into the Connect state rather than opening an unattended dialog. That
+  waiting state is not an error — nothing is broken and nothing was denied — so it never shows a
+  warning triangle. Runway also only shows an approval dialog when the approval can actually last:
+  a build whose code signature can't hold one (an unsigned developer build) skips the dialog and
+  stays on the neutral Connect state, with the reason in the log.
 - The one-shot `runway` command reuses this same persisted cache for five minutes, refreshes missing or stale entries without starting the app, and exits. `runway --force` runs the same forced provider refresh as ⌘R regardless of cache age — with one difference: it never opens a Keychain approval dialog, and it can't reuse the app's approval either (the command is a separately signed binary). Providers whose credentials live only in a protected Keychain item are read by the app and reach the command through the shared snapshot; see [CLI](cli.md).
 - While a provider is fetching, a small spinner appears next to its name (and the footer countdown becomes one), so you can tell a refresh is in flight rather than wondering if the numbers are stale.
 - With [iCloud Sync](icloud-sync.md) on, a refresh batch publishes this device's one sync record after
@@ -49,7 +49,7 @@ are debounced until after refresh; the one-shot CLI drains pending writes before
 
 A failed refresh **never wipes your data**: the last good values stay on screen, and a small warning triangle appears at the right edge of the provider's header — hover it for the error message (e.g. "Not logged in"). **Click the triangle to refresh that provider**, which is usually what clears the problem — a denied Keychain approval, or a token you just renewed in your terminal. Like every refresh you ask for yourself, that click may show a macOS permission prompt; background refreshes never do. While the refresh runs, the triangle gives way to the header's spinner. One kind of notice stays a plain symbol with no click: the ones that ask you to wait, like Claude's "Updates blocked by Anthropic" during a rate limit, where refreshing again only makes the block last longer. The error clears on the next successful refresh.
 
-A Keychain login that simply hasn't been loaded into this app session yet is deliberately **not** one of these failures. It shows a muted key glyph in the header (or a **Connect** button when the card has no data yet) instead of the warning triangle — same click, neutral styling — because nothing needs fixing. The warning triangle appears for Keychain only when something actually went wrong: you declined the approval dialog (the message then says access was declined and to choose Always Allow), or the keychain itself couldn't be read (locked, or securityd failing).
+A Keychain login that needs your one-time approval is deliberately **not** one of these failures. It shows a muted key glyph in the header (or a **Connect** button when the card has no data yet) instead of the warning triangle — same click, neutral styling — because nothing needs fixing: the login just needs one approval, granted through that click. The warning triangle appears for Keychain only when something actually went wrong: you declined the approval dialog (the message then says access was declined and to choose Always Allow), or the keychain itself couldn't be read (locked, or securityd failing).
 
 When a provider stops responding, Runway cuts it off after a per-provider ceiling (2.5 minutes for most; providers with legitimately slower flows, like Copilot's multi-org billing probe, allow more). So only genuinely dead work gets cut. The attempt counts as a failed refresh — same warning triangle, message "Refresh timed out after 150s" — instead of leaving the refresh spinner running forever. Like any failure, the provider backs off briefly before the next attempt, and a new attempt never overlaps a timed-out one that is still winding down.
 

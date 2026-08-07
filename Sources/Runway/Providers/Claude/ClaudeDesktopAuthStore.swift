@@ -30,15 +30,20 @@ struct ClaudeDesktopSafeStorageKeyReader: ClaudeDesktopSafeStorageKeyReading {
     private static let account = "Claude Key"
     private let coordinator: KeychainReadCoordinator
     private let copyMatching: @Sendable (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus
+    private let setUserInteractionAllowed: @Sendable (Bool) -> OSStatus
 
     init(
         coordinator: KeychainReadCoordinator = .shared,
         copyMatching: @escaping @Sendable (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus = {
             SecItemCopyMatching($0, $1)
+        },
+        setUserInteractionAllowed: @escaping @Sendable (Bool) -> OSStatus = {
+            LegacyKeychainUISwitch.set($0)
         }
     ) {
         self.coordinator = coordinator
         self.copyMatching = copyMatching
+        self.setUserInteractionAllowed = setUserInteractionAllowed
     }
 
     func readPassword(allowInteraction: Bool) throws -> String? {
@@ -69,6 +74,31 @@ struct ClaudeDesktopSafeStorageKeyReader: ClaudeDesktopSafeStorageKeyReading {
             }
         ) { ticket -> OSStatus in
             if !allowInteraction {
+                // First choice: one secret read with keychain UI provably suppressed (quiet gate
+                // turn + the process-global switch, restored before the turn is released). A
+                // granted key loads on any background refresh; an unapproved one fails fast as
+                // the neutral deferral instead of a dialog.
+                let quiet: OSStatus?? = try InteractiveKeychainReadGate.withQuietTurn { () -> OSStatus? in
+                    guard setUserInteractionAllowed(false) == errSecSuccess else { return nil }
+                    defer { _ = setUserInteractionAllowed(true) }
+                    let status = copyMatching(query as CFDictionary, &result)
+                    switch status {
+                    case errSecSuccess, errSecItemNotFound:
+                        return status
+                    case errSecAuthFailed:
+                        // securityd wanted to ask and was forbidden to — a deferral, not a denial.
+                        coordinator.recordFailureCategory(ticket, category: .manualReadDeferred)
+                        throw ClaudeDesktopCredentialError.manualReadDeferred
+                    default:
+                        coordinator.recordFailureCategory(ticket, category: .unreadable)
+                        throw ClaudeDesktopCredentialError.keychainFailure(Int(status))
+                    }
+                }
+                if let status = quiet.flatMap({ $0 }) {
+                    return status
+                }
+                // Quiet window unavailable (a dialog open/queued, or the switch failed): classify
+                // from metadata only, exactly the pre-quiet behavior; the next cycle retries.
                 let metadataQuery = NonInteractiveKeychainMetadataQuery.applying(to: [
                     kSecClass as String: kSecClassGenericPassword,
                     kSecAttrService as String: Self.service,
