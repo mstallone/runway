@@ -249,6 +249,52 @@ final class KeychainReadCoordinatorTests: XCTestCase {
         XCTAssertEqual(reads.value, 0, "a denied manual read must stop background retries until the item changes")
     }
 
+    func testDenialSurvivesUnattendedRevalidationOfTheUnchangedItem() {
+        // After the user declines a manual read, the breaker re-checks on the revalidation cadence.
+        // That unattended read deliberately never requests the secret, so its "exists, deferred"
+        // observation is no evidence the ACL stopped denying — the recorded denial (and its
+        // warning) must survive it. Only a proven item change turns the question back into a
+        // neutral Connect.
+        let clock = Locked(Date(timeIntervalSince1970: 1_000_000))
+        let coordinator = KeychainReadCoordinator(revalidateAfter: 60, now: { clock.withLock { $0 } })
+
+        XCTAssertThrowsError(try coordinator.interactiveRead(
+            service: "svc", account: nil, fingerprint: { "fp-1" },
+            read: { ticket in
+                coordinator.recordFailureCategory(ticket, category: .permissionDenied)
+                throw KeychainError.readFailed("denied")
+            }
+        ))
+        XCTAssertEqual(coordinator.lastFailureCategory(service: "svc", account: nil), .permissionDenied)
+
+        // Past the interval, the unchanged item defers again — the denial must not soften.
+        clock.withLock { $0 = $0.addingTimeInterval(61) }
+        let revalidated = coordinator.nonInteractiveRead(
+            service: "svc", account: nil, fingerprint: { "fp-1" },
+            read: { ticket in
+                coordinator.recordFailureCategory(ticket, category: .manualReadDeferred)
+                return .unavailable
+            }
+        )
+        XCTAssertEqual(revalidated, .unavailable)
+        XCTAssertEqual(
+            coordinator.lastFailureCategory(service: "svc", account: nil),
+            .permissionDenied,
+            "an unattended deferral of the unchanged item must not soften a recorded denial"
+        )
+
+        // A changed item is a new approval question: the deferral may land and the warning relaxes.
+        clock.withLock { $0 = $0.addingTimeInterval(61) }
+        _ = coordinator.nonInteractiveRead(
+            service: "svc", account: nil, fingerprint: { "fp-2" },
+            read: { ticket in
+                coordinator.recordFailureCategory(ticket, category: .manualReadDeferred)
+                return .unavailable
+            }
+        )
+        XCTAssertEqual(coordinator.lastFailureCategory(service: "svc", account: nil), .manualReadDeferred)
+    }
+
     func testLateArriverSkipsEvenTheFingerprintProbeWhileAReadIsStuck() {
         // The fingerprint probe is a Keychain call too: against a wedged securityd it blocks like
         // any other. A caller that gives up on someone else's stuck read must not have touched the

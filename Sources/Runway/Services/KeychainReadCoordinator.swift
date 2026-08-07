@@ -361,7 +361,7 @@ final class KeychainReadCoordinator: @unchecked Sendable {
         // This read's OWN observations, taken by sequence — a concurrent read of the same item
         // cannot consume them. Removed even when the outcome is discarded below, so nothing leaks.
         let wasContention = contendedSequences.remove(sequence) != nil
-        let category = pendingCategories.removeValue(forKey: sequence)
+        var category = pendingCategories.removeValue(forKey: sequence)
         // `>=` and not `>`: a read stores at most once, so the only way to match is to be that
         // same read writing its own outcome.
         guard sequence >= storedSequences[key, default: Int.min] else { return }
@@ -369,6 +369,21 @@ final class KeychainReadCoordinator: @unchecked Sendable {
         // A cancelled read never reached securityd, so it is not evidence about this item and must
         // not trip the breaker.
         let failed = tripped && !wasContention
+        // A denial outlives later unattended deferrals of the same item. Once the revalidation
+        // interval lets a background read past the breaker, that read deliberately does not request
+        // the secret, so it observes only "exists, deferred" — no evidence the ACL stopped denying.
+        // Letting its deferral land would soften the denial warning into the neutral Connect state
+        // on a 15-minute timer. Only a successful interactive read (which stores no failure) or a
+        // PROVEN item change (both fingerprints known and different — a rotated login is a new
+        // approval question) clears a recorded denial.
+        if failed, category == .manualReadDeferred, lastFailureCategories[key] == .permissionDenied {
+            let previousFingerprint = entries[key]?.fingerprint
+            let provenChanged = fingerprint != nil && previousFingerprint != nil
+                && fingerprint != previousFingerprint
+            if !provenChanged {
+                category = .permissionDenied
+            }
+        }
         store(
             key: key,
             fingerprint: fingerprint,
