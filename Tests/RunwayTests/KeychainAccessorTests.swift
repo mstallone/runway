@@ -537,6 +537,33 @@ final class KeychainAccessorTests: XCTestCase {
         wait(for: [dialogDone], timeout: 5)
     }
 
+    func testManualReadBailsOutBehindAStuckQuietRead() {
+        // A dialog-capable read waits without bound behind a user-attended dialog — the user is
+        // looking at it. A QUIET holder is unattended: if securityd wedges inside one, the manual
+        // read must resolve as a cancellation instead of spinning forever.
+        let originalBailout = InteractiveKeychainReadGate.quietHolderBailout
+        InteractiveKeychainReadGate.quietHolderBailout = 0.3
+        defer { InteractiveKeychainReadGate.quietHolderBailout = originalBailout }
+
+        let holding = expectation(description: "quiet holder holding")
+        let release = DispatchSemaphore(value: 0)
+        let done = expectation(description: "quiet holder done")
+        DispatchQueue.global().async {
+            _ = InteractiveKeychainReadGate.withQuietTurn { () -> Bool in
+                holding.fulfill()
+                release.wait()
+                return true
+            }
+            done.fulfill()
+        }
+        wait(for: [holding], timeout: 5)
+        var turn: InteractiveKeychainReadGate.Turn?
+        InteractiveKeychainReadGate.withTurn { turn = $0 }
+        XCTAssertEqual(turn, .cancelled, "a manual read must bail out behind a wedged quiet holder")
+        release.signal()
+        wait(for: [done], timeout: 5)
+    }
+
     func testGateRefusesTheTurnWhenApprovalsCannotPersist() {
         // An ad-hoc build's Always Allow dies with the next rebuild, so the gate must hand the
         // refusal to the body instead of queueing a turn that would end in a pointless dialog.
@@ -573,7 +600,15 @@ final class KeychainAccessorTests: XCTestCase {
             requestedSecretData.withLock { $0 },
             "a refused turn must never request foreign secret data"
         )
-        XCTAssertEqual(accessor.lastReadFailure(service: "service"), .manualReadDeferred)
+        XCTAssertNil(
+            accessor.lastReadFailure(service: "service"),
+            "the refusal never reached securityd, so it is not evidence about the item"
+        )
+        XCTAssertEqual(
+            accessor.readGenericPasswordWithoutUserInteraction(service: "service"),
+            .value(""),
+            "the breaker must stay untouched — quiet reads may still succeed on this build"
+        )
     }
 
     func testSafeStorageReadersRefuseToPromptFromAnEphemeralSignature() {

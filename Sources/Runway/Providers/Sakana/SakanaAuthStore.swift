@@ -93,28 +93,28 @@ struct SakanaSafeStorageKeyReader: SakanaSafeStorageKeyReading {
             }
         ) { ticket -> OSStatus in
             if !allowInteraction {
-                // First choice: one secret read with keychain UI provably suppressed (quiet gate
-                // turn + the process-global switch, restored before the turn is released). A
-                // granted key loads on any background refresh; an unapproved one fails fast as
-                // the neutral deferral instead of a dialog.
-                let quiet: OSStatus?? = try InteractiveKeychainReadGate.withQuietTurn { () -> OSStatus? in
-                    guard setUserInteractionAllowed(false) == errSecSuccess else { return nil }
-                    defer { _ = setUserInteractionAllowed(true) }
-                    let status = copyMatching(query as CFDictionary, &result)
-                    switch status {
-                    case errSecSuccess, errSecItemNotFound:
-                        return status
-                    case errSecAuthFailed:
-                        // securityd wanted to ask and was forbidden to — a deferral, not a denial.
+                // First choice: one secret read through the shared quiet-read core (suppressed
+                // UI inside a quiet gate turn). A granted key loads on any background refresh; an
+                // unapproved one fails fast as the neutral deferral instead of a dialog.
+                if let outcome = QuietKeychainSecretRead.perform(
+                    query: query,
+                    service: service,
+                    copyMatching: copyMatching,
+                    setUserInteractionAllowed: setUserInteractionAllowed
+                ) {
+                    switch outcome {
+                    case .hit(let data):
+                        result = data.map { $0 as CFData }
+                        return errSecSuccess
+                    case .missing:
+                        return errSecItemNotFound
+                    case .needsApproval:
                         coordinator.recordFailureCategory(ticket, category: .manualReadDeferred)
                         throw SakanaBrowserCredentialError.manualReadDeferred
-                    default:
+                    case .unreadable(let status):
                         coordinator.recordFailureCategory(ticket, category: .unreadable)
                         throw SakanaBrowserCredentialError.keychainFailure(Int(status))
                     }
-                }
-                if let status = quiet.flatMap({ $0 }) {
-                    return status
                 }
                 // Quiet window unavailable (a dialog open/queued, or the switch failed): classify
                 // from metadata only, exactly the pre-quiet behavior; the next cycle retries.
@@ -145,9 +145,9 @@ struct SakanaSafeStorageKeyReader: SakanaSafeStorageKeyReading {
                 return copyMatching(query as CFDictionary, &result)
             }
             if turn == .ephemeralSignature {
-                // Refused before securityd — a deferral, not a denial: this ad-hoc build cannot
-                // hold the approval the dialog would grant, so the neutral connect state stays.
-                coordinator.recordFailureCategory(ticket, category: .manualReadDeferred)
+                // Refused before securityd — like a cancellation, no evidence about the item:
+                // nothing stored, breaker untouched, and the neutral connect state stays.
+                coordinator.recordContention(ticket)
                 throw SakanaBrowserCredentialError.manualReadDeferred
             }
             if turn != .available, status != errSecSuccess, status != errSecItemNotFound {

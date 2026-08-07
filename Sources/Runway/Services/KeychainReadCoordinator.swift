@@ -347,9 +347,9 @@ final class KeychainReadCoordinator: @unchecked Sendable {
 
     /// Must be called under `condition`'s lock. Drops the write when a newer one already landed —
     /// a stuck read finishing after a successful recovery must not re-trip the breaker — and
-    /// downgrades a failure that never reached securityd. Every path (background, interactive,
-    /// external) goes through this so both rules hold everywhere rather than on one path.
-    /// Must be called under `condition`'s lock. Takes the read's start ticket.
+    /// discards entirely a cancelled read that never reached securityd. Every path (background,
+    /// interactive, external) goes through this so both rules hold everywhere rather than on one
+    /// path. Takes the read's start ticket.
     private func storeIfCurrent(
         key: Key,
         sequence: Int,
@@ -365,17 +365,22 @@ final class KeychainReadCoordinator: @unchecked Sendable {
         // `>=` and not `>`: a read stores at most once, so the only way to match is to be that
         // same read writing its own outcome.
         guard sequence >= storedSequences[key, default: Int.min] else { return }
+        // A cancelled read never reached securityd, so it is no evidence about this item AT ALL:
+        // it must not trip the breaker, but storing even a blank untripped entry would wipe a
+        // cached user-approved value and erase a recorded denial's category (silently softening
+        // the "access declined" warning). Leave the item exactly as it was.
+        if tripped, wasContention { return }
         storedSequences[key] = sequence
-        // A cancelled read never reached securityd, so it is not evidence about this item and must
-        // not trip the breaker.
-        let failed = tripped && !wasContention
+        let failed = tripped
         // A denial outlives later unattended deferrals of the same item. Once the revalidation
-        // interval lets a background read past the breaker, that read deliberately does not request
-        // the secret, so it observes only "exists, deferred" — no evidence the ACL stopped denying.
-        // Letting its deferral land would soften the denial warning into the neutral Connect state
-        // on a 15-minute timer. Only a successful interactive read (which stores no failure) or a
-        // PROVEN item change (both fingerprints known and different — a rotated login is a new
-        // approval question) clears a recorded denial.
+        // interval lets a background read past the breaker, that read runs with keychain UI
+        // suppressed (or inspects metadata only), so its "deferred" outcome means "securityd would
+        // have had to ask" — no evidence the ACL stopped denying. Letting it land would soften the
+        // denial warning into the neutral Connect state on a 15-minute timer. Only a successful
+        // interactive read (which stores no failure) or a PROVEN item change (both fingerprints
+        // known and different — a rotated login is a new approval question) clears a recorded
+        // denial. The externalRead path never records fingerprints, so a Safe Storage denial
+        // clears only through a successful interactive read.
         if failed, category == .manualReadDeferred, lastFailureCategories[key] == .permissionDenied {
             let previousFingerprint = entries[key]?.fingerprint
             let provenChanged = fingerprint != nil && previousFingerprint != nil

@@ -295,6 +295,43 @@ final class KeychainReadCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.lastFailureCategory(service: "svc", account: nil), .manualReadDeferred)
     }
 
+    func testCancelledInteractiveReadStoresNoEvidence() {
+        // A read cancelled before Security.framework (queued behind another provider's dialog,
+        // then abandoned) must leave the item exactly as it was: the breaker stays tripped and the
+        // recorded denial's category survives — a cancelled attempt is not an approval.
+        let coordinator = KeychainReadCoordinator()
+
+        XCTAssertThrowsError(try coordinator.interactiveRead(
+            service: "svc", account: nil, fingerprint: { "fp-1" },
+            read: { ticket in
+                coordinator.recordFailureCategory(ticket, category: .permissionDenied)
+                throw KeychainError.readFailed("denied")
+            }
+        ))
+        XCTAssertEqual(coordinator.lastFailureCategory(service: "svc", account: nil), .permissionDenied)
+
+        XCTAssertThrowsError(try coordinator.interactiveRead(
+            service: "svc", account: nil, fingerprint: { "fp-1" },
+            read: { ticket in
+                coordinator.recordContention(ticket)
+                throw KeychainError.readFailed("busy")
+            }
+        ))
+        XCTAssertEqual(
+            coordinator.lastFailureCategory(service: "svc", account: nil), .permissionDenied,
+            "a read cancelled before securityd must not erase the recorded denial"
+        )
+        let reads = Counter()
+        XCTAssertEqual(
+            coordinator.nonInteractiveRead(
+                service: "svc", account: nil, fingerprint: { "fp-1" },
+                read: { _ in reads.increment(); return .value("never") }
+            ),
+            .unavailable
+        )
+        XCTAssertEqual(reads.value, 0, "the breaker must remain tripped after a cancelled read")
+    }
+
     func testLateArriverSkipsEvenTheFingerprintProbeWhileAReadIsStuck() {
         // The fingerprint probe is a Keychain call too: against a wedged securityd it blocks like
         // any other. A caller that gives up on someone else's stuck read must not have touched the
