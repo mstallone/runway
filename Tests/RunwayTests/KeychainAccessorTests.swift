@@ -72,6 +72,22 @@ private final class KeychainApprovalRuntime: ProviderRuntime {
 }
 
 final class KeychainAccessorTests: XCTestCase {
+    /// The SwiftPM test host is itself ad-hoc signed, so the real process-signature check would
+    /// refuse every interactive read below. Pin the seam to "durable" so these tests exercise the
+    /// gate's queueing/caching behavior; the refusal path is tested explicitly where it overrides
+    /// this back to false.
+    override func setUp() {
+        super.setUp()
+        InteractiveKeychainReadGate.processCanHoldDurableApprovals = { true }
+    }
+
+    override func tearDown() {
+        InteractiveKeychainReadGate.processCanHoldDurableApprovals = {
+            ProcessCodeSignature.canHoldDurableKeychainApprovals
+        }
+        super.tearDown()
+    }
+
     func testMissingItemReadsNilAndAnUnreadableOneThrows() throws {
         // The plain throwing read must keep "no credential stored" (nil) apart from "couldn't be
         // read" (throw) — collapsing them is how a locked keychain gets mislabeled "not signed in".
@@ -434,6 +450,81 @@ final class KeychainAccessorTests: XCTestCase {
         )
         XCTAssertEqual(try accessor.readGenericPasswordAllowingUserInteraction(service: service), "second-secret")
         XCTAssertEqual(accessor.readGenericPasswordWithoutUserInteraction(service: service), .value("second-secret"))
+    }
+
+    func testGateRefusesTheTurnWhenApprovalsCannotPersist() {
+        // An ad-hoc build's Always Allow dies with the next rebuild, so the gate must hand the
+        // refusal to the body instead of queueing a turn that would end in a pointless dialog.
+        let original = InteractiveKeychainReadGate.processCanHoldDurableApprovals
+        InteractiveKeychainReadGate.processCanHoldDurableApprovals = { false }
+        defer { InteractiveKeychainReadGate.processCanHoldDurableApprovals = original }
+
+        var seen: InteractiveKeychainReadGate.Turn?
+        InteractiveKeychainReadGate.withTurn { turn in seen = turn }
+        XCTAssertEqual(seen, .ephemeralSignature)
+    }
+
+    func testInteractiveReadFromEphemeralSignatureNeverPromptsAndStaysNeutral() {
+        // The refused read must never request secret data (that request is what opens the dialog),
+        // and the outcome must be remembered as the NEUTRAL deferral: the Connect affordance stays,
+        // with no "access declined" warning whose Always Allow advice this build cannot honor.
+        let original = InteractiveKeychainReadGate.processCanHoldDurableApprovals
+        InteractiveKeychainReadGate.processCanHoldDurableApprovals = { false }
+        defer { InteractiveKeychainReadGate.processCanHoldDurableApprovals = original }
+
+        let requestedSecretData = Locked(false)
+        let accessor = SecurityKeychainAccessor(
+            coordinator: KeychainReadCoordinator(),
+            copyMatching: { query, _ in
+                if (query as NSDictionary)[kSecReturnData] as? Bool == true {
+                    requestedSecretData.withLock { $0 = true }
+                }
+                return errSecSuccess
+            }
+        )
+
+        XCTAssertThrowsError(try accessor.readGenericPasswordAllowingUserInteraction(service: "service"))
+        XCTAssertFalse(
+            requestedSecretData.withLock { $0 },
+            "a refused turn must never request foreign secret data"
+        )
+        XCTAssertEqual(accessor.lastReadFailure(service: "service"), .manualReadDeferred)
+    }
+
+    func testSafeStorageReadersRefuseToPromptFromAnEphemeralSignature() {
+        // The Safe Storage readers bypass the accessor, so they must apply the same refusal: no
+        // Security call at all, and the deferred (connect-shaped) error, not a permission failure.
+        let original = InteractiveKeychainReadGate.processCanHoldDurableApprovals
+        InteractiveKeychainReadGate.processCanHoldDurableApprovals = { false }
+        defer { InteractiveKeychainReadGate.processCanHoldDurableApprovals = original }
+
+        let touchedKeychain = Locked(false)
+        let touch: @Sendable (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus = { _, _ in
+            touchedKeychain.withLock { $0 = true }
+            return errSecSuccess
+        }
+
+        let claude = ClaudeDesktopSafeStorageKeyReader(
+            coordinator: KeychainReadCoordinator(),
+            copyMatching: touch
+        )
+        XCTAssertThrowsError(try claude.readPassword(allowInteraction: true)) {
+            guard case ClaudeDesktopCredentialError.manualReadDeferred = $0 else {
+                return XCTFail("expected the deferred-read outcome, got \($0)")
+            }
+        }
+
+        let sakana = SakanaSafeStorageKeyReader(
+            coordinator: KeychainReadCoordinator(),
+            copyMatching: touch
+        )
+        XCTAssertThrowsError(try sakana.readPassword(service: "Chrome Safe Storage", allowInteraction: true)) {
+            guard case SakanaBrowserCredentialError.manualReadDeferred = $0 else {
+                return XCTFail("expected the deferred-read outcome, got \($0)")
+            }
+        }
+
+        XCTAssertFalse(touchedKeychain.withLock { $0 }, "a refused turn must never reach Security.framework")
     }
 
     func testRunwayOwnedStoreRoundTripsAndUpdatesPrivateFile() throws {

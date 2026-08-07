@@ -310,12 +310,25 @@ enum InteractiveKeychainReadGate {
     nonisolated(unsafe) private static var interactiveQueue: [UInt64] = []
     nonisolated(unsafe) private static var inFlight = false
 
+    /// Testable seam for the process-signature check. Production consults the real signature once;
+    /// tests override it so the refusal path doesn't depend on how the test runner is signed.
+    nonisolated(unsafe) static var processCanHoldDurableApprovals: @Sendable () -> Bool = {
+        ProcessCodeSignature.canHoldDurableKeychainApprovals
+    }
+
     enum Turn {
         case available
         case cancelled
+        /// Refused before queueing: this build's ad-hoc signature cannot hold the durable approval
+        /// the dialog would grant, so showing it would only train the user to keep re-approving.
+        case ephemeralSignature
     }
 
     static func withTurn<T>(_ body: (_ turn: Turn) throws -> T) rethrows -> T {
+        guard processCanHoldDurableApprovals() else {
+            AppLog.warn(.keychain, "interactive keychain read refused: this build is ad-hoc signed, so an Always Allow approval would die with the next rebuild; use a signed build (script/build_and_run.sh) to connect keychain-backed providers")
+            return try body(.ephemeralSignature)
+        }
         condition.lock()
         let ticket = nextInteractiveTicket
         nextInteractiveTicket &+= 1
@@ -458,8 +471,15 @@ struct SecurityKeychainAccessor: KeychainReading {
         var gateTurn = InteractiveKeychainReadGate.Turn.available
         let status = InteractiveKeychainReadGate.withTurn { turn -> OSStatus in
             gateTurn = turn
-            guard turn != .cancelled else { return errSecNotAvailable }
+            guard turn == .available else { return errSecNotAvailable }
             return copyMatching(query as CFDictionary, &item)
+        }
+        if gateTurn == .ephemeralSignature {
+            // The read never reached securityd and retrying cannot help this binary, so this is a
+            // deferral, not a denial: the item keeps its neutral Connect state instead of a
+            // permission warning whose Always Allow advice this build cannot honor.
+            coordinator.recordFailureCategory(ticket, category: .manualReadDeferred)
+            throw KeychainError.readFailed("This build can't hold keychain approvals (ad-hoc signature). Use a signed build to connect.")
         }
         if status != errSecSuccess && status != errSecItemNotFound && gateTurn != .available {
             // The refresh was cancelled before this read reached Security.framework. A synthetic

@@ -7,6 +7,21 @@ import XCTest
 /// CloudKit record for a Mac that already has one.
 @MainActor
 final class ICloudDeviceIdentityTests: XCTestCase {
+    /// The SwiftPM test host is ad-hoc signed, so the real process-signature check would refuse the
+    /// interactive legacy-recovery reads these tests exercise. Pin the seam to "durable" here;
+    /// `KeychainAccessorTests` covers the refusal path explicitly.
+    override func setUp() {
+        super.setUp()
+        InteractiveKeychainReadGate.processCanHoldDurableApprovals = { true }
+    }
+
+    override func tearDown() {
+        InteractiveKeychainReadGate.processCanHoldDurableApprovals = {
+            ProcessCodeSignature.canHoldDurableKeychainApprovals
+        }
+        super.tearDown()
+    }
+
     func testDeviceIdentitySurvivesPreferencesResetThroughKeychainStore() {
         let expectedID = UUID().uuidString.lowercased()
         let firstDefaults = makeDefaults("identity-first")

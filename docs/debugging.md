@@ -127,7 +127,11 @@ overlaps the window materializing.
   [Refreshing & caching](refreshing.md) for when a network call actually happens. Use the per-provider
   "Refresh" in the row's context menu to force one.
 - **Permissions / keychain prompts on every rebuild.** The script signs with a stable Apple Development
-  identity so the permission ACLs stick. If you see repeated prompts, make sure such an identity exists in
-  your keychain (the script warns when it falls back to ad-hoc signing).
+  identity so the permission ACLs stick. An ad-hoc-signed build (a bare `swift build` binary, or the
+  script's fallback when no identity is installed) cannot hold a durable approval — its identity is the
+  binary's own hash, so every rebuild would prompt again. Runway therefore refuses to open keychain
+  approval dialogs from ad-hoc builds: keychain-backed providers stay on their neutral Connect state,
+  and the log says why (`interactive keychain read refused`). If Connect seems to do nothing in a dev
+  build, that's the cause — make sure an Apple Development identity exists in your keychain.
 - **Inspect the local API.** With the app running, `curl 127.0.0.1:6736/v1/usage` shows the same usage
   snapshots the UI uses — handy to confirm whether a problem is in fetching/mapping or in the UI.

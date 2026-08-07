@@ -111,8 +111,14 @@ struct SakanaSafeStorageKeyReader: SakanaSafeStorageKeyReading {
             var turn = InteractiveKeychainReadGate.Turn.available
             let status = InteractiveKeychainReadGate.withTurn { currentTurn -> OSStatus in
                 turn = currentTurn
-                guard currentTurn != .cancelled else { return errSecNotAvailable }
+                guard currentTurn == .available else { return errSecNotAvailable }
                 return copyMatching(query as CFDictionary, &result)
+            }
+            if turn == .ephemeralSignature {
+                // Refused before securityd — a deferral, not a denial: this ad-hoc build cannot
+                // hold the approval the dialog would grant, so the neutral connect state stays.
+                coordinator.recordFailureCategory(ticket, category: .manualReadDeferred)
+                throw SakanaBrowserCredentialError.manualReadDeferred
             }
             if turn != .available, status != errSecSuccess, status != errSecItemNotFound {
                 coordinator.recordContention(ticket)

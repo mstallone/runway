@@ -13,6 +13,9 @@
   not an error — nothing is broken and nothing was denied — so it never shows a warning triangle.
   **Always Allow** can prevent a dialog on a
   future manual read, but automatic refreshes still do not initiate Keychain secret reads.
+  Runway only shows an approval dialog when the approval can actually last: a build whose code
+  signature can't hold one (an unsigned developer build) skips the dialog and stays on the neutral
+  Connect state instead, with the reason in the log.
 - The one-shot `runway` command reuses this same persisted cache for five minutes, refreshes missing or stale entries without starting the app, and exits. `runway --force` runs the same forced provider refresh as ⌘R regardless of cache age — with one difference: it never opens a Keychain approval dialog, and it can't reuse the app's approval either (the command is a separately signed binary). Providers whose credentials live only in a protected Keychain item are read by the app and reach the command through the shared snapshot; see [CLI](cli.md).
 - While a provider is fetching, a small spinner appears next to its name (and the footer countdown becomes one), so you can tell a refresh is in flight rather than wondering if the numbers are stale.
 - With [iCloud Sync](icloud-sync.md) on, a refresh batch publishes this device's one sync record after
