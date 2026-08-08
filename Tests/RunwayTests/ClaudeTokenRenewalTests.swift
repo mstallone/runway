@@ -77,9 +77,6 @@ final class ClaudeTokenRenewalTests: XCTestCase {
         renewal.currentAccount = { "tester" }
         var writeBack = ClaudeCredentialWriteBack()
         writeBack.helperIsSilentlyAuthorized = { _, _ in canWrite }
-        writeBack.setUserInteractionAllowed = { _ in errSecSuccess }
-        // In-process update "fails" so the helper path (with its observable stdin) is exercised.
-        writeBack.updateItem = { _, _ in errSecAuthFailed }
         writeBack.stdinRunner = StubStdinRunner(onRun: onKeychainWrite)
         renewal.writeBack = writeBack
         return renewal

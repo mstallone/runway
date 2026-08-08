@@ -118,13 +118,12 @@ struct PartitionWallFallbackReader: Sendable {
                 }
             }
             if authorizations.contains(Self.partitionListTag) {
-                // The entry's description is a hex-encoded XML plist of partition strings.
-                guard let hex = descriptionRef as String?,
-                      let decoded = decodedHexString(hex),
-                      decoded.contains("apple-tool:")
-                else {
-                    return false
-                }
+                // The entry's description is a hex-encoded XML plist of partition strings when
+                // securityd wrote it, or a plain partition string after some updates rewrite it
+                // (a `teamid:`-stamping in-process update stores it undecorated).
+                guard let raw = descriptionRef as String? else { return false }
+                let decoded = decodedHexString(raw) ?? raw
+                guard decoded.contains("apple-tool:") else { return false }
             }
         }
         return helperMayDecryptSilently

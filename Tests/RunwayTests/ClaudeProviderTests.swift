@@ -884,15 +884,16 @@ final class ClaudeProviderTests: XCTestCase {
         renewal.isDisabled = { false }
         renewal.now = { now }
         renewal.currentAccount = { "tester" }
+        struct CapturingStdinRunner: StdinProcessRunning {
+            let box: Box
+            func run(executable: String, arguments: [String], stdin: String, timeout: TimeInterval) throws -> ProcessResult {
+                box.blob = stdin
+                return ProcessResult(exitCode: 0, stdout: "", stderr: "")
+            }
+        }
         var writeBack = ClaudeCredentialWriteBack()
         writeBack.helperIsSilentlyAuthorized = { _, _ in true }
-        writeBack.setUserInteractionAllowed = { _ in errSecSuccess }
-        writeBack.updateItem = { _, changes in
-            if let data = (changes as NSDictionary)[kSecValueData as String] as? Data {
-                written.blob = String(data: data, encoding: .utf8)
-            }
-            return errSecSuccess
-        }
+        writeBack.stdinRunner = CapturingStdinRunner(box: written)
         renewal.writeBack = writeBack
 
         let provider = ClaudeProvider(

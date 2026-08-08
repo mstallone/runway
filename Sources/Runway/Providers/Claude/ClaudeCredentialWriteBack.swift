@@ -13,8 +13,6 @@ import Security
 struct ClaudeCredentialWriteBack: Sendable {
     private static let helperPath = "/usr/bin/security"
 
-    var updateItem: @Sendable (CFDictionary, CFDictionary) -> OSStatus = { SecItemUpdate($0, $1) }
-    var setUserInteractionAllowed: @Sendable (Bool) -> OSStatus = { LegacyKeychainUISwitch.set($0) }
     var stdinRunner: any StdinProcessRunning = SystemProcessRunner()
     var helperIsSilentlyAuthorized: @Sendable (String, String?) -> Bool = PartitionWallFallbackReader.helperIsSilentlyAuthorized
 
@@ -55,29 +53,16 @@ struct ClaudeCredentialWriteBack: Sendable {
         return text
     }
 
-    /// Write the blob to the item, first in-process (silent when the partition list still admits
-    /// this app), then through the security helper — over stdin, because argv is visible to the
-    /// whole login session and this value is a credential.
+    /// Write the blob to the item — through the security helper ONLY, over stdin (argv is visible
+    /// to the whole login session and this value is a credential).
+    ///
+    /// Never in-process: securityd rewrites an item's PARTITION LIST to the writer's own partition
+    /// on every update. An in-process `SecItemUpdate` therefore stamps the item `teamid:` and
+    /// evicts `apple-tool:` — locking Claude Code's own `security`-based tooling out of its own
+    /// credential and trapping the user in password dialogs (observed live, 2026-08-08). A helper
+    /// write leaves the item in its native `apple-tool:` state: Claude Code keeps silent access,
+    /// and Runway reads on through the partition-wall fallback.
     func writeKeychain(service: String, account: String, blob: String) -> Bool {
-        let inProcess: Bool?? = InteractiveKeychainReadGate.withQuietTurn { () -> Bool? in
-            // A write can raise the same dialogs a read can; it runs only with UI provably off.
-            guard setUserInteractionAllowed(false) == errSecSuccess else { return nil }
-            defer {
-                if setUserInteractionAllowed(true) != errSecSuccess {
-                    AppLog.error(.keychain, "failed to restore keychain UI after a credential write; approval dialogs may stay suppressed until relaunch")
-                }
-            }
-            let query: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service,
-                kSecAttrAccount as String: account,
-            ]
-            let changes: [String: Any] = [kSecValueData as String: Data(blob.utf8)]
-            return updateItem(query as CFDictionary, changes as CFDictionary) == errSecSuccess
-        }
-        if inProcess.flatMap({ $0 }) == true {
-            return true
-        }
         guard helperIsSilentlyAuthorized(service, account) else { return false }
         let command = "add-generic-password -U -a \"\(Self.escaped(account))\" -s \"\(Self.escaped(service))\" -w \"\(Self.escaped(blob))\"\n"
         guard let result = try? stdinRunner.run(
