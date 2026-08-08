@@ -31,9 +31,10 @@ Claude Desktop support is read-only. Runway decrypts its currently valid access 
 never changes Desktop's config, cookies, or Keychain entry. This prevents Runway from invalidating
 Claude Desktop's session.
 
-Launch-time and background refreshes never request Claude's Keychain secrets. Runway asks you to
-refresh manually after launch or a credential change, then caches that deliberate
-read in memory for the running app session while the item's non-secret metadata remains unchanged. Choosing **Always Allow** avoids a dialog on future
+Launch-time and background refreshes never request Claude's Keychain secrets. After launch or a
+credential change, the card offers a neutral **Connect** action (not a warning — nothing is broken);
+that deliberate read is cached in memory for the running app session while the item's non-secret
+metadata remains unchanged. Choosing **Always Allow** avoids a dialog on future
 manual reads. If Desktop's short-lived token expires, open Claude Desktop so it can renew the login,
 then refresh Runway.
 
@@ -60,7 +61,7 @@ A `CLAUDE_CODE_OAUTH_TOKEN` — usually a long-lived `claude setup-token` — ca
 
 If one source holds an expired or "locked out" token, Runway falls back to the others — so signing in again with `claude` outside the app is picked up on the next refresh, without restarting Runway.
 
-All Claude credentials are strictly read-only to Runway. Runway never refreshes an OAuth token and never writes to Claude's Keychain items or `.credentials.json` — Claude Code and Claude Desktop own their logins and their token rotation. Two apps rotating the same login can trip the server's token-reuse protection and sign you out everywhere, so Runway stays a pure reader. When every stored login has lapsed, the live Session and Weekly meters pause and the Claude header shows **"Claude login needs renewal"**: open Claude Code (or Claude Desktop) so it renews its own login, then refresh Runway. The local spend tiles keep working the whole time.
+Claude Code owns its login, and Runway defers to it — but when a stored token has already sat expired for a while (so no live Claude Code session can be mid-rotation), Runway renews it the same way Claude Code would and writes the rotated credential back to the exact store it came from (the Keychain item or `.credentials.json`), keeping one single token chain. That discipline matters: two apps rotating the same login independently can trip the server's token-reuse protection and sign you out everywhere, so Runway only renews reactively (never before expiry), only after verifying it can write the result back, and never for Claude Desktop's login (that credential stays read-only, owned by the Desktop app). If renewal isn't possible — the guards decline, or the refresh token itself is revoked — the live Session and Weekly meters pause and the Claude header shows **"Claude login needs renewal"**: open Claude Code so it mints a fresh login, then refresh Runway. The local spend tiles keep working the whole time. To turn automatic renewal off: `defaults write com.mattstallone.runway runway.claude.disableTokenRefresh -bool true`.
 
 ## The spend tiles
 
@@ -95,17 +96,19 @@ In the [CLI](../cli.md) and [local API](../local-http-api.md), extra cards appea
 ## Troubleshooting
 
 - **"Not logged in"** — run `claude` and sign in, then refresh.
-- **"Claude Code login found"** — refresh manually and choose **Always Allow** when macOS asks for access to `Claude Code-credentials`.
+- **"Claude Code login found"** (a neutral key glyph / **Connect** button, not a warning) — the login exists but hasn't been loaded this app session. Connect, and choose **Always Allow** if macOS asks for access to `Claude Code-credentials`.
+- **"Keychain access to the Claude Code login was declined"** — a manual read was denied. Refresh and choose **Always Allow** when macOS asks.
 - **"Claude Code credentials couldn't be checked"** — unlock your login keychain, then refresh Runway.
-- **"Claude Desktop login found"** — refresh manually and choose **Always Allow** when macOS asks for access to `Claude Safe Storage`.
+- **"Claude Desktop login found"** (neutral, like the Claude Code one) — connect, and choose **Always Allow** if macOS asks for access to `Claude Safe Storage`.
+- **"Keychain access to the Claude Desktop login was declined"** — a manual read was denied. Refresh and choose **Always Allow** when macOS asks.
 - **"Claude Desktop login is stale"** (an amber warning on the Claude header) — open Claude Desktop so it can renew the login, then refresh Runway.
-- **"Claude login needs renewal"** (an amber warning on the Claude header) — every stored login has an expired or revoked token. Runway never renews Claude's tokens itself, so open Claude Code (it refreshes its login on launch), then refresh Runway. The spend tiles keep working in the meantime.
+- **"Claude login needs renewal"** (an amber warning on the Claude header) — every stored login has an expired or revoked token, and Runway's own renewal couldn't recover it (usually the refresh token itself is revoked). Open Claude Code (it mints a fresh login on launch), then refresh Runway. The spend tiles keep working in the meantime.
 - **"Re-login for live usage"** (an amber warning on the Claude header) — your saved login can authenticate for inference but can't read your subscription limits, because it lacks the `user:profile` access (this is what an inference-only token from `claude setup-token` carries). Run `claude` and sign in again with your Claude account, then refresh; the spend tiles keep working in the meantime.
 - **"Updates blocked by Anthropic"** (an amber warning on the Claude header) — the usage API is throttling Runway. It keeps the last values from the same login, shows when it will retry, and backs off in the meantime. A different login starts with a fresh cache and cooldown. This is the one header warning you cannot click to refresh: manual refreshes extend the block, so the symbol stays a plain notice until the cooldown passes.
 - **Spend tiles show "No data"** — Runway found no Claude Code logs in the last 30 days. If your logs live somewhere custom, set `CLAUDE_CONFIG_DIR` so both Claude Code and Runway look in the same place.
 
 ## Under the hood
 
-`GET https://api.anthropic.com/api/oauth/usage` with the selected OAuth token. All Claude tokens are read-only to Runway and must be renewed by the Claude app that owns them; Runway never calls the OAuth token endpoint. If a token is expired or revoked, Runway tries the next credential source, and when none is left it shows the renewal notice over the local spend tiles.
+`GET https://api.anthropic.com/api/oauth/usage` with the selected OAuth token. An already-expired token gets one guarded renewal at the token endpoint (`POST https://platform.claude.com/v1/oauth/token`, Claude Code's own public client), with the rotated credential written back to its store — see the renewal rules above. If a token is expired or revoked and renewal declines, Runway tries the next credential source, and when none is left it shows the renewal notice over the local spend tiles.
 
 When the 5-hour session window has no usage yet, the Session row shows **Not started** on the trailing label; hover explains that the session begins after your first message.

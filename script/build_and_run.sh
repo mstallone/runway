@@ -246,7 +246,7 @@ if [ -n "$CODESIGN_IDENTITY" ]; then
 else
   /usr/bin/codesign --force --sign - "$CLI_BINARY" >/dev/null
   /usr/bin/codesign --force --sign - --entitlements "$SIGN_ENTITLEMENTS" "$APP_BUNDLE" >/dev/null
-  echo "WARNING: no Apple Development identity found; ad-hoc signed." >&2
+  echo "WARNING: no Apple Development identity found; ad-hoc signed. Keychain-backed providers will refuse approval dialogs in this build (an ad-hoc grant can't outlive a rebuild)." >&2
 fi
 
 launch_app() {

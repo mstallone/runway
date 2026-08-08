@@ -2,14 +2,22 @@ import Foundation
 import XCTest
 
 final class SecurityCLIUsageTests: XCTestCase {
-    func testSourcesDoNotUseDeprecatedGlobalKeychainInteractionSwitch() throws {
+    func testGlobalKeychainInteractionSwitchIsConfinedToItsAuditedWrapper() throws {
+        // The deprecated process-global UI switch is allowed in EXACTLY one place: the
+        // `LegacyKeychainUISwitch` wrapper the quiet-read path uses, where the gate's quiet turn
+        // guarantees no user-attended dialog can overlap the suppressed window and the switch is
+        // restored before the turn is released. Anywhere else, mutating process-global keychain UI
+        // state around blocking calls remains forbidden — scattered call sites are how the switch
+        // gets left off across an unbounded synchronous Security call.
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let sources = repository.appendingPathComponent("Sources")
-        let forbiddenSymbol = "SecKeychainSetUser" + "InteractionAllowed"
+        let confinedSymbol = "SecKeychainSetUser" + "InteractionAllowed"
+        let allowedFileSuffix = "Services/SystemClients.swift"
         var violations: [String] = []
+        var allowedOccurrences = 0
 
         guard let files = FileManager.default.enumerator(
             at: sources,
@@ -21,14 +29,22 @@ final class SecurityCLIUsageTests: XCTestCase {
             let contents = try String(contentsOf: file, encoding: .utf8)
             for (offset, line) in contents.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
-                guard !trimmed.hasPrefix("//"), line.contains(forbiddenSymbol) else { continue }
-                violations.append("\(file.path):\(offset + 1): \(line)")
+                guard !trimmed.hasPrefix("//"), line.contains(confinedSymbol) else { continue }
+                if file.path.hasSuffix(allowedFileSuffix) {
+                    allowedOccurrences += 1
+                } else {
+                    violations.append("\(file.path):\(offset + 1): \(line)")
+                }
             }
         }
 
         XCTAssertTrue(
             violations.isEmpty,
-            "Do not mutate process-global Keychain UI state around blocking calls:\n\(violations.joined(separator: "\n"))"
+            "Call the global Keychain UI switch only through LegacyKeychainUISwitch:\n\(violations.joined(separator: "\n"))"
+        )
+        XCTAssertEqual(
+            allowedOccurrences, 1,
+            "LegacyKeychainUISwitch must remain the single call site of the global UI switch"
         )
     }
 
@@ -59,7 +75,15 @@ final class SecurityCLIUsageTests: XCTestCase {
             for case let file as URL in files {
                 guard
                     executableExtensions.contains(file.pathExtension),
-                    file.lastPathComponent != "SecurityCLIUsageTests.swift"
+                    file.lastPathComponent != "SecurityCLIUsageTests.swift",
+                    // The audited exemptions: the partition-wall fallback reads through
+                    // `/usr/bin/security` when a credential writer resets an item's partition
+                    // list — after proving from the item's ACL that the helper is silently
+                    // authorized — and token renewal's write-back uses the same proven-silent
+                    // helper (over stdin) when the in-process write hits that partition wall.
+                    // See each type's doc for why no in-process path can serve those cases.
+                    file.lastPathComponent != "PartitionWallFallbackReader.swift",
+                    file.lastPathComponent != "ClaudeCredentialWriteBack.swift"
                 else {
                     continue
                 }

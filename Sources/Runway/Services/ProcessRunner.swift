@@ -18,11 +18,42 @@ protocol ProcessRunning: Sendable {
     ) throws -> ProcessResult
 }
 
-struct SystemProcessRunner: ProcessRunning {
+/// A launch that feeds the child's stdin. Split from `ProcessRunning` so its many mocks stay
+/// untouched; used where a value must never appear in the process table — `ps` shows every
+/// process's argv to the whole login session, so a credential passed as an argument would leak.
+protocol StdinProcessRunning: Sendable {
+    func run(
+        executable: String,
+        arguments: [String],
+        stdin: String,
+        timeout: TimeInterval
+    ) throws -> ProcessResult
+}
+
+struct SystemProcessRunner: ProcessRunning, StdinProcessRunning {
     func run(
         executable: String,
         arguments: [String],
         environment: [String: String],
+        timeout: TimeInterval
+    ) throws -> ProcessResult {
+        try runCore(executable: executable, arguments: arguments, environment: environment, input: nil, timeout: timeout)
+    }
+
+    func run(
+        executable: String,
+        arguments: [String],
+        stdin: String,
+        timeout: TimeInterval
+    ) throws -> ProcessResult {
+        try runCore(executable: executable, arguments: arguments, environment: [:], input: stdin, timeout: timeout)
+    }
+
+    private func runCore(
+        executable: String,
+        arguments: [String],
+        environment: [String: String],
+        input: String?,
         timeout: TimeInterval
     ) throws -> ProcessResult {
         let process = Process()
@@ -45,6 +76,10 @@ struct SystemProcessRunner: ProcessRunning {
         let stderrPipe = Pipe()
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
+        let stdinPipe: Pipe? = input.map { _ in Pipe() }
+        if let stdinPipe {
+            process.standardInput = stdinPipe
+        }
 
         // Drain both pipes on background queues, started BEFORE the child runs. A child that writes
         // more than the OS pipe buffer (~64KB) would otherwise block on write, never exit, and trip the
@@ -68,6 +103,12 @@ struct SystemProcessRunner: ProcessRunning {
         } catch {
             cancelDrains(drains, group: drained)
             throw error
+        }
+        if let stdinPipe, let input {
+            // Payloads here are small (well under the 64KB pipe buffer), so a direct write cannot
+            // block; closing signals EOF so line-oriented children (`security -i`) finish.
+            stdinPipe.fileHandleForWriting.write(Data(input.utf8))
+            try? stdinPipe.fileHandleForWriting.close()
         }
         let rootIdentity = processIdentity(for: process.processIdentifier)
         let deadline = DispatchTime.now() + timeout

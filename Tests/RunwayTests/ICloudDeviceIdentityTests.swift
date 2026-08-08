@@ -7,6 +7,21 @@ import XCTest
 /// CloudKit record for a Mac that already has one.
 @MainActor
 final class ICloudDeviceIdentityTests: XCTestCase {
+    /// The SwiftPM test host is ad-hoc signed, so the real process-signature check would refuse the
+    /// interactive legacy-recovery reads these tests exercise. Pin the seam to "durable" here;
+    /// `KeychainAccessorTests` covers the refusal path explicitly.
+    override func setUp() {
+        super.setUp()
+        InteractiveKeychainReadGate.processCanHoldDurableApprovals = { true }
+    }
+
+    override func tearDown() {
+        InteractiveKeychainReadGate.processCanHoldDurableApprovals = {
+            ProcessCodeSignature.canHoldDurableKeychainApprovals
+        }
+        super.tearDown()
+    }
+
     func testDeviceIdentitySurvivesPreferencesResetThroughKeychainStore() {
         let expectedID = UUID().uuidString.lowercased()
         let firstDefaults = makeDefaults("identity-first")
@@ -157,14 +172,21 @@ final class ICloudDeviceIdentityTests: XCTestCase {
     }
 
     func testManualLegacyRecoveryBypassesBreakerTrippedByAutomaticAttempt() throws {
+        // Models an item whose ACL does NOT grant this process: the quiet automatic read gets
+        // errSecAuthFailed (suppressed UI forbids the dialog), trips the breaker, and only the
+        // user-attended read — where the dialog may show and be approved — recovers the secret.
         let owned = InMemoryOwnedSecretStore()
-        let secretReads = KeychainReadCounter()
+        let approvedReads = KeychainReadCounter()
+        let suppressedState = KeychainReadCounter()
         let accessor = SecurityKeychainAccessor(
             coordinator: KeychainReadCoordinator(),
             copyMatching: { query, result in
                 let attributes = query as NSDictionary
                 if attributes[kSecReturnData] as? Bool == true {
-                    secretReads.increment()
+                    guard suppressedState.value == 0 else {
+                        return errSecAuthFailed
+                    }
+                    approvedReads.increment()
                     result?.pointee = Data("ffffffff-1111-2222-3333-444444444444".utf8) as CFData
                     return errSecSuccess
                 }
@@ -175,7 +197,14 @@ final class ICloudDeviceIdentityTests: XCTestCase {
                     ] as CFDictionary
                 }
                 return errSecSuccess
-            }
+            },
+            setUserInteractionAllowed: { allowed in
+                if allowed { suppressedState.reset() } else { suppressedState.increment() }
+                return errSecSuccess
+            },
+            // The real fallback would consult the REAL keychain (a legacy item can exist on a
+            // developer machine); this test models an item whose approval is genuinely pending.
+            partitionWallFallback: { _, _ in nil }
         )
         let store = KeychainICloudDeviceIDStore(
             ownedStore: owned,
@@ -184,13 +213,13 @@ final class ICloudDeviceIdentityTests: XCTestCase {
         )
 
         XCTAssertThrowsError(try store.migrateLegacyDeviceID())
-        XCTAssertEqual(secretReads.value, 0, "automatic recovery must not request secret data")
+        XCTAssertEqual(approvedReads.value, 0, "automatic recovery must never obtain the secret via a dialog")
 
         XCTAssertEqual(
             try store.migrateLegacyDeviceID(allowInteraction: true),
             "ffffffff-1111-2222-3333-444444444444"
         )
-        XCTAssertEqual(secretReads.value, 1, "manual recovery must reach the interactive read")
+        XCTAssertEqual(approvedReads.value, 1, "manual recovery must reach the interactive read")
         XCTAssertEqual(
             owned.secrets["com.mattstallone.runway.icloud-sync-device-id.v3"],
             "ffffffff-1111-2222-3333-444444444444"
@@ -525,6 +554,10 @@ private final class KeychainReadCounter: @unchecked Sendable {
 
     func increment() {
         lock.withLock { count += 1 }
+    }
+
+    func reset() {
+        lock.withLock { count = 0 }
     }
 }
 

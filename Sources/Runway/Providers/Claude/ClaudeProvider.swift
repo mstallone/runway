@@ -23,8 +23,13 @@ final class ClaudeProvider: ProviderRuntime {
     let authStore: ClaudeAuthStore
     let usageClient: ClaudeUsageClient
     let logUsageScanner: ClaudeLogUsageScanner
+    let tokenRenewal: ClaudeTokenRenewal
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
+
+    /// Per-store backoff after a failed renewal attempt (`invalid_grant`, network failure), so an
+    /// unrecoverable chain doesn't get a token-endpoint call every 5-minute cycle.
+    private var tokenRenewalCooldownUntil: [String: Date] = [:]
 
     /// Last successful live-usage result and a rate-limit cooldown, carried across refreshes (the provider
     /// is a long-lived singleton). `/api/oauth/usage` rate-limits aggressively, so on a 429 we serve the
@@ -41,6 +46,7 @@ final class ClaudeProvider: ProviderRuntime {
         authStore: ClaudeAuthStore = ClaudeAuthStore(),
         usageClient: ClaudeUsageClient = ClaudeUsageClient(),
         logUsageScanner: ClaudeLogUsageScanner = ClaudeLogUsageScanner(),
+        tokenRenewal: ClaudeTokenRenewal = ClaudeTokenRenewal(),
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = ModelPricingStore.livePricing
     ) {
@@ -48,6 +54,7 @@ final class ClaudeProvider: ProviderRuntime {
         self.authStore = authStore
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner
+        self.tokenRenewal = tokenRenewal
         self.now = now
         self.pricing = pricing
     }
@@ -104,8 +111,12 @@ final class ClaudeProvider: ProviderRuntime {
         // login that may be stale or belong to another account. Automatic refresh remains
         // non-interactive; a manual refresh performs the explicit in-process approval read.
         switch credentialLoad.keychainAccessStatus {
-        case .permissionRequired:
-            return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.codePermissionRequired)
+        case .connectRequired:
+            // The login exists but hasn't been loaded this process. Nothing is wrong — offer the
+            // neutral Connect affordance instead of a warning.
+            return ProviderSnapshot.connectPrompt(provider: provider, error: ClaudeAuthError.codeConnectRequired)
+        case .permissionDenied:
+            return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.codePermissionDenied)
         case .unavailable:
             return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.codeCredentialsUnavailable)
         case .resolved:
@@ -113,8 +124,10 @@ final class ClaudeProvider: ProviderRuntime {
         }
         if forceDesktopFallback {
             switch credentialLoad.desktopStatus {
+            case .connectRequired:
+                return ProviderSnapshot.connectPrompt(provider: provider, error: ClaudeAuthError.desktopConnectRequired)
             case .permissionRequired:
-                return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.desktopPermissionRequired)
+                return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.desktopPermissionDenied)
             case .stale, .invalid, .notFound:
                 if let previousFallbackError {
                     return await failureSnapshot(
@@ -129,14 +142,16 @@ final class ClaudeProvider: ProviderRuntime {
         let hasLiveUsageCandidate = candidates.contains {
             authStore.liveUsageAvailability($0) == .available
         }
-        let desktopFallbackWarning: String? = if !hasLiveUsageCandidate {
+        let desktopFallbackWarning: (message: String, isConnectPrompt: Bool)? = if !hasLiveUsageCandidate {
             switch credentialLoad.desktopStatus {
+            case .connectRequired:
+                (ClaudeAuthError.desktopConnectRequired.localizedDescription, true)
             case .permissionRequired:
-                ClaudeAuthError.desktopPermissionRequired.localizedDescription
+                (ClaudeAuthError.desktopPermissionDenied.localizedDescription, false)
             case .stale:
-                ClaudeAuthError.desktopTokenExpired.localizedDescription
+                (ClaudeAuthError.desktopTokenExpired.localizedDescription, false)
             case .invalid:
-                ClaudeAuthError.desktopCredentialsUnavailable.localizedDescription
+                (ClaudeAuthError.desktopCredentialsUnavailable.localizedDescription, false)
             case .notChecked, .notFound, .available:
                 nil
             }
@@ -145,8 +160,10 @@ final class ClaudeProvider: ProviderRuntime {
         }
         guard !candidates.isEmpty else {
             switch credentialLoad.desktopStatus {
+            case .connectRequired:
+                return ProviderSnapshot.connectPrompt(provider: provider, error: ClaudeAuthError.desktopConnectRequired)
             case .permissionRequired:
-                return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.desktopPermissionRequired)
+                return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.desktopPermissionDenied)
             case .stale:
                 // A Desktop-only login whose cached token lapsed: same renewal treatment as a lapsed
                 // CLI login (Desktop's loader returns no credential state for a stale entry).
@@ -231,7 +248,7 @@ final class ClaudeProvider: ProviderRuntime {
 
     private func probe(
         state: ClaudeCredentialState,
-        fallbackWarning: String?
+        fallbackWarning: (message: String, isConnectPrompt: Bool)?
     ) async throws -> ProviderSnapshot {
         var mapped = ClaudeMappedUsage(
             plan: ClaudeUsageMapper.formatPlan(
@@ -264,12 +281,20 @@ final class ClaudeProvider: ProviderRuntime {
             // to nag about — the spend tiles still load below.
             break
         }
+        var warningIsConnectPrompt = false
         if let fallbackWarning {
-            // The Desktop-login notice: the user renews it, then refreshes — actionable.
-            warning = fallbackWarning
+            // The Desktop-login notice: the user renews (or connects) it, then refreshes —
+            // actionable. A deferred Desktop read stays the neutral connect prompt here too.
+            warning = fallbackWarning.message
             warningAction = .refresh
+            warningIsConnectPrompt = fallbackWarning.isConnectPrompt
         }
-        return await localUsageSnapshot(mapped: mapped, warning: warning, warningAction: warningAction)
+        return await localUsageSnapshot(
+            mapped: mapped,
+            warning: warning,
+            warningAction: warningAction,
+            warningIsConnectPrompt: warningIsConnectPrompt
+        )
     }
 
     /// Assembles the published snapshot from whatever live usage is available plus the always-local
@@ -277,7 +302,8 @@ final class ClaudeProvider: ProviderRuntime {
     private func localUsageSnapshot(
         mapped initialMapped: ClaudeMappedUsage,
         warning: String?,
-        warningAction: ProviderSnapshot.WarningAction = .refresh
+        warningAction: ProviderSnapshot.WarningAction = .refresh,
+        warningIsConnectPrompt: Bool = false
     ) async -> ProviderSnapshot {
         var mapped = initialMapped
         // Local spend tiles, scanned natively from Claude Code's session logs and priced through the
@@ -315,16 +341,20 @@ final class ClaudeProvider: ProviderRuntime {
             refreshedAt: now(),
             usageHistory: usageHistory,
             warning: warning,
-            warningAction: warningAction
+            warningAction: warningAction,
+            warningIsConnectPrompt: warningIsConnectPrompt
         )
     }
 
-    /// Fetch live usage with the token exactly as Claude stored it. Runway is a read-only consumer of
-    /// Claude's credentials: it never calls the OAuth token endpoint and never writes a credential
-    /// store. A second process rotating Claude's refresh token can trip the server's reuse detection
-    /// and revoke the user's whole session — so a lapsed token is Claude Code's to renew, and Runway
-    /// only reports that renewal is needed.
-    private func fetchLiveUsage(state: ClaudeCredentialState) async throws -> ClaudeMappedUsage {
+    /// Fetch live usage with the token exactly as Claude stored it. An expired token gets ONE
+    /// guarded renewal attempt (see `ClaudeTokenRenewal`: reactive-only, write-back-verified,
+    /// single-chain) — the discipline that keeps a second rotator from tripping the server's reuse
+    /// detection. When renewal declines or fails, Runway reports that a `claude` login is needed,
+    /// exactly as before.
+    private func fetchLiveUsage(
+        state: ClaudeCredentialState,
+        allowRenewal: Bool = true
+    ) async throws -> ClaudeMappedUsage {
         activateLiveUsageCache(for: state.oauth)
 
         // Inside an active rate-limit cooldown, skip the live call and serve the last-good usage so a
@@ -334,10 +364,16 @@ final class ClaudeProvider: ProviderRuntime {
             return rateLimitedSnapshot(credentials: state.displayOAuth, retryAfterSeconds: Int(until.timeIntervalSince(now()).rounded(.up)))
         }
 
-        // An expired stamp means the call below is doomed; skip the network round trip.
-        guard !authStore.isExpired(state.oauth) else {
-            AppLog.info(LogTag.auth("claude"), "\(state.source.label) token expired; renewal belongs to Claude")
-            throw renewalError(for: state)
+        // An expired stamp means the call below is doomed. Renew it first when the guards allow;
+        // otherwise surface the renewal notice as before.
+        if authStore.isExpired(state.oauth) {
+            guard allowRenewal, let renewed = await renewToken(for: state) else {
+                AppLog.info(LogTag.auth("claude"), "\(state.source.label) token expired; renewal deferred to Claude")
+                throw renewalError(for: state)
+            }
+            var renewedState = state
+            renewedState.oauth = renewed
+            return try await fetchLiveUsage(state: renewedState, allowRenewal: false)
         }
 
         let usageURL = try authStore.usageEndpoint()
@@ -374,6 +410,36 @@ final class ClaudeProvider: ProviderRuntime {
     /// The renewal error for a lapsed credential, named after the app that owns it.
     private func renewalError(for state: ClaudeCredentialState) -> ClaudeAuthError {
         state.source == .desktop ? .desktopTokenExpired : .loginRenewalRequired
+    }
+
+    /// One guarded renewal attempt for this credential's store, with a per-store cooldown after a
+    /// failed attempt so a revoked chain isn't retried every cycle. The renewal's blocking work
+    /// (keychain reads, a possible helper subprocess) runs off the main actor.
+    private func renewToken(for state: ClaudeCredentialState) async -> ClaudeOAuth? {
+        let key: String
+        switch state.source {
+        case .keychainCurrentUser(let service): key = "keychain:\(service)"
+        case .file: key = "file"
+        case .keychainLegacy, .desktop, .environment: return nil
+        }
+        if let until = tokenRenewalCooldownUntil[key], now() < until {
+            return nil
+        }
+        let renewal = tokenRenewal
+        let path = authStore.renewalCredentialsPath()
+        let outcome = await Task.detached(priority: .utility) {
+            await renewal.renew(state: state, credentialsFilePath: path)
+        }.value
+        switch outcome {
+        case .renewed(let oauth), .adopted(let oauth):
+            tokenRenewalCooldownUntil[key] = nil
+            return oauth
+        case .skipped:
+            return nil
+        case .attemptFailed:
+            tokenRenewalCooldownUntil[key] = now().addingTimeInterval(ClaudeTokenRenewal.attemptCooldown)
+            return nil
+        }
     }
 
     /// Last-good usage with an appended staleness note when we have it; otherwise the plain rate-limited

@@ -1,5 +1,22 @@
 import Foundation
 
+/// Why a coordinated Keychain read failed, recorded by the read that observed the failure. The
+/// three cases need three different presentations: a deferred read is a NEUTRAL state (nothing is
+/// broken and nothing was denied — the automatic path simply refuses to read foreign secrets, so
+/// the user is offered a Connect action), a denial is a warning naming the approval fix, and an
+/// unreadable keychain is a warning approval cannot fix.
+enum KeychainReadFailure: Equatable, Sendable {
+    /// The item exists, but the automatic path deliberately did not request its secret — a manual
+    /// (user-attended) read is the only path that may. Not an error and not a denial.
+    case manualReadDeferred
+    /// securityd rejected an attempted secret read: the item's ACL denies Runway, or the user
+    /// declined the approval dialog.
+    case permissionDenied
+    /// The keychain itself could not be inspected (locked login keychain, errSecIO, wedged
+    /// securityd). Approval cannot fix this.
+    case unreadable
+}
+
 /// Process-wide gate for the in-process reads of ACL-protected Keychain items belonging to other
 /// apps: everything read through `SecurityKeychainAccessor`, plus the Safe Storage keys Claude
 /// Desktop and Sakana decode themselves (via `externalRead`). Runway-owned durable values stay in
@@ -69,17 +86,16 @@ final class KeychainReadCoordinator: @unchecked Sendable {
     /// not clobber the fresher entry.
     private var storedSequences: [Key: Int] = [:]
     private var inFlight: Set<Key> = []
-    /// Why an item's last read failed: `true` = the item exists and needs a deliberate secret read,
-    /// `false` = its metadata could not be inspected. Captured from the read's own outcome, because
-    /// a second attributes probe cannot recover it — the breaker answers those locally once tripped.
-    private var lastFailureDenied: [Key: Bool] = [:]
+    /// Why an item's last read failed. Captured from the read's own outcome, because a second
+    /// attributes probe cannot recover it — the breaker answers those locally once tripped.
+    private var lastFailureCategories: [Key: KeychainReadFailure] = [:]
     /// Interactive reads that never reached securityd because their refresh was cancelled while
     /// queued. Keyed by READ, not by item: two reads of the same item can overlap, and one read's
     /// cancellation must never excuse another read's genuine failure.
     private var contendedSequences: Set<Int> = []
     /// Failure categories reported by a read that has not stored its outcome yet, keyed the same
     /// way and for the same reason — a category belongs to the read that observed the status.
-    private var pendingCategories: [Int: Bool] = [:]
+    private var pendingCategories: [Int: KeychainReadFailure] = [:]
     private let inFlightWait: TimeInterval
     private let revalidateAfter: TimeInterval
     private let now: @Sendable () -> Date
@@ -280,7 +296,7 @@ final class KeychainReadCoordinator: @unchecked Sendable {
         service: String,
         account: String?,
         interactive: Bool,
-        unavailable: (_ permissionDenied: Bool) -> Error,
+        unavailable: (_ category: KeychainReadFailure) -> Error,
         read: (ReadTicket) throws -> T
     ) throws -> T {
         let key = Key(service: service, account: account)
@@ -290,15 +306,15 @@ final class KeychainReadCoordinator: @unchecked Sendable {
         if !acquired, !interactive {
             condition.unlock()
             AppLog.warn(.keychain, "keychain read skipped behind a stuck operation for one item; reporting unavailable")
-            throw unavailable(false)
+            throw unavailable(.unreadable)
         }
         if !interactive, let entry = entries[key], entry.tripped,
            now().timeIntervalSince(entry.updatedAt) < revalidateAfter {
             // Replay the SAME failure category the original read produced: telling the user to
             // approve Safe Storage would be wrong advice after, say, an errSecIO outage.
-            let denied = lastFailureDenied[key] ?? false
+            let category = lastFailureCategories[key] ?? .unreadable
             condition.unlock()
-            throw unavailable(denied)
+            throw unavailable(category)
         }
         if acquired {
             inFlight.insert(key)
@@ -331,9 +347,9 @@ final class KeychainReadCoordinator: @unchecked Sendable {
 
     /// Must be called under `condition`'s lock. Drops the write when a newer one already landed —
     /// a stuck read finishing after a successful recovery must not re-trip the breaker — and
-    /// downgrades a failure that never reached securityd. Every path (background, interactive,
-    /// external) goes through this so both rules hold everywhere rather than on one path.
-    /// Must be called under `condition`'s lock. Takes the read's start ticket.
+    /// discards entirely a cancelled read that never reached securityd. Every path (background,
+    /// interactive, external) goes through this so both rules hold everywhere rather than on one
+    /// path. Takes the read's start ticket.
     private func storeIfCurrent(
         key: Key,
         sequence: Int,
@@ -345,14 +361,34 @@ final class KeychainReadCoordinator: @unchecked Sendable {
         // This read's OWN observations, taken by sequence — a concurrent read of the same item
         // cannot consume them. Removed even when the outcome is discarded below, so nothing leaks.
         let wasContention = contendedSequences.remove(sequence) != nil
-        let category = pendingCategories.removeValue(forKey: sequence)
+        var category = pendingCategories.removeValue(forKey: sequence)
         // `>=` and not `>`: a read stores at most once, so the only way to match is to be that
         // same read writing its own outcome.
         guard sequence >= storedSequences[key, default: Int.min] else { return }
+        // A cancelled read never reached securityd, so it is no evidence about this item AT ALL:
+        // it must not trip the breaker, but storing even a blank untripped entry would wipe a
+        // cached user-approved value and erase a recorded denial's category (silently softening
+        // the "access declined" warning). Leave the item exactly as it was.
+        if tripped, wasContention { return }
         storedSequences[key] = sequence
-        // A cancelled read never reached securityd, so it is not evidence about this item and must
-        // not trip the breaker.
-        let failed = tripped && !wasContention
+        let failed = tripped
+        // A denial outlives later unattended deferrals of the same item. Once the revalidation
+        // interval lets a background read past the breaker, that read runs with keychain UI
+        // suppressed (or inspects metadata only), so its "deferred" outcome means "securityd would
+        // have had to ask" — no evidence the ACL stopped denying. Letting it land would soften the
+        // denial warning into the neutral Connect state on a 15-minute timer. Only a successful
+        // interactive read (which stores no failure) or a PROVEN item change (both fingerprints
+        // known and different — a rotated login is a new approval question) clears a recorded
+        // denial. The externalRead path never records fingerprints, so a Safe Storage denial
+        // clears only through a successful interactive read.
+        if failed, category == .manualReadDeferred, lastFailureCategories[key] == .permissionDenied {
+            let previousFingerprint = entries[key]?.fingerprint
+            let provenChanged = fingerprint != nil && previousFingerprint != nil
+                && fingerprint != previousFingerprint
+            if !provenChanged {
+                category = .permissionDenied
+            }
+        }
         store(
             key: key,
             fingerprint: fingerprint,
@@ -361,7 +397,7 @@ final class KeychainReadCoordinator: @unchecked Sendable {
             tripped: failed
         )
         // The category describes the failure just stored, so it lands with it or not at all.
-        lastFailureDenied[key] = failed ? category : nil
+        lastFailureCategories[key] = failed ? category : nil
     }
 
     /// Marks this read as cancelled before Security.framework rather than a real failure: tripping
@@ -372,27 +408,26 @@ final class KeychainReadCoordinator: @unchecked Sendable {
         condition.unlock()
     }
 
-    /// Records why a read failed, so callers can tell "manual secret read required" from
-    /// "metadata couldn't be inspected" without a follow-up probe.
-    func recordFailureCategory(_ ticket: ReadTicket, permissionDenied: Bool) {
+    /// Records why a read failed, so callers can tell "manual secret read deferred" from "the ACL
+    /// denied an attempted read" from "metadata couldn't be inspected" without a follow-up probe.
+    func recordFailureCategory(_ ticket: ReadTicket, category: KeychainReadFailure) {
         condition.lock()
-        pendingCategories[ticket.sequence] = permissionDenied
+        pendingCategories[ticket.sequence] = category
         condition.unlock()
     }
 
-    /// `true` when the last failed read of this item was an ACL denial, `false` when the keychain
-    /// was unreadable, `nil` when no failure has been seen.
+    /// Why the last failed read of this item failed, or `nil` when no failure has been seen.
     ///
     /// The category describes a FAILED outcome, so it only answers while the item's stored outcome
     /// is a failure. Categories are recorded by the read itself, without the sequence check that
     /// guards the cache, so an older read finishing after a newer recovery can leave one behind —
     /// this keeps that stale verdict from outliving the failure it described.
-    func lastFailureWasPermissionDenied(service: String, account: String?) -> Bool? {
+    func lastFailureCategory(service: String, account: String?) -> KeychainReadFailure? {
         let key = Key(service: service, account: account)
         condition.lock()
         defer { condition.unlock() }
         guard entries[key]?.tripped == true else { return nil }
-        return lastFailureDenied[key]
+        return lastFailureCategories[key]
     }
 
     /// Bounded, single-flighted metadata query (existence or fingerprint probes). Such probes are
