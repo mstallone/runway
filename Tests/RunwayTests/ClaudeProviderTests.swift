@@ -813,17 +813,19 @@ final class ClaudeProviderTests: XCTestCase {
         )
     }
 
-    func testExpiredKeychainTokenNeverRefreshesOrWritesAndDegradesToRenewalNotice() async {
-        // Regression for the 2026-08-03 incident: Runway rotating Claude Code's refresh token (and
-        // writing it back to Claude's Keychain item) can strand a concurrently running Claude process
-        // and trip OAuth reuse detection. Runway is a read-only consumer: an expired token means NO
-        // token-endpoint call, NO credential write, and a renewal notice over the local spend tiles.
+    func testExpiredTokenWithRenewalUnavailableDegradesToRenewalNotice() async {
+        // What remains of the 2026-08-03 read-only rule, now enforced by renewal's guards: when no
+        // guard can prove a safe rotation (here the kill switch — the same shape as an unverified
+        // write path or a too-recent expiry), an expired token still means NO token-endpoint call,
+        // NO credential write, and the renewal notice over the local spend tiles.
         let keychain = WriteTrackingKeychain(
             value: #"""
             {"claudeAiOauth":{"accessToken":"stale-token","refreshToken":"refresh-1","expiresAt":1,"subscriptionType":"pro","scopes":["user:profile"]}}
             """#
         )
         let httpClient = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data()))
+        var renewal = ClaudeTokenRenewal()
+        renewal.isDisabled = { true }
         let provider = ClaudeProvider(
             authStore: ClaudeAuthStore(
                 environment: FakeEnvironment(),
@@ -832,6 +834,7 @@ final class ClaudeProviderTests: XCTestCase {
             ),
             usageClient: ClaudeUsageClient(httpClient: httpClient),
             logUsageScanner: ClaudeLogFixture.scanner(home: nil),
+            tokenRenewal: renewal,
             pricing: { TestPricing.bundled }
         )
 
@@ -840,11 +843,84 @@ final class ClaudeProviderTests: XCTestCase {
         // The expired stamp short-circuits before any network call: no usage call, and above all no
         // POST to any /oauth/token endpoint.
         XCTAssertTrue(httpClient.requests.isEmpty)
-        XCTAssertEqual(keychain.writeCount, 0, "Claude's credential stores are never written by Runway")
+        XCTAssertEqual(keychain.writeCount, 0, "a declined renewal must not write Claude's credential store")
         XCTAssertNil(badge(snapshot.lines, "Error"))
         XCTAssertNil(snapshot.line(label: "Session"))
         XCTAssertEqual(snapshot.warning, ClaudeAuthError.loginRenewalRequired.localizedDescription)
         XCTAssertEqual(snapshot.plan, "Pro")
+    }
+
+    func testExpiredTokenRenewsWritesBackAndFetchesUsageWithTheNewToken() async {
+        // The renewal path end to end: an expired keychain credential is rotated at the token
+        // endpoint, the rotated blob is written back to the store (single chain — the CodexBar
+        // #1161 lesson), and the usage fetch proceeds with the NEW access token in one cycle.
+        final class Box: @unchecked Sendable {
+            private let lock = NSLock()
+            private var _blob: String?
+            var blob: String? {
+                get { lock.withLock { _blob } }
+                set { lock.withLock { _blob = newValue } }
+            }
+        }
+        let now = RunwayISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        let staleBlob = #"{"claudeAiOauth":{"accessToken":"stale-token","refreshToken":"refresh-1","expiresAt":1,"subscriptionType":"pro","scopes":["user:profile"]}}"#
+        let keychain = WriteTrackingKeychain(value: staleBlob)
+        let usageHTTP = FakeHTTPClient(response: HTTPResponse(
+            statusCode: 200,
+            headers: [:],
+            body: Data(#"{"five_hour":{"utilization":25,"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8)
+        ))
+        let refreshHTTP = FakeHTTPClient(response: HTTPResponse(
+            statusCode: 200,
+            headers: [:],
+            body: Data(#"{"access_token":"new-access","refresh_token":"refresh-2","expires_in":3600}"#.utf8)
+        ))
+
+        let written = Box()
+        var renewal = ClaudeTokenRenewal()
+        renewal.refresher = ClaudeTokenRefresher(httpClient: refreshHTTP)
+        renewal.keychain = keychain
+        renewal.environment = FakeEnvironment()
+        renewal.isDisabled = { false }
+        renewal.now = { now }
+        renewal.currentAccount = { "tester" }
+        var writeBack = ClaudeCredentialWriteBack()
+        writeBack.helperIsSilentlyAuthorized = { _, _ in true }
+        writeBack.setUserInteractionAllowed = { _ in errSecSuccess }
+        writeBack.updateItem = { _, changes in
+            if let data = (changes as NSDictionary)[kSecValueData as String] as? Data {
+                written.blob = String(data: data, encoding: .utf8)
+            }
+            return errSecSuccess
+        }
+        renewal.writeBack = writeBack
+
+        let provider = ClaudeProvider(
+            authStore: ClaudeAuthStore(
+                environment: FakeEnvironment(),
+                files: FakeFiles(),
+                keychain: keychain,
+                now: { now }
+            ),
+            usageClient: ClaudeUsageClient(httpClient: usageHTTP),
+            logUsageScanner: ClaudeLogFixture.scanner(home: nil),
+            tokenRenewal: renewal,
+            now: { now },
+            pricing: { TestPricing.bundled }
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(
+            usageHTTP.requests.first?.headers["Authorization"], "Bearer new-access",
+            "the usage fetch must run with the freshly rotated token"
+        )
+        let persisted = written.blob
+        XCTAssertNotNil(persisted, "the rotated credential must be written back to the store")
+        XCTAssertTrue(persisted?.contains("refresh-2") == true, "the new refresh token is the chain now")
+        XCTAssertTrue(persisted?.contains("subscriptionType") == true, "unmodeled fields must survive the write-back")
+        XCTAssertNil(snapshot.warning)
+        XCTAssertNotNil(snapshot.line(label: "Session"))
     }
 
     func testRefreshFetchesLiveUsageAndScansConfigDirLogs() async throws {

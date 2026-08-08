@@ -389,8 +389,9 @@ struct ClaudeAuthStore: Sendable {
         return liveCapable.isEmpty ? [envCandidate] : liveCapable + [envCandidate]
     }
 
-    /// Whether the access token's own expiry stamp has lapsed. Runway never refreshes a Claude
-    /// token — Claude Code owns rotation — so an expired candidate is skipped, not renewed.
+    /// Whether the access token's own expiry stamp has lapsed. An expired candidate gets one
+    /// guarded renewal attempt in the provider (`ClaudeTokenRenewal`); when its guards decline,
+    /// the candidate is skipped and renewal belongs to Claude Code.
     func isExpired(_ oauth: ClaudeOAuth) -> Bool {
         guard let expiresAt = oauth.expiresAt else { return false }
         return expiresAt <= now().timeIntervalSince1970 * 1000
@@ -457,6 +458,43 @@ struct ClaudeAuthStore: Sendable {
         }
 
         return ResolvedOAuthEndpoints(baseAPI: baseAPI, suffix: suffix)
+    }
+
+    /// Where token renewal happens for this environment, mirroring Claude Code's own matrix (and
+    /// the legacy edition's `getOauthConfig`): production renews at platform.claude.com with Claude
+    /// Code's public client id; ant-user staging/local setups renew against their own hosts with
+    /// the non-prod client id; a custom OAuth base renews under that base.
+    struct TokenRefreshEndpoint: Equatable, Sendable {
+        var url: String
+        var clientID: String
+    }
+
+    private static let prodTokenClientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+    private static let nonProdTokenClientID = "22422756-60c9-4084-8eb7-27705fd5cf9a"
+
+    static func resolveTokenRefreshEndpoint(environment: EnvironmentReading) -> TokenRefreshEndpoint {
+        var url = "https://platform.claude.com/v1/oauth/token"
+        var clientID = prodTokenClientID
+
+        let isAntUser = envText(environment, "USER_TYPE") == "ant"
+        if isAntUser, envFlag(environment, "USE_LOCAL_OAUTH") {
+            let base = (envText(environment, "CLAUDE_LOCAL_OAUTH_API_BASE") ?? "http://localhost:8000").trimmingTrailingSlashes
+            url = "\(base)/v1/oauth/token"
+            clientID = nonProdTokenClientID
+        } else if isAntUser, envFlag(environment, "USE_STAGING_OAUTH") {
+            url = "https://platform.staging.ant.dev/v1/oauth/token"
+            clientID = nonProdTokenClientID
+        }
+        if let custom = envText(environment, "CLAUDE_CODE_CUSTOM_OAUTH_URL") {
+            url = "\(custom.trimmingTrailingSlashes)/v1/oauth/token"
+        }
+        return TokenRefreshEndpoint(url: url, clientID: clientID)
+    }
+
+    /// The credentials file path for this store's scope, exposed for token renewal's file-backed
+    /// write-back (the renewal must write to exactly the file refresh read from).
+    func renewalCredentialsPath() -> String {
+        credentialsPath()
     }
 
     /// The keychain service names as this environment's Claude Code writes them — the single source

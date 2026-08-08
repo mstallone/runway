@@ -76,12 +76,14 @@ final class SecurityCLIUsageTests: XCTestCase {
                 guard
                     executableExtensions.contains(file.pathExtension),
                     file.lastPathComponent != "SecurityCLIUsageTests.swift",
-                    // The ONE audited exemption: the partition-wall fallback reads through
+                    // The audited exemptions: the partition-wall fallback reads through
                     // `/usr/bin/security` when a credential writer resets an item's partition
                     // list — after proving from the item's ACL that the helper is silently
-                    // authorized. See PartitionWallFallbackReader's doc for why no in-process
-                    // path can serve that case.
-                    file.lastPathComponent != "PartitionWallFallbackReader.swift"
+                    // authorized — and token renewal's write-back uses the same proven-silent
+                    // helper (over stdin) when the in-process write hits that partition wall.
+                    // See each type's doc for why no in-process path can serve those cases.
+                    file.lastPathComponent != "PartitionWallFallbackReader.swift",
+                    file.lastPathComponent != "ClaudeCredentialWriteBack.swift"
                 else {
                     continue
                 }

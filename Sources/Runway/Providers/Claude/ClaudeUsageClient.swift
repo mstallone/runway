@@ -17,9 +17,10 @@ enum ClaudeUsageError: Error, LocalizedError, Equatable {
     }
 }
 
-/// Read-only client for Claude's usage endpoint. Runway never calls the OAuth token endpoint:
-/// Claude Code owns its credentials and their rotation, and a second process refreshing the same
-/// refresh token can trip the server's reuse detection and revoke the user's session.
+/// Read-only client for Claude's usage endpoint. Token rotation lives elsewhere and under strict
+/// guards (`ClaudeTokenRenewal`): a second process refreshing a still-valid token can trip the
+/// server's reuse detection, so only an already-expired token is ever renewed, and the rotated
+/// credential is always written back to Claude Code's own store.
 struct ClaudeUsageClient: Sendable {
     var httpClient: HTTPClient
 
