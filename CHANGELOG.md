@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.8.10
+
+### Bug Fixes
+- Keychain: durable approvals, silent reads, and guarded token renewal ([#99](https://github.com/mstallone/runway/pull/99)) by @mstallone
+- Replace global Keychain UI suppression path ([#98](https://github.com/mstallone/runway/pull/98)) by @mstallone
+- Stop Mac release edits from resubmitting TestFlight ([#97](https://github.com/mstallone/runway/pull/97)) by @mstallone
+
+---
+
+### Changelog
+**Full Changelog**: [v0.8.9...v0.8.10](https://github.com/mstallone/runway/compare/v0.8.9...v0.8.10)
+
+- [cb85ad9](https://github.com/mstallone/runway/commit/cb85ad93781846cb7cd605f1d2bad8cef9fd337f) Keychain: durable approvals, silent reads, and guarded token renewal (#99) by @mstallone
+- [daa4892](https://github.com/mstallone/runway/commit/daa48927167412bc30d39e63a58c8faeeeba46bf) Replace global Keychain UI suppression path (#98) by @mstallone
+- [ccdfe55](https://github.com/mstallone/runway/commit/ccdfe554c9362b03d566bbb56873d590a16eca12) Stop Mac release edits from resubmitting TestFlight (#97) by @mstallone
+
 ## v0.8.9
 
 ### Bug Fixes
