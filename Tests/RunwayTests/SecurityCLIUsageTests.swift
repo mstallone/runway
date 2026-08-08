@@ -75,7 +75,13 @@ final class SecurityCLIUsageTests: XCTestCase {
             for case let file as URL in files {
                 guard
                     executableExtensions.contains(file.pathExtension),
-                    file.lastPathComponent != "SecurityCLIUsageTests.swift"
+                    file.lastPathComponent != "SecurityCLIUsageTests.swift",
+                    // The ONE audited exemption: the partition-wall fallback reads through
+                    // `/usr/bin/security` when a credential writer resets an item's partition
+                    // list — after proving from the item's ACL that the helper is silently
+                    // authorized. See PartitionWallFallbackReader's doc for why no in-process
+                    // path can serve that case.
+                    file.lastPathComponent != "PartitionWallFallbackReader.swift"
                 else {
                     continue
                 }

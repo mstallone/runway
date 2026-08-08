@@ -531,6 +531,7 @@ struct SecurityKeychainAccessor: KeychainReading {
     private let waitForMetadataStability: @Sendable (TimeInterval) -> Void
     private let copyMatching: @Sendable (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus
     private let setUserInteractionAllowed: @Sendable (Bool) -> OSStatus
+    private let partitionWallFallback: @Sendable (String, String?) -> String?
 
     init(
         coordinator: KeychainReadCoordinator = .shared,
@@ -543,6 +544,9 @@ struct SecurityKeychainAccessor: KeychainReading {
         },
         setUserInteractionAllowed: @escaping @Sendable (Bool) -> OSStatus = {
             LegacyKeychainUISwitch.set($0)
+        },
+        partitionWallFallback: @escaping @Sendable (String, String?) -> String? = { service, account in
+            PartitionWallFallbackReader().read(service: service, account: account)
         }
     ) {
         self.coordinator = coordinator
@@ -550,6 +554,7 @@ struct SecurityKeychainAccessor: KeychainReading {
         self.waitForMetadataStability = waitForMetadataStability
         self.copyMatching = copyMatching
         self.setUserInteractionAllowed = setUserInteractionAllowed
+        self.partitionWallFallback = partitionWallFallback
     }
 
     /// The plain throwing reads are protocol requirements that exist for mocks; no auth store calls
@@ -748,6 +753,15 @@ struct SecurityKeychainAccessor: KeychainReading {
         case .missing:
             return .missing
         case .needsApproval:
+            // Before settling on the Connect state, check for the partition wall: a credential
+            // writer can reset the item's partition list on rotation, which blocks every
+            // in-process read while the ACL approvals remain intact. When the item's own ACL
+            // proves the `security` helper still reads it silently, recover through it — the
+            // user's Always Allow is being honored, not bypassed, and no dialog can appear.
+            if let value = partitionWallFallback(service, account) {
+                AppLog.info(.keychain, "read service '\(service)' via the security helper: the item's partition list excludes this app (likely reset by the owning app); ACL approvals remain intact")
+                return .value(value)
+            }
             coordinator.recordFailureCategory(ticket, category: .manualReadDeferred)
             return .unavailable
         case .unreadable:

@@ -201,7 +201,10 @@ final class ICloudDeviceIdentityTests: XCTestCase {
             setUserInteractionAllowed: { allowed in
                 if allowed { suppressedState.reset() } else { suppressedState.increment() }
                 return errSecSuccess
-            }
+            },
+            // The real fallback would consult the REAL keychain (a legacy item can exist on a
+            // developer machine); this test models an item whose approval is genuinely pending.
+            partitionWallFallback: { _, _ in nil }
         )
         let store = KeychainICloudDeviceIDStore(
             ownedStore: owned,

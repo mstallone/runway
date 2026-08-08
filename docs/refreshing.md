@@ -13,7 +13,11 @@
   the hood, background reads run with Keychain UI explicitly suppressed, so a read that would have
   prompted fails silently into the Connect state rather than opening an unattended dialog. That
   waiting state is not an error — nothing is broken and nothing was denied — so it never shows a
-  warning triangle. Runway also only shows an approval dialog when the approval can actually last:
+  warning triangle. If the app that owns a credential resets its item's sharing rules on a token
+  rotation (blocking Runway's direct read even though your Always Allow is intact), Runway recovers
+  by reading through Apple's own security helper — but only after proving from the item's rules
+  that the helper needs no dialog, so this too can never prompt. Runway also only shows an approval
+  dialog when the approval can actually last:
   a build whose code signature can't hold one (an unsigned developer build) skips the dialog and
   stays on the neutral Connect state, with the reason in the log.
 - The one-shot `runway` command reuses this same persisted cache for five minutes, refreshes missing or stale entries without starting the app, and exits. `runway --force` runs the same forced provider refresh as ⌘R regardless of cache age — with one difference: it never opens a Keychain approval dialog, and it can't reuse the app's approval either (the command is a separately signed binary). Providers whose credentials live only in a protected Keychain item are read by the app and reach the command through the shared snapshot; see [CLI](cli.md).

@@ -149,7 +149,8 @@ final class KeychainAccessorTests: XCTestCase {
             setUserInteractionAllowed: { allowed in
                 suppressed.withLock { $0 = !allowed }
                 return errSecSuccess
-            }
+            },
+            partitionWallFallback: { _, _ in nil }
         )
 
         XCTAssertEqual(
@@ -166,6 +167,71 @@ final class KeychainAccessorTests: XCTestCase {
         )
     }
 
+    func testPartitionWallFallbackRecoversAQuietReadBlockedByThePartitionList() {
+        // errSecAuthFailed on a quiet read can mean "the item's partition list excludes this app"
+        // even though the ACL approvals are intact. When the fallback proves the security helper
+        // reads the item silently, the value must flow as a normal hit — no Connect state, no
+        // recorded failure.
+        let accessor = SecurityKeychainAccessor(
+            coordinator: KeychainReadCoordinator(),
+            copyMatching: { query, _ in
+                (query as NSDictionary)[kSecReturnData] as? Bool == true ? errSecAuthFailed : errSecSuccess
+            },
+            setUserInteractionAllowed: { _ in errSecSuccess },
+            partitionWallFallback: { service, _ in
+                service == "walled-service" ? "recovered-secret" : nil
+            }
+        )
+
+        XCTAssertEqual(
+            accessor.readGenericPasswordWithoutUserInteraction(service: "walled-service"),
+            .value("recovered-secret")
+        )
+        XCTAssertNil(accessor.lastReadFailure(service: "walled-service"))
+    }
+
+    struct StubProcessRunner: ProcessRunning {
+        var result: ProcessResult
+        var onRun: (@Sendable ([String]) -> Void)? = nil
+
+        func run(
+            executable: String,
+            arguments: [String],
+            environment: [String: String],
+            timeout: TimeInterval
+        ) throws -> ProcessResult {
+            onRun?([executable] + arguments)
+            return result
+        }
+    }
+
+    func testPartitionWallReaderRequiresProofBeforeTouchingTheHelper() {
+        // No proof of silent authorization → the helper must never launch (it could prompt).
+        let launched = Locked(false)
+        let unproven = PartitionWallFallbackReader(
+            runner: StubProcessRunner(
+                result: ProcessResult(exitCode: 0, stdout: "secret\n", stderr: ""),
+                onRun: { _ in launched.withLock { $0 = true } }
+            ),
+            isSilentlyAuthorized: { _, _ in false }
+        )
+        XCTAssertNil(unproven.read(service: "svc", account: nil))
+        XCTAssertFalse(launched.withLock { $0 }, "an unproven helper read could prompt and must not launch")
+
+        // Proven → one read, exactly one trailing newline trimmed, failure maps to nil.
+        let proven = PartitionWallFallbackReader(
+            runner: StubProcessRunner(result: ProcessResult(exitCode: 0, stdout: "secret\n", stderr: "")),
+            isSilentlyAuthorized: { _, _ in true }
+        )
+        XCTAssertEqual(proven.read(service: "svc", account: "user"), "secret")
+
+        let failing = PartitionWallFallbackReader(
+            runner: StubProcessRunner(result: ProcessResult(exitCode: 44, stdout: "", stderr: "not found")),
+            isSilentlyAuthorized: { _, _ in true }
+        )
+        XCTAssertNil(failing.read(service: "svc", account: nil))
+    }
+
     func testDeferredAutomaticReadRecordsANeutralCategoryNotADenial() {
         // A quiet read that securityd answers errSecAuthFailed means "I wanted to ask and was
         // forbidden to" — the USER denied nothing. It must be remembered as `.manualReadDeferred`
@@ -175,7 +241,8 @@ final class KeychainAccessorTests: XCTestCase {
             copyMatching: { query, _ in
                 (query as NSDictionary)[kSecReturnData] as? Bool == true ? errSecAuthFailed : errSecSuccess
             },
-            setUserInteractionAllowed: { _ in errSecSuccess }
+            setUserInteractionAllowed: { _ in errSecSuccess },
+            partitionWallFallback: { _, _ in nil }
         )
 
         XCTAssertEqual(
