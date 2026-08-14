@@ -68,10 +68,11 @@ enum ZAIUsageMapper {
         // CREDIT_LIMIT; older plans used TOKENS_LIMIT for the same shape. Both the `type` and `name`
         // fields are checked independently — Z.ai has carried the label in either, and a recognized
         // `name` must still match when `type` holds something else.
+        func isPercentageQuota(_ label: String?) -> Bool {
+            label == "CREDIT_LIMIT" || label == "TOKENS_LIMIT"
+        }
         let percentageLimits = limits.filter { entry in
-            [entry["type"] as? String, entry["name"] as? String].contains {
-                $0 == "CREDIT_LIMIT" || $0 == "TOKENS_LIMIT"
-            }
+            isPercentageQuota(entry["type"] as? String) || isPercentageQuota(entry["name"] as? String)
         }
         for entry in percentageLimits {
             guard let window = try classifyTokenWindow(entry) else { continue }
