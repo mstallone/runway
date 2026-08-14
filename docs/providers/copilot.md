@@ -6,7 +6,7 @@ Tracks your GitHub Copilot quota using a GitHub token that Copilot tooling alrea
 
 | Metric | Meaning |
 |---|---|
-| Credits | Share of your monthly AI-credit allotment used (the headline meter) |
+| Credits | Share of your monthly AI-credit allotment used (the headline meter). On org-managed seats with no allotment, a plain count of your own credits used this cycle |
 | Extra Usage | Premium interactions used beyond your included credits, once extra spend is enabled |
 | AI Credits Used | Total AI credits your organization used this month, with included/additional breakdown |
 | Additional Spend | Dollars your organization was billed beyond its included AI credits |
@@ -17,7 +17,7 @@ Runway adapts the card to the account instead of showing every possible Copilot 
 
 - **Individual paid plans** show Credits and, when enabled, Extra Usage.
 - **Individual free plans** show Chat and Completions.
-- **Business and Enterprise seats** show AI Credits Used and Additional Spend.
+- **Business and Enterprise seats** show AI Credits Used and Additional Spend, plus your own Credits count when the seat reports one.
 
 Metrics that GitHub does not expose for the current account type are hidden. The applicable usage rows are Always Visible; none of the organization metrics are pinned to the menu bar by default. Percentage meters show percent used and, when the response includes one, a countdown to the next reset. The plan name (Pro, Business, Free, …) shows next to the provider.
 
@@ -27,9 +27,9 @@ Since June 2026 GitHub Copilot bills all plans by **AI credits**, so what each a
 - **Free plans** have no credits; instead you see the fixed Chat and Completions quotas GitHub reports.
   Both rows remain available if a refresh temporarily omits one bucket; the omitted metric shows No data
   until GitHub reports it again.
-- **Org-managed seats (Copilot Business / Enterprise assigned by an organization)** return no per-seat quota, so the personal meters have nothing to show. Runway then looks the usage up at the seat's billing entity—its organization, or its enterprise when billing is consolidated—and shows **AI Credits Used** (total organization usage, broken into included and additional credits) and **Additional Spend** (dollars billed beyond the included pool). Caveats:
+- **Org-managed seats (Copilot Business / Enterprise assigned by an organization)** return no per-seat percent quota. If the response's premium bucket carries a real `credits_used` count, Runway shows it as **Credits** — a plain count, not a percentage, since there's no allotment to divide by. This is your *own* consumption and needs no special access. Runway also looks the usage up at the seat's billing entity—its organization, or its enterprise when billing is consolidated—and shows **AI Credits Used** (total organization usage, broken into included and additional credits) and **Additional Spend** (dollars billed beyond the included pool). Caveats:
   - The numbers are **organization-wide**, not your personal share — GitHub doesn't expose per-seat usage.
-  - Reading an org's billing requires you to be an **org owner or billing manager**. Regular members see a clear managed-account message instead of personal "No data" placeholders.
+  - Reading an org's billing requires you to be an **org owner or billing manager**. Regular members see a clear managed-account message instead of personal "No data" placeholders — plus their own Credits count when the response carries one.
   - When Copilot identifies the seat's organization, Runway checks its enterprise before it accepts an
     empty organization report, because consolidated usage is billed at the enterprise level. If a
     proven enterprise association stays unreadable — or the seat is a Copilot **Enterprise** seat and
@@ -81,7 +81,7 @@ Using Copilot in a supported editor is enough on its own — the editor writes t
 - **"Keychain access to the GitHub login was declined"** — a manual read was denied. Refresh and choose **Always Allow** when macOS asks.
 - **"GitHub login couldn't be read"** — the login keychain itself is unavailable (locked, most often). Unlock it and refresh; approving nothing would fix this one.
 - **"GitHub token invalid or expired"** — the token was rejected (401/403). Re-authenticate with `gh auth login`.
-- **"Managed by Your Organization"** — GitHub doesn't expose a live per-seat quota for Business/Enterprise, and none of the locally available credentials could read the relevant organization or enterprise billing. Organization reporting requires organization billing access; consolidated reporting also requires enterprise read and billing access. Some editor-plugin and GitHub CLI tokens do not carry those scopes.
+- **"Managed by Your Organization"** — GitHub doesn't expose a live per-seat percent quota for Business/Enterprise, and none of the locally available credentials could read the relevant organization or enterprise billing. Your own Credits count still shows when the seat reports one. Organization reporting requires organization billing access; consolidated reporting also requires enterprise read and billing access. Some editor-plugin and GitHub CLI tokens do not carry those scopes.
 
 ## Under the hood
 
