@@ -17,7 +17,7 @@ The app ships with bundled snapshots of all three, so pricing works offline and 
 
 Because the supplement is published to GitHub Pages on merge, a pricing correction reaches installed apps within about an hour — no app update needed.
 
-Updating the app also works. The supplement carries an `updated_at` date, and the app uses whichever of the cached and bundled copies is newer, so a build shipping fresher rates applies them straight away instead of waiting on the cache to expire. That matters most offline: without it, an old cache would shadow the shipped rates for as long as the feed stayed unreachable.
+Updating the app also works. The supplement carries an `updated_at` date, and the app uses whichever of the cached and bundled copies is newer, so a build shipping fresher rates applies them straight away instead of waiting on the cache to expire. That matters most offline: without it, an old cache would shadow the shipped rates for as long as the feed stayed unreachable. When the two dates are equal the cache keeps winning, so a second supplement revision on the same day must use a full ISO timestamp (`2026-08-13T14:30:00Z`) as its `updated_at` — timestamps sort after the bare date, so the later revision wins.
 
 Sakana Fugu is a narrow provider-specific exception to the layered catalogs. Runway carries
 Sakana's published fixed Ultra and Cyber rates beside its log scanner because those prices include a
