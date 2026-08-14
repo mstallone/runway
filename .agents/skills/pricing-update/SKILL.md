@@ -34,7 +34,7 @@ Where a model exists in LiteLLM or models.dev, prefer an alias to that canonical
 
 ### 3. Edit the supplement
 
-- Update `updated_at` to today (YYYY-MM-DD).
+- Update `updated_at` to today (YYYY-MM-DD). If a supplement change already shipped earlier the same day, use a full ISO timestamp (`YYYY-MM-DDTHH:MM:SSZ`) instead — equal values keep serving the cache, so a bare date can't distinguish same-day revisions.
 - Keep the file's style: 2-space indent, rates as plain numbers, `$comment` explanations for non-obvious entries.
 - Rates are USD per million tokens; cache read defaults matter — copy the exact numbers from the Cursor page, don't infer.
 
