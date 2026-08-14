@@ -183,6 +183,14 @@ final class OpenCodeProvider: ProviderRuntime {
         }
         MetricLine.appendNoDataIfNeeded(&lines)
 
+        // Without a Go subscription (Zen-only usage, or a key the endpoint answered with
+        // `EntitlementError`), the three Go cap rows aren't applicable — hide them as documented
+        // instead of rendering three "No data" meters above the local tiles. With meters present,
+        // everything applies (`nil` keeps the legacy all-applicable behavior).
+        let applicableMetricIDs: Set<String>? = meterLines.isEmpty
+            ? ["opencode.trend", "opencode.today", "opencode.yesterday", "opencode.last30"]
+            : nil
+
         return ProviderSnapshot.make(
             provider: provider,
             plan: plan,
@@ -194,7 +202,8 @@ final class OpenCodeProvider: ProviderRuntime {
                     modelUsage: $0.logScan.modelUsage,
                     unknownModelsByDay: $0.logScan.unknownModelsByDay
                 )
-            }
+            },
+            applicableMetricIDs: applicableMetricIDs
         )
     }
 

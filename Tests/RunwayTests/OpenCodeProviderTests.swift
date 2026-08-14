@@ -116,6 +116,8 @@ final class OpenCodeProviderTests: XCTestCase {
         XCTAssertNotNil(snapshot.line(label: "Monthly"))
         XCTAssertNotNil(snapshot.line(label: "Usage Trend"))
         XCTAssertNotNil(snapshot.line(label: "Today"))
+        // Meters present → every metric applies (legacy all-applicable behavior).
+        XCTAssertNil(snapshot.applicableMetricIDs)
     }
 
     func testRefreshNotLoggedInWhenNoKeyAndNoDatabase() async {
@@ -243,6 +245,12 @@ final class OpenCodeProviderTests: XCTestCase {
         XCTAssertNil(snapshot.plan)
         XCTAssertNil(snapshot.line(label: "Session"))
         XCTAssertNotNil(snapshot.line(label: "Today"))
+        // Without a Go subscription the three cap rows must be hidden, not rendered as "No data"
+        // (`isMetricApplicable` treats every descriptor as applicable when this stays nil).
+        XCTAssertEqual(
+            snapshot.applicableMetricIDs,
+            ["opencode.trend", "opencode.today", "opencode.yesterday", "opencode.last30"]
+        )
     }
 
     func testGeneric403FailsLoudly() async {
