@@ -141,11 +141,26 @@ actor ModelPricingStore {
         return lhs > rhs
     }
 
-    /// The value when it starts with a zero-padded `yyyy-MM-dd`; `nil` otherwise.
+    /// The value when it starts with a zero-padded, calendar-valid `yyyy-MM-dd`; `nil` otherwise.
+    /// The regex enforces the padding (a strict formatter alone can still accept `2026-8-02`);
+    /// the round-trip parse rejects padded-but-impossible dates like `2026-99-99`.
     private static func validatedUpdatedAt(_ value: String?) -> String? {
         guard let value, value.wholeMatch(of: /\d{4}-\d{2}-\d{2}.*/) != nil else { return nil }
+        guard updatedAtDayFormatter.date(from: String(value.prefix(10))) != nil else { return nil }
         return value
     }
+
+    /// Never mutated after creation; `DateFormatter` is `Sendable` on current SDKs (same pattern as
+    /// `RunwayISO8601`).
+    private static let updatedAtDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.isLenient = false
+        return formatter
+    }()
 
     private func decodedCachedSupplement() -> PricingSupplement? {
         guard let data = readCache(.supplement) else { return nil }

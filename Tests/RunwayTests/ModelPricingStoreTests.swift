@@ -199,6 +199,15 @@ final class ModelPricingStoreTests: XCTestCase {
         XCTAssertEqual(malformedBundle.resolve(model: "auto")?.inputPerMillion, 9)
     }
 
+    /// A padded but calendar-invalid date (`2026-99-99`) is still lexicographically "large" — it must
+    /// count as missing rather than outrank every well-formed date.
+    func testCalendarInvalidSupplementDateCountsAsOldest() async throws {
+        try writeSupplementCache(updatedAt: "2026-99-99", autoInput: 9)
+
+        let datedBundle = await makeStoreWithBundledSupplement(updatedAt: "2026-06-01", autoInput: 4).current()
+        XCTAssertEqual(datedBundle.resolve(model: "auto")?.inputPerMillion, 4)
+    }
+
     private static func supplementJSON(updatedAt: String?, autoInput: Double) -> String {
         let dateField = updatedAt.map { "\"updated_at\": \"\($0)\", " } ?? ""
         return """
