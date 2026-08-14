@@ -141,11 +141,15 @@ actor ModelPricingStore {
         return lhs > rhs
     }
 
-    /// The value when it starts with a zero-padded, calendar-valid `yyyy-MM-dd`; `nil` otherwise.
-    /// The regex enforces the padding (a strict formatter alone can still accept `2026-8-02`);
-    /// the round-trip parse rejects padded-but-impossible dates like `2026-99-99`.
+    /// The value when it is exactly one of the two documented forms — a zero-padded, calendar-valid
+    /// `yyyy-MM-dd`, or that date plus a `THH:mm:ss[.fff]Z` UTC time suffix; `nil` otherwise. The
+    /// regex enforces the padding and the whole-value shape (a strict formatter alone can still
+    /// accept `2026-8-02`, and a trailing-garbage suffix like `2026-08-13x` would sort above a real
+    /// timestamp); the round-trip parse rejects padded-but-impossible dates like `2026-99-99`.
     private static func validatedUpdatedAt(_ value: String?) -> String? {
-        guard let value, value.wholeMatch(of: /\d{4}-\d{2}-\d{2}.*/) != nil else { return nil }
+        guard let value,
+              value.wholeMatch(of: /\d{4}-\d{2}-\d{2}(?:T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?Z)?/) != nil
+        else { return nil }
         guard updatedAtDayFormatter.date(from: String(value.prefix(10))) != nil else { return nil }
         return value
     }
