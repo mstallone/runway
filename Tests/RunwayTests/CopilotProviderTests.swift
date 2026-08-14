@@ -483,6 +483,47 @@ final class CopilotUsageMapperTests: XCTestCase {
         XCTAssertFalse(paid.isOrgManagedSeat)
     }
 
+    func testShowsPersonalCreditsUsedOnOrgManagedPlaceholder() throws {
+        // The exact shape reported in upstream issue #1094: org-managed seat, zero entitlement, but
+        // `premium_interactions.credits_used` carries the user's own real per-seat consumption.
+        let body: [String: Any] = [
+            "copilot_plan": "business",
+            "token_based_billing": true,
+            "quota_snapshots": [
+                "chat": ["unlimited": true, "token_based_billing": true, "credits_used": 0, "entitlement": 0, "percent_remaining": 100.0],
+                "completions": ["unlimited": true, "token_based_billing": true, "credits_used": 0, "entitlement": 0, "percent_remaining": 100.0],
+                "premium_interactions": [
+                    "unlimited": true, "token_based_billing": true, "credits_used": 2111, "entitlement": 0,
+                    "overage_permitted": true, "percent_remaining": 100.0
+                ]
+            ]
+        ]
+
+        let mapped = try CopilotUsageMapper.map(body: body)
+
+        XCTAssertEqual(mapped.plan, "Business")
+        XCTAssertEqual(countValue(mapped.lines, "Credits"), 2111)
+        XCTAssertNil(mapped.lines.first(where: { $0.label == "Extra Usage" }))
+        XCTAssertTrue(mapped.isOrgManagedSeat)
+    }
+
+    func testUnusedOrgManagedSeatStillShowsNoData() throws {
+        // A genuinely unused seat (`credits_used` 0 or absent) must not regress to showing "0" — it
+        // stays empty, same as `testTokenBasedBillingReturnsPlanWithoutMeters`.
+        let body: [String: Any] = [
+            "copilot_plan": "business",
+            "token_based_billing": true,
+            "quota_snapshots": [
+                "premium_interactions": ["entitlement": 0, "remaining": 0, "credits_used": 0]
+            ]
+        ]
+
+        let mapped = try CopilotUsageMapper.map(body: body)
+
+        XCTAssertTrue(mapped.lines.isEmpty)
+        XCTAssertTrue(mapped.isOrgManagedSeat)
+    }
+
     func testThrowsQuotaUnavailableWhenEmpty() {
         XCTAssertThrowsError(try CopilotUsageMapper.map(body: ["copilot_plan": "pro"])) { error in
             XCTAssertEqual(error as? CopilotUsageError, .quotaUnavailable)
@@ -974,6 +1015,49 @@ final class CopilotProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.line(label: "Organization Usage")?.label, "Organization Usage")
         XCTAssertEqual(snapshot.applicableMetricIDs, ["copilot.orgManaged"])
         XCTAssertNil(defaults.string(forKey: CopilotProvider.billingOrgDefaultsKey))
+    }
+
+    func testOrgManagedSeatWithPersonalCreditsShowsThemDespiteForbiddenOrgBilling() async {
+        // A plain org member (403 on org billing, upstream issue #1094) must still see their own
+        // credit consumption from the user-scoped endpoint, alongside the managed-account badge.
+        let forbidden = HTTPResponse(statusCode: 403, headers: [:], body: Data())
+        let http = routedClient([
+            ("/copilot_internal/user", ok(makeBusinessPlaceholderBodyWithPersonalCredits(2111))),
+            ("/user/orgs", okJSON([["login": "acme"]])),
+            ("/organizations/acme/settings/billing/ai_credit/usage", forbidden)
+        ])
+        let defaults = freshDefaults()
+        let provider = makeOrgProvider(http: http, defaults: defaults)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(snapshot.plan, "Business")
+        XCTAssertEqual(countValue(snapshot.lines, "Credits"), 2111)
+        XCTAssertEqual(snapshot.line(label: "Organization Usage")?.label, "Organization Usage")
+        XCTAssertEqual(snapshot.applicableMetricIDs, ["copilot.premium", "copilot.orgManaged"])
+        XCTAssertNil(defaults.string(forKey: CopilotProvider.billingOrgDefaultsKey))
+    }
+
+    func testOrgManagedSeatWithPersonalCreditsAlsoKeepsOrgBillingLinesForAdmins() async {
+        // An org owner/billing manager gets both: their own personal Credits count, plus the org-wide
+        // Org Credits / Org Spend rows — the merge must not drop either side (issue #1094 vs #839).
+        let http = routedClient([
+            ("/copilot_internal/user", ok(makeBusinessPlaceholderBodyWithPersonalCredits(2111))),
+            ("/user/orgs", okJSON([["login": "acme"]])),
+            ("/organizations/acme/settings/billing/ai_credit/usage", ok(makeOrgSummaryBody()))
+        ])
+        let defaults = freshDefaults()
+        let provider = makeOrgProvider(http: http, defaults: defaults)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(countValue(snapshot.lines, "Credits"), 2111)
+        XCTAssertEqual(orgCount(snapshot.lines, "Org Credits") ?? -1, 298.698546, accuracy: 0.0001)
+        XCTAssertNil(snapshot.lines.first(where: { $0.label == "Extra Usage" }))
+        XCTAssertEqual(
+            snapshot.applicableMetricIDs,
+            ["copilot.premium", "copilot.orgCredits", "copilot.orgSpend"]
+        )
     }
 
     func testConsolidatedEnterpriseBillingFallsBackFromOrganization404() async {
@@ -1925,6 +2009,19 @@ private func makeBusinessPlaceholderBody(seatOrgs: [String]? = nil) -> [String: 
     if let seatOrgs {
         body["organization_login_list"] = seatOrgs
     }
+    return body
+}
+
+/// The org-managed placeholder body from upstream issue #1094: same shape as
+/// `makeBusinessPlaceholderBody`, but the premium bucket carries a real `credits_used` — the user's
+/// own per-seat consumption.
+private func makeBusinessPlaceholderBodyWithPersonalCredits(_ creditsUsed: Double) -> [String: Any] {
+    var body = makeBusinessPlaceholderBody()
+    var quota = body["quota_snapshots"] as! [String: Any]
+    var premium = quota["premium_interactions"] as! [String: Any]
+    premium["credits_used"] = creditsUsed
+    quota["premium_interactions"] = premium
+    body["quota_snapshots"] = quota
     return body
 }
 

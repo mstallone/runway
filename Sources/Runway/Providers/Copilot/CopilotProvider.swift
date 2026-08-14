@@ -45,7 +45,7 @@ final class CopilotProvider: ProviderRuntime {
     var widgetDescriptors: [WidgetDescriptor] {
         [
             .percent(id: "copilot.premium", provider: provider, title: "Credits")
-                .exportingLimit("premiumCredits", unit: "percent"),
+                .exportingLimit("premiumCredits", unit: "credits", source: .progressOrValue(kind: .count)),
             .values(id: "copilot.extra", provider: provider, title: "Extra Usage", selection: .kind(.count))
                 .exportingLimit("extraUsage", unit: "count", source: .value(kind: .count)),
             .values(
@@ -122,10 +122,12 @@ final class CopilotProvider: ProviderRuntime {
 
             let mapped = try CopilotUsageMapper.map(response)
 
-            // An org-managed (token-based-billing) seat has no per-seat quota, so the real usage lives
-            // in the org's billing. Look it up there — best-effort: an org admin sees organization-wide
-            // credits and spend, while everyone else gets an explicit managed-account state. Gated on
-            // the mapper's explicit flag, never on `lines` being empty (issue #839).
+            // An org-managed (token-based-billing) seat has no per-seat percent meter, so the real
+            // usage lives in the org's billing. Look it up there — best-effort: an org admin sees
+            // organization-wide credits and spend, while everyone else gets an explicit managed-account
+            // state. Gated on the mapper's explicit flag, never on `lines` being empty (issue #839).
+            // Appended rather than replacing: `mapped.lines` can already carry the user's own personal
+            // Credits count (issue #1094), which must survive alongside whatever the org lookup adds.
             var lines = mapped.lines
             if mapped.isOrgManagedSeat {
                 // A second local token may belong to another GitHub account. It is safe for billing
@@ -153,13 +155,13 @@ final class CopilotProvider: ProviderRuntime {
                     isEnterpriseSeat: mapped.isEnterpriseSeat
                 ) {
                 case .usage(let usageLines):
-                    lines = usageLines
+                    lines += usageLines
                 case .empty(let usageLines, _):
                     // A month-start zero is self-correcting — any real usage under this login shows
                     // up in the org report on the next refresh — so an unverified zero renders
                     // without a warning; `enterpriseUnverified` still steers the credential
                     // aggregation above.
-                    lines = usageLines
+                    lines += usageLines
                 case .managed:
                     // An unusable GitHub CLI credential is the likely reason billing could not
                     // be read; telling the user to obtain billing access would send them down the
@@ -170,7 +172,7 @@ final class CopilotProvider: ProviderRuntime {
                             ? ProviderSnapshot.connectPrompt(provider: provider, error: billingKeychainError)
                             : ProviderSnapshot.error(provider: provider, error: billingKeychainError)
                     }
-                    lines = [
+                    lines += [
                         .badge(
                             label: "Organization Usage",
                             text: "Managed by Your Organization",
@@ -212,13 +214,14 @@ final class CopilotProvider: ProviderRuntime {
         usesFreeTierQuotas: Bool
     ) -> Set<String> {
         if isOrgManagedSeat {
-            if lines.contains(where: { $0.label == "Organization Usage" }) {
-                return ["copilot.orgManaged"]
-            }
+            // A personal Credits count (issue #1094) rides along with whichever org outcome applies,
+            // so it maps like any other line instead of being dropped by the managed-badge state.
             return Set(lines.compactMap { line in
                 switch line.label {
+                case "Credits": "copilot.premium"
                 case "Org Credits": "copilot.orgCredits"
                 case "Org Spend": "copilot.orgSpend"
+                case "Organization Usage": "copilot.orgManaged"
                 default: nil
                 }
             })
