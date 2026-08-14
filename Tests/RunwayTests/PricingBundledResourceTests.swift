@@ -230,7 +230,7 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(fast.inputPerMillion, 4.0)
         XCTAssertEqual(fast.cacheWritePerMillion, 4.0)
         XCTAssertEqual(fast.cacheReadPerMillion, 1.0)
-        XCTAssertEqual(fast.outputPerMillion, 18.0)
+        XCTAssertEqual(fast.outputPerMillion, 12.0)
         // Cursor CSV uses fast-before-effort (`grok-4.5-fast-high`); also accept effort-before-fast.
         XCTAssertEqual(pricing.resolve(model: "grok-4.5-fast-high"), fast)
         XCTAssertEqual(pricing.resolve(model: "grok-4.5-fast-medium"), fast)
@@ -241,6 +241,114 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "cursor-grok-4.5-high-fast"), fast)
         XCTAssertEqual(pricing.resolve(model: "cursor-grok-4.5-fast-high"), fast)
         XCTAssertEqual(pricing.resolve(model: "cursor-grok-4.5-high"), standard)
+        // Cursor's CSV has also shipped dashed version slugs (`grok-4-5`).
+        XCTAssertEqual(pricing.resolve(model: "grok-4-5-xhigh"), standard)
+        XCTAssertEqual(pricing.resolve(model: "grok-4-5-xhigh-fast"), fast)
+    }
+
+    /// Grok 4.6 (Cursor + SpaceXAI first-party): same published table rates as Grok 4.5, with
+    /// effort slugs, dashed version slugs, and the `cursor-` CSV prefix collapsing to the same
+    /// entries.
+    func testGrok46PricingAndAliases() throws {
+        let pricing = Self.pricing
+        let standard = try XCTUnwrap(pricing.resolve(model: "grok-4.6-high"))
+        XCTAssertEqual(standard.inputPerMillion, 2.0)
+        XCTAssertEqual(standard.cacheWritePerMillion, 2.0)
+        XCTAssertEqual(standard.cacheReadPerMillion, 0.5)
+        XCTAssertEqual(standard.outputPerMillion, 6.0)
+        XCTAssertEqual(pricing.resolve(model: "grok-4.6"), standard)
+        XCTAssertEqual(pricing.resolve(model: "grok-4.6-low"), standard)
+
+        let fast = try XCTUnwrap(pricing.resolve(model: "grok-4.6-fast"))
+        XCTAssertEqual(fast.inputPerMillion, 4.0)
+        XCTAssertEqual(fast.cacheWritePerMillion, 4.0)
+        XCTAssertEqual(fast.cacheReadPerMillion, 1.0)
+        XCTAssertEqual(fast.outputPerMillion, 12.0)
+        XCTAssertEqual(pricing.resolve(model: "grok-4.6-fast-high"), fast)
+        XCTAssertEqual(pricing.resolve(model: "grok-4.6-high-fast"), fast)
+        XCTAssertEqual(pricing.resolve(model: "grok-4.6-xhigh"), standard)
+        XCTAssertEqual(pricing.resolve(model: "cursor-grok-4.6-high-fast"), fast)
+        XCTAssertEqual(pricing.resolve(model: "cursor-grok-4.6-fast-high"), fast)
+        XCTAssertEqual(pricing.resolve(model: "cursor-grok-4.6-high"), standard)
+        XCTAssertEqual(pricing.resolve(model: "grok-4-6-xhigh"), standard)
+        XCTAssertEqual(pricing.resolve(model: "grok-4-6-xhigh-fast"), fast)
+        XCTAssertEqual(pricing.supplement.canonicalName(for: "cursor-grok-4.6-high"), "grok-4.6")
+        XCTAssertEqual(pricing.supplement.canonicalName(for: "cursor-grok-4.6-high-fast"), "grok-4.6-fast")
+    }
+
+    /// Kimi K3 aliases to the models.dev `moonshot/kimi-k3` entry, whose rates match Cursor's
+    /// published table, so the supplement carries no duplicate entry. Cursor's CSV effort and
+    /// `-code` suffixes fold into the same entry.
+    func testKimiK3PricingAndAliases() throws {
+        let pricing = Self.pricing
+        let k3 = try XCTUnwrap(pricing.resolve(model: "kimi-k3"))
+        XCTAssertEqual(k3.inputPerMillion, 3.0)
+        XCTAssertEqual(k3.cacheWritePerMillion, 3.0)
+        XCTAssertEqual(k3.cacheReadPerMillion, 0.3)
+        XCTAssertEqual(k3.outputPerMillion, 15.0)
+        XCTAssertEqual(pricing.resolve(model: "kimi-k3-max"), k3)
+        XCTAssertEqual(pricing.resolve(model: "kimi-k3-high"), k3)
+        XCTAssertEqual(pricing.resolve(model: "kimi-k3-code"), k3)
+        // K3 must not collapse into the cheaper K2.7 entry.
+        XCTAssertNotEqual(pricing.resolve(model: "kimi-k2.7-code"), k3)
+    }
+
+    /// Cursor's CSV still carries a bare, unversioned `composer` slug from before the model was
+    /// numbered. It maps to the current non-fast Composer so those rows price instead of tripping
+    /// the unknown-model warning, and must not pick up the fast variant's higher rates.
+    func testBareComposerSlugPricesAsCurrentComposer() throws {
+        let pricing = Self.pricing
+        let composer = try XCTUnwrap(pricing.resolve(model: "composer"))
+        XCTAssertEqual(composer, pricing.resolve(model: "composer-2.5"))
+        XCTAssertNotEqual(composer, pricing.resolve(model: "composer-2.5-fast"))
+    }
+
+    /// Codex logs name OpenAI's Daybreak Blue model by its API slug; it is GPT-5.6 Sol under
+    /// OpenAI's published rates, so it aliases to that entry.
+    func testDaybreakBlueAliasesToSol() throws {
+        let pricing = Self.pricing
+        let sol = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-sol"))
+        XCTAssertEqual(pricing.resolve(model: "daybreak-blue-latest"), sol)
+        XCTAssertEqual(pricing.resolve(model: "gpt-daybreak-blue-latest"), sol)
+    }
+
+    /// Cursor Router rows name the routed model in prose ("Opus 5 (Auto Balanced)") instead of a
+    /// slug, so each label needs its own alias. The mode inside the parentheses is free-form: Cursor
+    /// has shipped plain `(Auto)` and `(Auto Balanced)`, and the docs also name Cost and Intelligence.
+    func testCursorRouterLabelsPriceAsTheRoutedModel() throws {
+        let pricing = Self.pricing
+        let expected: [String: String] = [
+            "Opus 5 (Auto Balanced)": "claude-opus-5",
+            "Claude Opus 5 (Auto)": "claude-opus-5",
+            "Opus 4.8 (Auto)": "claude-opus-4-8",
+            "Sonnet 5 (Auto Intelligence)": "claude-sonnet-5",
+            "Fable 5 (Auto Balanced)": "claude-fable-5",
+            "Haiku 4.5 (Auto Cost)": "claude-haiku-4-5",
+            "Composer 2.5 (Auto)": "composer-2.5",
+            "Composer 2.5 Fast (Auto)": "composer-2.5-fast",
+            "Composer 2 (Auto Balanced)": "composer-2",
+            "Grok 4.5 (Auto Intelligence)": "grok-4.5",
+            "Cursor Grok 4.5 Fast (Auto)": "grok-4.5-fast",
+            "Grok 4.6 (Auto Intelligence)": "grok-4.6",
+            "Cursor Grok 4.6 Fast (Auto)": "grok-4.6-fast",
+            "GPT-5.5 (Auto)": "gpt-5.5",
+            "GPT-5.6 Sol (Auto Balanced)": "gpt-5.6-sol",
+            "GPT-5.6 Terra (Auto Cost)": "gpt-5.6-terra",
+            "GPT-5.6 Luna (Auto Cost)": "gpt-5.6-luna",
+            "Gemini 3.1 Pro (Auto)": "gemini-3.1-pro-preview",
+            "GLM 5.2 (Auto Balanced)": "glm-5.2",
+            "Kimi K3 (Auto Cost)": "moonshot/kimi-k3"
+        ]
+        for (label, canonical) in expected {
+            XCTAssertEqual(
+                pricing.supplement.canonicalName(for: label), canonical,
+                "router label '\(label)' should alias to '\(canonical)'"
+            )
+            XCTAssertEqual(
+                pricing.resolve(model: label), pricing.resolve(model: canonical),
+                "router label '\(label)' should price as '\(canonical)'"
+            )
+        }
     }
 
     /// Kimi K2.7 Code: Cursor's published rates override messy public-catalog entries.
