@@ -65,10 +65,13 @@ enum ZAIUsageMapper {
 
         // Split the percentage quota entries by window length: a sub-daily window is the session
         // meter, and a multi-day window is the weekly meter. Current responses call these
-        // CREDIT_LIMIT; older plans used TOKENS_LIMIT for the same shape.
-        let percentageLimits = limits.filter {
-            let type = ($0["type"] as? String) ?? ($0["name"] as? String)
-            return type == "CREDIT_LIMIT" || type == "TOKENS_LIMIT"
+        // CREDIT_LIMIT; older plans used TOKENS_LIMIT for the same shape. Both the `type` and `name`
+        // fields are checked independently — Z.ai has carried the label in either, and a recognized
+        // `name` must still match when `type` holds something else.
+        let percentageLimits = limits.filter { entry in
+            [entry["type"] as? String, entry["name"] as? String].contains {
+                $0 == "CREDIT_LIMIT" || $0 == "TOKENS_LIMIT"
+            }
         }
         for entry in percentageLimits {
             guard let window = try classifyTokenWindow(entry) else { continue }

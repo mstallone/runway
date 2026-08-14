@@ -353,6 +353,17 @@ final class ZAIUsageMapperTests: XCTestCase {
         XCTAssertEqual(weekly.used, 25, accuracy: 0.001)
     }
 
+    func testRecognizedNameStillMatchesWhenTypeHoldsAnotherValue() throws {
+        // Z.ai has carried the quota label in either field. A recognized `name` must not be masked
+        // by an unrecognized `type` riding alongside it.
+        let body = data(#"""
+        {"data":{"limits":[{"type":"SOMETHING_NEW","name":"CREDIT_LIMIT","unit":6,"number":1,"percentage":40}]}}
+        """#)
+        let lines = try ZAIUsageMapper.mapQuota(body)
+        let weekly = try XCTUnwrap(progress(lines, "Weekly"))
+        XCTAssertEqual(weekly.used, 40, accuracy: 0.001)
+    }
+
     private func progress(_ lines: [MetricLine], _ label: String) -> (used: Double, limit: Double, format: ProgressFormat, resetsAt: Date?, periodDurationMs: Int?)? {
         guard case .progress(_, let used, let limit, let format, let resetsAt, let periodDurationMs, _) = lines.first(where: { $0.label == label }) else {
             return nil
