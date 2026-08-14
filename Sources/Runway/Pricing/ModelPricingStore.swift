@@ -108,23 +108,84 @@ actor ModelPricingStore {
         )
     }
 
+    /// Whichever of the fetched cache and the bundled resource carries the newer `updated_at`. The
+    /// cache can't simply win: an app update ships a newer bundled supplement while an older cache is
+    /// still on disk, and the feed is only re-read once an hour — so a cache-always-wins rule hides
+    /// freshly shipped rates for that hour, and forever for anyone who can't reach the feed.
     private func loadSupplement() -> PricingSupplement {
-        if let cached = readCache(.supplement) {
-            do {
-                return try PricingSupplement.decode(from: cached)
-            } catch {
-                AppLog.warn("pricing", "cached supplement unreadable, using bundled: \(error.localizedDescription)")
-            }
-        }
-        guard let bundled = bundledData("pricing_supplement") else {
-            AppLog.error("pricing", "bundled pricing_supplement.json missing")
+        let cached = decodedCachedSupplement()
+        let bundled = decodedBundledSupplement()
+        switch (cached, bundled) {
+        case (let cached?, let bundled?):
+            // Bundled wins only when strictly newer, so the usual case (a feed ahead of the shipped
+            // file, or the two in step) keeps serving the cache.
+            return Self.isNewer(bundled.updatedAt, than: cached.updatedAt) ? bundled : cached
+        case (let cached?, nil):
+            return cached
+        case (nil, let bundled?):
+            return bundled
+        case (nil, nil):
             return PricingSupplement()
+        }
+    }
+
+    /// `updated_at` is a zero-padded ISO date (optionally with a time suffix), so lexicographic order
+    /// is chronological. A missing or malformed date counts as oldest — an unpadded value like
+    /// `2026-8-02` would not compare chronologically, and nothing upstream of this validates the
+    /// field, so it must never displace a well-formed one.
+    private static func isNewer(_ lhs: String?, than rhs: String?) -> Bool {
+        let lhs = validatedUpdatedAt(lhs)
+        let rhs = validatedUpdatedAt(rhs)
+        guard let lhs else { return false }
+        guard let rhs else { return true }
+        return lhs > rhs
+    }
+
+    /// The value when it is exactly one of the two documented forms — a zero-padded, calendar-valid
+    /// `yyyy-MM-dd`, or that date plus a `THH:mm:ss[.fff]Z` UTC time suffix; `nil` otherwise. The
+    /// regex enforces the padding and the whole-value shape (a strict formatter alone can still
+    /// accept `2026-8-02`, and a trailing-garbage suffix like `2026-08-13x` would sort above a real
+    /// timestamp); the round-trip parse rejects padded-but-impossible dates like `2026-99-99`.
+    private static func validatedUpdatedAt(_ value: String?) -> String? {
+        guard let value,
+              value.wholeMatch(of: /\d{4}-\d{2}-\d{2}(?:T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?Z)?/) != nil
+        else { return nil }
+        guard updatedAtDayFormatter.date(from: String(value.prefix(10))) != nil else { return nil }
+        return value
+    }
+
+    /// Never mutated after creation; `DateFormatter` is `Sendable` on current SDKs (same pattern as
+    /// `RunwayISO8601`).
+    private static let updatedAtDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.isLenient = false
+        return formatter
+    }()
+
+    private func decodedCachedSupplement() -> PricingSupplement? {
+        guard let data = readCache(.supplement) else { return nil }
+        do {
+            return try PricingSupplement.decode(from: data)
+        } catch {
+            AppLog.warn("pricing", "cached supplement unreadable, using bundled: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func decodedBundledSupplement() -> PricingSupplement? {
+        guard let data = bundledData("pricing_supplement") else {
+            AppLog.error("pricing", "bundled pricing_supplement.json missing")
+            return nil
         }
         do {
-            return try PricingSupplement.decode(from: bundled)
+            return try PricingSupplement.decode(from: data)
         } catch {
             AppLog.error("pricing", "bundled pricing_supplement.json unreadable: \(error.localizedDescription)")
-            return PricingSupplement()
+            return nil
         }
     }
 
