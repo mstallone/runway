@@ -129,12 +129,22 @@ actor ModelPricingStore {
         }
     }
 
-    /// `updated_at` is a zero-padded ISO date, so lexicographic order is chronological. A missing
-    /// date counts as oldest — an undated file never displaces a dated one.
+    /// `updated_at` is a zero-padded ISO date (optionally with a time suffix), so lexicographic order
+    /// is chronological. A missing or malformed date counts as oldest — an unpadded value like
+    /// `2026-8-02` would not compare chronologically, and nothing upstream of this validates the
+    /// field, so it must never displace a well-formed one.
     private static func isNewer(_ lhs: String?, than rhs: String?) -> Bool {
+        let lhs = validatedUpdatedAt(lhs)
+        let rhs = validatedUpdatedAt(rhs)
         guard let lhs else { return false }
         guard let rhs else { return true }
         return lhs > rhs
+    }
+
+    /// The value when it starts with a zero-padded `yyyy-MM-dd`; `nil` otherwise.
+    private static func validatedUpdatedAt(_ value: String?) -> String? {
+        guard let value, value.wholeMatch(of: /\d{4}-\d{2}-\d{2}.*/) != nil else { return nil }
+        return value
     }
 
     private func decodedCachedSupplement() -> PricingSupplement? {

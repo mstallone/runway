@@ -186,6 +186,19 @@ final class ModelPricingStoreTests: XCTestCase {
         XCTAssertEqual(undatedBundle.resolve(model: "auto")?.inputPerMillion, 9)
     }
 
+    /// A malformed `updated_at` (unpadded month) is not chronologically comparable, so it counts as
+    /// missing: it never outranks a well-formed date, in either direction.
+    func testMalformedSupplementDateCountsAsOldest() async throws {
+        try writeSupplementCache(updatedAt: "2026-8-02", autoInput: 9)
+
+        let datedBundle = await makeStoreWithBundledSupplement(updatedAt: "2026-06-01", autoInput: 4).current()
+        XCTAssertEqual(datedBundle.resolve(model: "auto")?.inputPerMillion, 4)
+
+        try writeSupplementCache(updatedAt: "2026-06-01", autoInput: 9)
+        let malformedBundle = await makeStoreWithBundledSupplement(updatedAt: "2026-8-02", autoInput: 4).current()
+        XCTAssertEqual(malformedBundle.resolve(model: "auto")?.inputPerMillion, 9)
+    }
+
     private static func supplementJSON(updatedAt: String?, autoInput: Double) -> String {
         let dateField = updatedAt.map { "\"updated_at\": \"\($0)\", " } ?? ""
         return """
