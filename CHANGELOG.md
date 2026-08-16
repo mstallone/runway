@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.8.11
+
+### Bug Fixes
+- Price Gemini 3.7 Flash and Correct the GPT-5.6 Long-Context Tier ([#108](https://github.com/mstallone/runway/pull/108)) by @mstallone
+- Show Personal Copilot Credits on Org-Managed Seats ([#107](https://github.com/mstallone/runway/pull/107)) by @mstallone
+- Switch OpenCode Go Meters to the Official Usage API ([#106](https://github.com/mstallone/runway/pull/106)) by @mstallone
+- Price Cursor Grok 4.6 and Sync Supplement Aliases ([#104](https://github.com/mstallone/runway/pull/104)) by @mstallone
+- Use the Newer of the Cached and Bundled Pricing Supplement ([#103](https://github.com/mstallone/runway/pull/103)) by @mstallone
+- Support Z.ai CREDIT_LIMIT Credit Quota Limits ([#102](https://github.com/mstallone/runway/pull/102)) by @mstallone
+- Use current-window spend for the OpenRouter Key Limit meter ([#101](https://github.com/mstallone/runway/pull/101)) by @mstallone
+
+### Chores
+- Bump Sparkle From 2.9.4 to 2.9.5 ([#105](https://github.com/mstallone/runway/pull/105)) by @mstallone
+
+---
+
+### Changelog
+**Full Changelog**: [v0.8.10...v0.8.11](https://github.com/mstallone/runway/compare/v0.8.10...v0.8.11)
+
+- [5db7d6b](https://github.com/mstallone/runway/commit/5db7d6b79cdcc6c0fe8e39ab5d6bbe2997faeea6) Price Gemini 3.7 Flash and Correct the GPT-5.6 Long-Context Tier (#108) by @mstallone
+- [1a7adeb](https://github.com/mstallone/runway/commit/1a7adebc33bd34fa703f6d382571d8568e0c14ac) Show Personal Copilot Credits on Org-Managed Seats (#107) by @mstallone
+- [44e3905](https://github.com/mstallone/runway/commit/44e39056b4568dad1560030e92fa322086e20777) Switch OpenCode Go Meters to the Official Usage API (#106) by @mstallone
+- [9beceb0](https://github.com/mstallone/runway/commit/9beceb0fab57bfb5fc532f359747a94e9c40b793) Price Cursor Grok 4.6 and Sync Supplement Aliases (#104) by @mstallone
+- [4155042](https://github.com/mstallone/runway/commit/41550427775ef710f35d7d43b365623d84e27762) Use the Newer of the Cached and Bundled Pricing Supplement (#103) by @mstallone
+- [85d3e45](https://github.com/mstallone/runway/commit/85d3e45e0a991d04fd7f9dd632e0e3dc20bad40d) Bump Sparkle From 2.9.4 to 2.9.5 (#105) by @mstallone
+- [01edf92](https://github.com/mstallone/runway/commit/01edf929b4f1c83c60db9c59b3eaf339b6f48482) Support Z.ai CREDIT_LIMIT Credit Quota Limits (#102) by @mstallone
+- [45a87e7](https://github.com/mstallone/runway/commit/45a87e7c800907762957224f213e38554ad6e336) Use current-window spend for the OpenRouter Key Limit meter (#101) by @mstallone
+
 ## v0.8.10
 
 ### Bug Fixes
