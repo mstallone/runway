@@ -124,11 +124,11 @@
       "output_per_million": 1.2
     },
     "gemini-3.7-flash": {
-      "$comment": "Google Gemini 3.7 Flash introductory API rate. Cursor's table lists output at $3.50; Google and LiteLLM publish $3.75, which is the API rate Cursor bills. Cache write is unpublished, so it defaults to input. The bundled snapshots do not carry the model yet.",
+      "$comment": "Gemini 3.7 Flash per Cursor's published table ($3.50 output). Google and LiteLLM publish $3.75 output; per the repo rule the Cursor page is the source of truth for CSV pricing - revisit if Cursor's table changes. Cache write is unpublished, so it defaults to input. The bundled snapshots do not carry the model yet.",
       "input_per_million": 0.75,
       "cache_write_per_million": 0.75,
       "cache_read_per_million": 0.075,
-      "output_per_million": 3.75
+      "output_per_million": 3.5
     }
   },
   "fast_multipliers": {

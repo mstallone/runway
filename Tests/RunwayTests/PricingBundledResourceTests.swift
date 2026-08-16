@@ -50,7 +50,7 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "gemini-3.6-flash")?.inputPerMillion, 1.5)
         XCTAssertEqual(pricing.resolve(model: "gemini-3.6-flash-high")?.inputPerMillion, 1.5)
         XCTAssertEqual(pricing.resolve(model: "gemini-3.7-flash-high")?.inputPerMillion, 0.75)
-        XCTAssertEqual(pricing.resolve(model: "gemini-3.7-flash-high")?.outputPerMillion, 3.75)
+        XCTAssertEqual(pricing.resolve(model: "gemini-3.7-flash-high")?.outputPerMillion, 3.5)
         XCTAssertEqual(pricing.resolve(model: "kimi-k3")?.inputPerMillion, 3)
         XCTAssertEqual(pricing.resolve(model: "grok-4-20-thinking")?.inputPerMillion, 2)
         XCTAssertEqual(pricing.resolve(model: "grok-4.5")?.inputPerMillion, 2)
