@@ -24,8 +24,8 @@ import Foundation
 /// - A `token_count` line whose cumulative `total_token_usage` is unchanged from the previous line
 ///   is a re-emitted stale snapshot, not new usage, and is skipped even when it carries a
 ///   `last_token_usage`.
-/// - Early sessions without model metadata fall back to `gpt-5`; the retired `codex-auto-review`
-///   slug maps to the codex model that was current at the line's date.
+/// - Early sessions without model metadata fall back to `gpt-5`. The `codex-auto-review` slug stays
+///   visible in usage breakdowns and carries a dated fallback model only for cost estimation.
 /// - Identical events (same timestamp + model + token counts) appearing in multiple files (copied
 ///   session logs) count once.
 /// - Cost per event: `(input - cached) x input rate + cached x cache-read rate + output x output
@@ -67,9 +67,12 @@ actor CodexLogUsageScanner {
     /// One turn's token usage, normalized from a `token_count` line (deltas already applied).
     /// `isFast` records whether the session was on the fast/priority service tier when the turn
     /// ran, tracked from the session's own log; absent tier metadata means standard.
+    /// `pricingModel` is the dated GPT fallback used only for auto-review cost; nil when `model`
+    /// is already the rate key.
     struct Event: Codable, Sendable, Equatable {
         var timestamp: Date
         var model: String
+        var pricingModel: String? = nil
         var input: Int
         var cached: Int
         var output: Int
@@ -82,7 +85,7 @@ actor CodexLogUsageScanner {
     /// once. The version is the parser schema version; bump it when `Event` semantics change.
     private static let sharedScanner = IncrementalJSONLScanner<Event>(
         logTag: LogTag.plugin("codex"),
-        persistence: JSONLScanCachePersistence(namespace: "codex", schemaVersion: 1)
+        persistence: JSONLScanCachePersistence(namespace: "codex", schemaVersion: 2)
     )
 
     static func flushPersistentCacheWrites() async {
@@ -366,13 +369,13 @@ actor CodexLogUsageScanner {
             let parsedModel = modelName(in: payload) ?? info.flatMap(modelName(in:))
             let model = resolveModel(
                 parsed: parsedModel,
-                timestamp: timestampRaw,
                 currentModel: &state.currentModel
             )
 
             events.append(Event(
                 timestamp: timestamp,
                 model: model,
+                pricingModel: model == Self.autoReviewModel ? autoReviewFallback(at: timestampRaw) : nil,
                 input: usage.input,
                 cached: min(usage.cached, usage.input),
                 output: usage.output,
@@ -508,38 +511,35 @@ actor CodexLogUsageScanner {
         }
     }
 
-    /// ccusage's model resolution: an explicit model on the line updates the session's current
-    /// model; otherwise the tracked model applies; a session with no metadata at all falls back to
-    /// `gpt-5`. The retired `codex-auto-review` slug maps to whichever codex model was current at
-    /// the line's date.
+    /// An explicit model on the line updates the session's current model. Otherwise the tracked
+    /// model applies, and a session with no metadata falls back to `gpt-5`.
     static func resolveModel(
         parsed: String?,
-        timestamp: String,
         currentModel: inout String?
     ) -> String {
         if let parsed {
             currentModel = parsed
+            return parsed
         }
-        var model: String
-        if let parsed {
-            model = parsed
-        } else if let current = currentModel {
-            model = current
-        } else {
-            currentModel = "gpt-5"
-            model = "gpt-5"
+        if let current = currentModel {
+            return current
         }
-        if model == Self.autoReviewModel {
-            model = autoReviewFallback(at: timestamp)
-        }
-        return model
+        currentModel = "gpt-5"
+        return "gpt-5"
     }
 
     private static let autoReviewModel = "codex-auto-review"
 
     /// `codex-auto-review` release timeline (newest first), from ccusage's embedded snapshot: a
     /// line dated on/after a release prices as that codex model.
+    ///
+    /// The `gpt-5.6-luna` entry is ours; ccusage's snapshot still stops at gpt-5.5. OpenAI moved
+    /// auto-review onto the GPT-5.6 family when it shipped on 2026-07-09, and the Codex model
+    /// catalog (`~/.codex/models_cache.json`) lists `codex-auto-review` with Luna's exact profile.
+    /// Without this entry every auto-review event since July prices at gpt-5.5 rates, which are 25x
+    /// Luna's across input, cache reads and output alike.
     private static let autoReviewFallbacks: [(releasedOn: String, model: String)] = [
+        ("2026-07-09", "gpt-5.6-luna"),
         ("2026-04-23", "gpt-5.5"),
         ("2026-03-05", "gpt-5.4"),
         ("2026-02-05", "gpt-5.3-codex"),

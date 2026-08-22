@@ -4,6 +4,7 @@ extension CodexLogUsageScanner {
     private struct EventKey: Hashable {
         var timestamp: Date
         var model: String
+        var pricingModel: String?
         var input: Int
         var cached: Int
         var output: Int
@@ -13,6 +14,7 @@ extension CodexLogUsageScanner {
 
     private struct PricingContextKey: Hashable {
         var model: String
+        var pricingModel: String?
         var isFast: Bool
     }
 
@@ -54,19 +56,23 @@ extension CodexLogUsageScanner {
 
         for event in events where event.timestamp >= since {
             let key = EventKey(
-                timestamp: event.timestamp, model: event.model, input: event.input,
-                cached: event.cached, output: event.output, reasoning: event.reasoning, total: event.total
+                timestamp: event.timestamp, model: event.model, pricingModel: event.pricingModel,
+                input: event.input, cached: event.cached, output: event.output,
+                reasoning: event.reasoning, total: event.total
             )
             guard seen.insert(key).inserted else { continue }
 
             let day = dayKeys.key(for: event.timestamp)
-            let contextKey = PricingContextKey(model: event.model, isFast: event.isFast)
+            let contextKey = PricingContextKey(
+                model: event.model, pricingModel: event.pricingModel, isFast: event.isFast
+            )
             let resolution: PricingResolution
             if let cached = pricingContexts[contextKey] {
                 resolution = cached
             } else {
                 resolution = resolvePricingContext(
                     rawModel: event.model,
+                    pricingModel: event.pricingModel,
                     isFast: event.isFast,
                     pricing: pricing
                 )
@@ -93,16 +99,18 @@ extension CodexLogUsageScanner {
 
     private static func resolvePricingContext(
         rawModel: String,
+        pricingModel: String?,
         isFast: Bool,
         pricing: ModelPricing
     ) -> PricingResolution {
-        // One trimmed slug feeds pricing, the unknown-model warning, and the breakdown key alike —
-        // diverging spellings would let the warning triangle and hover panel disagree.
+        // The breakdown, unknown-model warning, and hover panel share the measured slug. Rates
+        // may come from a dated fallback (auto-review) that must not replace that identity.
         guard let model = rawModel.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty else {
             return .unpriced(model: nil)
         }
+        let rateSource = pricingModel?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? model
 
-        let canonicalModel = pricing.supplement.canonicalName(for: model) ?? model
+        let canonicalModel = pricing.supplement.canonicalName(for: rateSource) ?? rateSource
         let isFastAlias = canonicalModel.hasSuffix("-fast")
         let rateModel = isFastAlias ? String(canonicalModel.dropLast("-fast".count)) : canonicalModel
 
@@ -111,7 +119,7 @@ extension CodexLogUsageScanner {
         // If a third-party fast-only model has no base entry, retain its already-scaled rate
         // and do not apply a second speed multiplier.
         let baseRates = pricing.resolve(model: rateModel)
-        guard let rates = baseRates ?? pricing.resolve(model: model) else {
+        guard let rates = baseRates ?? pricing.resolve(model: rateSource) else {
             return .unpriced(model: model)
         }
         let appliesCodexFastTier = isFastAlias ? baseRates != nil : isFast
