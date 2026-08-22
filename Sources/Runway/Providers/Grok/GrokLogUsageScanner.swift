@@ -1,50 +1,63 @@
 import Foundation
 import os
 
-/// Builds daily token/cost estimates for Grok from the Grok CLI's local log.
+/// Builds daily token/cost estimates for Grok from the Grok CLI's local activity records.
 ///
-/// Like the Claude/Codex scanners but simpler: Grok's token data lives in a single global
-/// append-only log, `~/.grok/logs/unified.jsonl`, on `shell.turn.inference_done` lines.
-/// Those lines carry token counts but no model id, so the scanner attributes each row to a model by
-/// tracking the "current model" per CLI process (`pid`) from the model-change events the CLI also
-/// logs. The output is the same `DailyUsageSeries` shape the Claude/Codex spend tiles consume, so it
-/// flows straight through `SpendTileMapper`.
+/// Grok 1.x writes authoritative per-turn usage to `~/.grok/sessions/**/updates.jsonl`. Older CLI
+/// releases wrote token rows to the single `~/.grok/logs/unified.jsonl` file instead. The scanner
+/// reads both, preferring the modern session record on days where both sources overlap, and emits
+/// the same `DailyUsageSeries` shape the Claude/Codex spend tiles consume.
 struct GrokLogUsageScanner: Sendable {
     var files: TextFileAccessing
     var environment: EnvironmentReading
     var homeDirectory: @Sendable () -> URL
+    private let sessionScanner: IncrementalJSONLScanner<SessionEntry>
     private let readFailureReporter: UsageLogReadFailureReporter
+
+    private static let sharedSessionScanner = IncrementalJSONLScanner<SessionEntry>(
+        logTag: LogTag.plugin("grok"),
+        persistence: JSONLScanCachePersistence(namespace: "grok", schemaVersion: 1)
+    )
 
     init(
         files: TextFileAccessing = LocalTextFileAccessor(),
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
+        incrementalScanner: IncrementalJSONLScanner<SessionEntry>? = nil,
         readFailureWarning: UsageLogReadFailureReporter.Warning? = nil
     ) {
         self.files = files
         self.environment = environment
         self.homeDirectory = homeDirectory
+        self.sessionScanner = incrementalScanner ?? Self.sharedSessionScanner
         self.readFailureReporter = UsageLogReadFailureReporter(
             logTag: LogTag.plugin("grok"),
             warning: readFailureWarning
         )
     }
 
-    /// `~/.grok/logs/unified.jsonl`, or `$GROK_HOME/logs/unified.jsonl` when that env var is set.
-    var logPath: String {
-        if let raw = environment.value(for: "GROK_HOME")?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !raw.isEmpty {
-            return expandHome(raw).trimmingTrailingSlashes + "/logs/unified.jsonl"
-        }
-        return homeDirectory().appendingPathComponent(".grok/logs/unified.jsonl").path
+    static func flushPersistentCacheWrites() async {
+        await sharedSessionScanner.flushPendingWrites()
     }
 
-    /// The last parse, reused while the log's stat (path + size + mtime), history window, calendar
-    /// configuration, and pricing snapshot are unchanged. Grok has no per-file incremental cache
-    /// like the JSONL scanners — this single-entry memo removes the same steady-state cost (a full
-    /// re-read + re-parse of an ever-growing log every 5 minutes) at a fraction of the machinery,
-    /// since the whole history is one file. Static because provider refreshes build fresh scanner
-    /// values; the retained pricing object pins its instance identity.
+    private var grokHome: URL {
+        if let raw = environment.value(for: "GROK_HOME")?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty {
+            return URL(fileURLWithPath: expandHome(raw)).standardizedFileURL
+        }
+        return homeDirectory().appendingPathComponent(".grok", isDirectory: true)
+    }
+
+    /// `~/.grok/logs/unified.jsonl`, or `$GROK_HOME/logs/unified.jsonl` when that env var is set.
+    var logPath: String {
+        grokHome.appendingPathComponent("logs/unified.jsonl").path
+    }
+
+    /// The legacy log's last parse, reused while its stat (path + size + mtime), history window,
+    /// calendar configuration, and pricing snapshot are unchanged. The modern session source uses
+    /// the per-file incremental scanner above; this smaller memo avoids re-reading the legacy source's
+    /// one ever-growing file. Static because provider refreshes build fresh scanner values; the
+    /// retained pricing object pins its instance identity.
     private struct ScanMemo {
         var path: String
         var size: Int
@@ -57,19 +70,194 @@ struct GrokLogUsageScanner: Sendable {
 
     private static let memo = OSAllocatedUnfairLock<ScanMemo?>(initialState: nil)
 
-    /// Scan the last `daysBack` days of the log. Returns `nil` when the log is missing/unreadable (the
-    /// spend tiles then render "No data"); returns an empty `daily` when the log exists but has no
-    /// usable token rows in the window.
+    /// Scan the last `daysBack` days of modern session records plus the legacy global log. Returns
+    /// `nil` when neither source exists/readable (the spend tiles then render "No data"); returns an
+    /// empty `daily` when a source exists but has no usable token rows in the window.
     ///
     /// `async` and nonisolated (this is a plain `Sendable` struct, not `@MainActor`), so the whole-file
     /// read + parse runs off the main actor when a `@MainActor` provider `await`s it.
     func scan(daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing) async -> LogUsageScan? {
+        let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
+        async let sessionScan = scanSessions(since: since, pricing: pricing)
+        let legacyScan = await scanLegacy(since: since, pricing: pricing)
+        let modernScan = await sessionScan
+        guard !Task.isCancelled else { return nil }
+        return Self.merging(session: modernScan, legacy: legacyScan)
+    }
+
+    // MARK: - Grok 1.x session usage
+
+    /// One model row from a persisted `turn_completed` usage ledger. `inputTokens` in that ledger
+    /// includes both cache buckets, so parsing normalizes it into disjoint `TokenBreakdown` fields.
+    struct SessionEntry: Codable, Sendable, Equatable {
+        var promptID: String?
+        var timestamp: Date
+        var model: String
+        var tokens: TokenBreakdown
+        var reportedTotalTokens: Int
+    }
+
+    static let sessionTailParser = JSONLTailParser<SessionEntry>(parseChunk: { chunk, _ in
+        (parseSessionFile(chunk), nil)
+    })
+
+    private func scanSessions(since: Date, pricing: ModelPricing) async -> LogUsageScan? {
+        let directory = grokHome.appendingPathComponent("sessions", isDirectory: true)
+        let discovered = Self.primarySessionFiles(under: directory, since: since)
+        let identity = directory.resolvingSymlinksInPath().standardizedFileURL.path
+        guard !discovered.isEmpty else {
+            _ = await sessionScanner.items(
+                from: [], since: since, cacheIdentity: identity, tailParser: Self.sessionTailParser
+            )
+            return nil
+        }
+
+        guard let entries = await sessionScanner.items(
+            from: discovered,
+            since: since,
+            cacheIdentity: identity,
+            tailParser: Self.sessionTailParser
+        ), !Task.isCancelled else { return nil }
+        return Self.aggregateSessionEntries(Self.dedupSessionEntries(entries), since: since, pricing: pricing)
+    }
+
+    /// Discover only the authoritative update stream for top-level/fork sessions. A top-level turn's
+    /// ledger already includes its completed subagents; scanning each child session as well would
+    /// count that usage twice. Forks remain included because their new turns are real usage; replayed
+    /// parent turns are removed later by stable prompt id.
+    private static func primarySessionFiles(under directory: URL, since: Date) -> [JSONLScanning.DiscoveredFile] {
+        JSONLScanning.jsonlFiles(under: directory).filter { file in
+            guard file.mtime >= since,
+                  URL(fileURLWithPath: file.path).lastPathComponent == "updates.jsonl"
+            else { return false }
+            let summary = URL(fileURLWithPath: file.path)
+                .deletingLastPathComponent()
+                .appendingPathComponent("summary.json")
+            guard let data = FileManager.default.contents(atPath: summary.path) else {
+                // A live session can publish updates before its summary. Include it; stable prompt-id
+                // dedup still protects against fork replay, and the next refresh can classify it.
+                return true
+            }
+            guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+                AppLog.warn(LogTag.plugin("grok"), "could not decode Grok session summary: \(summary.path)")
+                return true
+            }
+            let kind = (object["session_kind"] as? String)?.lowercased()
+            return kind != "subagent" && kind != "subagent_resume"
+        }
+    }
+
+    static func parseSessionFile(_ data: Data) -> [SessionEntry] {
+        let completedMarker = Data(#""turn_completed""#.utf8)
+        var entries: [SessionEntry] = []
+        for line in data.split(separator: UInt8(ascii: "\n")) {
+            guard line.range(of: completedMarker) != nil,
+                  let object = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any],
+                  let params = object["params"] as? [String: Any],
+                  let update = params["update"] as? [String: Any],
+                  update["sessionUpdate"] as? String == "turn_completed",
+                  let usage = update["usage"] as? [String: Any],
+                  let modelUsage = usage["modelUsage"] as? [String: Any],
+                  let timestamp = sessionTimestamp(object: object, params: params)
+            else { continue }
+
+            let promptID = (update["prompt_id"] as? String)?.nilIfEmpty
+            for (rawModel, rawUsage) in modelUsage {
+                guard let model = rawModel.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                      let values = rawUsage as? [String: Any],
+                      let fullInput = nonnegativeInt(values["inputTokens"]),
+                      let output = nonnegativeInt(values["outputTokens"])
+                else { continue }
+
+                let cacheRead = min(nonnegativeInt(values["cachedReadTokens"]) ?? 0, fullInput)
+                let cacheCreation = min(
+                    nonnegativeInt(values["cacheCreationTokens"]) ?? 0,
+                    fullInput - cacheRead
+                )
+                let tokens = TokenBreakdown(
+                    input: fullInput - cacheRead - cacheCreation,
+                    cacheWrite5m: cacheCreation,
+                    cacheRead: cacheRead,
+                    output: output
+                )
+                let total = nonnegativeInt(values["totalTokens"]) ?? tokens.totalTokens
+                guard total > 0 else { continue }
+                entries.append(SessionEntry(
+                    promptID: promptID,
+                    timestamp: timestamp,
+                    model: model,
+                    tokens: tokens,
+                    reportedTotalTokens: total
+                ))
+            }
+        }
+        return entries
+    }
+
+    private static func sessionTimestamp(object: [String: Any], params: [String: Any]) -> Date? {
+        let metadata = params["_meta"] as? [String: Any]
+        if let milliseconds = ProviderParse.number(metadata?["agentTimestampMs"]),
+           milliseconds.isFinite, milliseconds >= 0 {
+            return Date(timeIntervalSince1970: milliseconds / 1000)
+        }
+        guard let seconds = ProviderParse.number(object["timestamp"]), seconds.isFinite, seconds >= 0 else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: seconds)
+    }
+
+    private static func nonnegativeInt(_ value: Any?) -> Int? {
+        guard let number = ProviderParse.number(value), number.isFinite,
+              number >= 0, number <= Double(Int.max), number.rounded(.towardZero) == number
+        else { return nil }
+        return Int(number)
+    }
+
+    /// A fork can replay a parent's completed turn under the same prompt id. Keep one model row for
+    /// that prompt; rows without an id cannot be proven duplicates and remain counted.
+    static func dedupSessionEntries(_ entries: [SessionEntry]) -> [SessionEntry] {
+        var seen: Set<String> = []
+        return entries.filter { entry in
+            guard let promptID = entry.promptID else { return true }
+            return seen.insert(promptID + "\u{0}" + entry.model).inserted
+        }
+    }
+
+    static func aggregateSessionEntries(
+        _ entries: [SessionEntry],
+        since: Date,
+        pricing: ModelPricing
+    ) -> LogUsageScan {
+        var accumulator = DailyUsageAccumulator()
+        var dayKeys = DailyUsageAccumulator.DayKeyCache()
+        for entry in entries where entry.timestamp >= since {
+            let day = dayKeys.key(for: entry.timestamp)
+            guard let cost = pricing.estimatedCostDollars(
+                model: entry.model,
+                tokens: entry.tokens,
+                applyLongContextRates: false
+            ) else {
+                accumulator.addUnknownModel(day: day, model: entry.model)
+                continue
+            }
+            accumulator.add(
+                day: day,
+                tokens: entry.reportedTotalTokens,
+                cost: cost,
+                model: entry.model
+            )
+        }
+        return accumulator.build()
+    }
+
+    // MARK: - Legacy unified log
+
+    private func scanLegacy(since: Date, pricing: ModelPricing) async -> LogUsageScan? {
         let path = logPath
         guard files.exists(path) else {
             await readFailureReporter.update(checkedPaths: [path], failingPaths: [])
             return nil
         }
-        let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
         let calendarKey = DailyUsageAccumulator.calendarMemoKey
         // Stat through FileManager: the memo is an optimization layered over the injectable file
         // accessor, so a test double without real files simply never hits it.
@@ -105,7 +293,25 @@ struct GrokLogUsageScanner: Sendable {
         return scan
     }
 
-    /// Single chronological pass over the append-only log. Model-carrying events update a per-`pid`
+    /// Prefer the modern session ledger on any day represented there. Transitional CLI builds can
+    /// write the same turn to both stores; day-level preference prevents a doubled total while still
+    /// retaining older legacy-only days inside the 30-day window.
+    static func merging(session: LogUsageScan?, legacy: LogUsageScan?) -> LogUsageScan? {
+        guard let session else { return legacy }
+        guard let legacy else { return session }
+        let sessionDays = Set(session.modelUsage?.daily.map(\.date) ?? [])
+            .union(session.unknownModelsByDay.keys)
+        let filteredLegacy = LogUsageScan(
+            series: DailyUsageSeries(daily: legacy.series.daily.filter { !sessionDays.contains($0.date) }),
+            modelUsage: legacy.modelUsage.map { series in
+                ModelUsageSeries(daily: series.daily.filter { !sessionDays.contains($0.date) })
+            },
+            unknownModelsByDay: legacy.unknownModelsByDay.filter { !sessionDays.contains($0.key) }
+        )
+        return DailyUsageAccumulator.merged([session, filteredLegacy])
+    }
+
+    /// Single chronological pass over the legacy append-only log. Model-carrying events update a per-`pid`
     /// "current model" (tracked regardless of date, so a session straddling the `since` boundary stays
     /// attributed); each in-window `inference_done` row is priced against its `pid`'s current model and
     /// bucketed by local calendar day.

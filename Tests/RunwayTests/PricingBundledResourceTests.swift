@@ -215,6 +215,8 @@ final class PricingBundledResourceTests: XCTestCase {
         let pricing = Self.pricing
         XCTAssertEqual(pricing.resolve(model: "grok-build")?.inputPerMillion, 1)
         XCTAssertEqual(pricing.resolve(model: "grok-composer-2.5-fast")?.inputPerMillion, 3)
+        XCTAssertEqual(pricing.resolve(model: "grok-4.5-build"), pricing.resolve(model: "grok-4.5"))
+        XCTAssertEqual(pricing.resolve(model: "grok-4.6-build"), pricing.resolve(model: "grok-4.6"))
     }
 
     /// Grok 4.5 (Cursor + SpaceXAI first-party): standard and fast rates from Cursor docs, with

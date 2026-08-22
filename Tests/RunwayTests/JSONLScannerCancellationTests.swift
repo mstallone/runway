@@ -97,6 +97,73 @@ final class JSONLScannerCancellationTests: XCTestCase {
         XCTAssertNil(cancelledResult)
     }
 
+    func testCancelledGrokSessionScanDoesNotPublishTheLegacyFallback() async throws {
+        let root = try makeDirectory("Grok")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sessionDirectory = root.appendingPathComponent("sessions/group/main", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionDirectory, withIntermediateDirectories: true)
+        try #"{"session_kind":"main"}"#.write(
+            to: sessionDirectory.appendingPathComponent("summary.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let updatesURL = sessionDirectory.appendingPathComponent("updates.jsonl")
+        try Data(#"{"params":{"update":{"sessionUpdate":"turn_completed"}}}"#.utf8).write(to: updatesURL)
+        let sessionFile = try XCTUnwrap(
+            JSONLScanning.jsonlFiles(under: root.appendingPathComponent("sessions")).first
+        )
+        let identity = root.appendingPathComponent("sessions")
+            .resolvingSymlinksInPath()
+            .standardizedFileURL.path
+        let incremental = IncrementalJSONLScanner<GrokLogUsageScanner.SessionEntry>()
+        let blockingParser = BlockingGrokParser()
+        let firstTask = Task {
+            await incremental.items(
+                from: [sessionFile],
+                since: .distantPast,
+                cacheIdentity: identity,
+                parse: blockingParser.parse
+            )
+        }
+        guard await waitUntil({ blockingParser.hasStarted }) else {
+            blockingParser.unblock()
+            firstTask.cancel()
+            _ = await firstTask.value
+            return XCTFail("the first Grok parser did not start before the timeout")
+        }
+
+        let logPath = root.appendingPathComponent("logs/unified.jsonl").path
+        let legacy = """
+        {"ts":"2026-08-22T09:00:00.000Z","pid":1,"msg":"model changed","ctx":{"model":"grok-build"}}
+        {"ts":"2026-08-22T10:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000}}
+        """
+        let scanner = GrokLogUsageScanner(
+            files: FakeFiles([logPath: legacy]),
+            environment: FakeEnvironment(["GROK_HOME": root.path]),
+            homeDirectory: { root },
+            incrementalScanner: incremental
+        )
+        let cancelledTask = Task {
+            await scanner.scan(
+                now: RunwayISO8601.date(from: "2026-08-22T12:00:00.000Z")!,
+                pricing: TestPricing.bundled
+            )
+        }
+        guard await waitUntil({ await incremental.queuedScanCountForTesting(identity: identity) > 0 }) else {
+            cancelledTask.cancel()
+            blockingParser.unblock()
+            _ = await firstTask.value
+            _ = await cancelledTask.value
+            return XCTFail("the Grok scan did not queue before the timeout")
+        }
+        cancelledTask.cancel()
+        blockingParser.unblock()
+
+        _ = await firstTask.value
+        let cancelledResult = await cancelledTask.value
+        XCTAssertNil(cancelledResult)
+    }
+
     func testCancellationDuringParseReturnsNilWithoutPersistingPartialCache() async throws {
         let base = try makeDirectory("ActiveParse")
         defer { try? FileManager.default.removeItem(at: base) }
@@ -190,6 +257,26 @@ private final class BlockingClaudeParser: @unchecked Sendable {
         lock.withLock { started = true }
         release.wait()
         return ClaudeLogUsageScanner.parseFile(data)
+    }
+
+    func unblock() {
+        release.signal()
+    }
+}
+
+private final class BlockingGrokParser: @unchecked Sendable {
+    private let lock = NSLock()
+    private var started = false
+    private let release = DispatchSemaphore(value: 0)
+
+    var hasStarted: Bool {
+        lock.withLock { started }
+    }
+
+    func parse(_ data: Data) -> [GrokLogUsageScanner.SessionEntry]? {
+        lock.withLock { started = true }
+        release.wait()
+        return GrokLogUsageScanner.parseSessionFile(data)
     }
 
     func unblock() {

@@ -4,6 +4,105 @@ import XCTest
 final class GrokLogUsageScannerTests: XCTestCase {
     private let since = RunwayISO8601.date(from: "2026-06-01T00:00:00.000Z")!
 
+    func testParsesModernTurnCompletedUsageIntoDisjointTokenBuckets() throws {
+        let line = modernUsageLine(
+            timestampMilliseconds: 1_781_087_400_123,
+            promptID: "prompt-1",
+            model: "grok-4.6-build",
+            input: 1_000,
+            cacheRead: 700,
+            cacheCreation: 200,
+            output: 50,
+            total: 1_050
+        )
+
+        let entry = try XCTUnwrap(GrokLogUsageScanner.parseSessionFile(Data(line.utf8)).first)
+
+        XCTAssertEqual(entry.promptID, "prompt-1")
+        XCTAssertEqual(entry.model, "grok-4.6-build")
+        XCTAssertEqual(entry.timestamp.timeIntervalSince1970, 1_781_087_400.123, accuracy: 0.001)
+        XCTAssertEqual(entry.tokens, TokenBreakdown(input: 100, cacheWrite5m: 200, cacheRead: 700, output: 50))
+        XCTAssertEqual(entry.reportedTotalTokens, 1_050)
+    }
+
+    func testModernSessionScanExcludesSubagentsAndDeduplicatesForkReplay() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("runway-grok-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let main = modernUsageLine(
+            timestampMilliseconds: 1_787_386_600_000,
+            promptID: "shared-prompt",
+            model: "grok-4.6-build",
+            input: 1_000_000,
+            cacheRead: 500_000,
+            output: 100_000,
+            total: 1_100_000
+        )
+        let fork = [
+            main,
+            modernUsageLine(
+                timestampMilliseconds: 1_787_386_700_000,
+                promptID: "fork-only-prompt",
+                model: "grok-4.6-build",
+                input: 2_000_000,
+                output: 0,
+                total: 2_000_000
+            )
+        ].joined(separator: "\n")
+        let child = modernUsageLine(
+            timestampMilliseconds: 1_787_386_800_000,
+            promptID: "child-prompt",
+            model: "grok-4.6-build",
+            input: 9_000_000,
+            output: 0,
+            total: 9_000_000
+        )
+        try writeSession(root: root, name: "main", summary: "{}", updates: main)
+        try writeSession(root: root, name: "fork", summary: #"{"session_kind":"fork"}"#, updates: fork)
+        try writeSession(root: root, name: "child", summary: #"{"session_kind":"subagent"}"#, updates: child)
+
+        let scanner = GrokLogUsageScanner(
+            files: FakeFiles(),
+            environment: FakeEnvironment(["GROK_HOME": root.path]),
+            homeDirectory: { URL(fileURLWithPath: "/home/ignored") },
+            incrementalScanner: IncrementalJSONLScanner<GrokLogUsageScanner.SessionEntry>()
+        )
+        let now = RunwayISO8601.date(from: "2026-08-22T12:00:00.000Z")!
+
+        let scannedUsage = await scanner.scan(daysBack: 30, now: now, pricing: TestPricing.bundled)
+        let usage = try XCTUnwrap(scannedUsage)
+
+        XCTAssertEqual(usage.series.daily.count, 1)
+        XCTAssertEqual(usage.series.daily.first?.totalTokens, 3_100_000)
+        // Main: $1.00 uncached input + $0.25 cache read + $0.60 output. Fork-only: $4 input.
+        XCTAssertEqual(usage.series.daily.first?.costUSD ?? 0, 5.85, accuracy: 0.0001)
+        XCTAssertEqual(usage.modelUsage?.daily.first?.models.map(\.model), ["grok-4.6-build"])
+        XCTAssertTrue(usage.unknownModelsByDay.isEmpty)
+    }
+
+    func testModernSessionDayOverridesLegacyWhileOlderLegacyDayRemains() throws {
+        var modernAccumulator = DailyUsageAccumulator()
+        modernAccumulator.add(day: "2026-08-22", tokens: 1_000, cost: 1, model: "grok-4.6-build")
+        var legacyAccumulator = DailyUsageAccumulator()
+        legacyAccumulator.add(day: "2026-08-22", tokens: 9_000, cost: 9, model: "grok-build")
+        legacyAccumulator.add(day: "2026-08-21", tokens: 500, cost: 0.5, model: "grok-build")
+
+        let merged = try XCTUnwrap(GrokLogUsageScanner.merging(
+            session: modernAccumulator.build(),
+            legacy: legacyAccumulator.build()
+        ))
+
+        XCTAssertEqual(
+            merged.series.daily,
+            [
+                DailyUsageEntry(date: "2026-08-22", totalTokens: 1_000, costUSD: 1),
+                DailyUsageEntry(date: "2026-08-21", totalTokens: 500, costUSD: 0.5)
+            ]
+        )
+        XCTAssertEqual(merged.modelUsage?.daily.first?.models.map(\.model), ["grok-4.6-build"])
+    }
+
     func testAttributesTokensToPerProcessModelAndPrices() {
         // pid 100 is on grok-build, pid 200 on grok-composer-2.5-fast; each token row prices against
         // its own process's current model.
@@ -165,6 +264,55 @@ final class GrokLogUsageScannerTests: XCTestCase {
         files.shouldFail = true
         _ = await scanner.scan(pricing: TestPricing.bundled)
         XCTAssertEqual(warnings.counts, [1, 1])
+    }
+
+    private func modernUsageLine(
+        timestampMilliseconds: Int,
+        promptID: String,
+        model: String,
+        input: Int,
+        cacheRead: Int = 0,
+        cacheCreation: Int = 0,
+        output: Int,
+        total: Int
+    ) -> String {
+        let object: [String: Any] = [
+            "timestamp": timestampMilliseconds / 1_000,
+            "method": "_x.ai/session/update",
+            "params": [
+                "sessionId": "session-1",
+                "update": [
+                    "sessionUpdate": "turn_completed",
+                    "prompt_id": promptID,
+                    "usage": [
+                        "modelUsage": [
+                            model: [
+                                "inputTokens": input,
+                                "outputTokens": output,
+                                "totalTokens": total,
+                                "cachedReadTokens": cacheRead,
+                                "cacheCreationTokens": cacheCreation
+                            ]
+                        ]
+                    ]
+                ],
+                "_meta": ["agentTimestampMs": timestampMilliseconds]
+            ]
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: object)
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private func writeSession(root: URL, name: String, summary: String, updates: String) throws {
+        let directory = root.appendingPathComponent("sessions/group/\(name)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try summary.write(to: directory.appendingPathComponent("summary.json"), atomically: true, encoding: .utf8)
+        let updatesURL = directory.appendingPathComponent("updates.jsonl")
+        try (updates + "\n").write(to: updatesURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.modificationDate: RunwayISO8601.date(from: "2026-08-22T12:00:00.000Z")!],
+            ofItemAtPath: updatesURL.path
+        )
     }
 }
 
