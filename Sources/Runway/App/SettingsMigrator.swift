@@ -30,7 +30,7 @@ struct SettingsMigration: Sendable {
 enum SettingsSchema {
     /// Current schema version. Keep equal to the highest migration `version` below (or the baseline when
     /// there are none). This is NOT the app version — bump it only alongside a migration you add.
-    static let current = 5
+    static let current = 6
 
     /// The provider IDs that existed when the v2 migration shipped, frozen forever. A migration is a
     /// point-in-time transform: any future build with more providers also contains this migration, so a
@@ -97,6 +97,25 @@ enum SettingsSchema {
                 )
             }
             defaults.set(try JSONEncoder().encode(order), forKey: key)
+        },
+        // v6 promotes Muse Weekly Usage out of On Demand (it shipped below the caret) and stars
+        // both Muse meters. Fresh installs already declare that layout; this only rewrites saved
+        // expanded / pin lists so existing cards match without a reset.
+        SettingsMigration(version: 6) { defaults in
+            if var expanded = defaults.stringArray(forKey: "runway.layout.v1.expandedMetrics") {
+                expanded.removeAll { $0 == "muse.weekly" }
+                defaults.set(expanded, forKey: "runway.layout.v1.expandedMetrics")
+            }
+            if var onEnable = defaults.stringArray(forKey: "runway.layout.v1.expandOnEnable") {
+                onEnable.removeAll { $0 == "muse.weekly" }
+                defaults.set(onEnable, forKey: "runway.layout.v1.expandOnEnable")
+            }
+            if var pins = defaults.stringArray(forKey: "runway.layout.v1.menuBarPins") {
+                for id in ["muse.session", "muse.weekly"] where !pins.contains(id) {
+                    pins.append(id)
+                }
+                defaults.set(pins, forKey: "runway.layout.v1.menuBarPins")
+            }
         }
     ]
 

@@ -313,6 +313,39 @@ final class SettingsMigratorTests: XCTestCase {
         XCTAssertEqual(migrated["codex"], saved["codex"], "unrelated providers stay untouched")
     }
 
+    func testV6PromotesMuseWeeklyAndStarsBothMeters() {
+        let (defaults, domain) = makeDefaults("V6MuseLayout")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(5, forKey: SettingsMigrator.schemaVersionKey)
+        defaults.set(
+            ["muse.weekly", "claude.trend", "cursor.onDemand"],
+            forKey: "runway.layout.v1.expandedMetrics"
+        )
+        defaults.set(
+            ["muse.weekly", "cursor.requests"],
+            forKey: "runway.layout.v1.expandOnEnable"
+        )
+        defaults.set(
+            ["claude.session", "cursor.auto"],
+            forKey: "runway.layout.v1.menuBarPins"
+        )
+
+        XCTAssertEqual(SettingsMigrator.migrate(defaults: defaults, domainName: domain), SettingsSchema.current)
+
+        XCTAssertEqual(
+            defaults.stringArray(forKey: "runway.layout.v1.expandedMetrics"),
+            ["claude.trend", "cursor.onDemand"]
+        )
+        XCTAssertEqual(
+            defaults.stringArray(forKey: "runway.layout.v1.expandOnEnable"),
+            ["cursor.requests"]
+        )
+        XCTAssertEqual(
+            defaults.stringArray(forKey: "runway.layout.v1.menuBarPins"),
+            ["claude.session", "cursor.auto", "muse.session", "muse.weekly"]
+        )
+    }
+
     /// A legacy install with no disabled providers (the all-on default) converts to all-on.
     func testV2ConvertsAllOnLegacyInstall() {
         let (defaults, domain) = makeDefaults("V2AllOn")
