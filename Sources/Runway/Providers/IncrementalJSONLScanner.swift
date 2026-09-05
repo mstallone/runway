@@ -65,7 +65,7 @@ enum JSONLScanning {
     }
 }
 
-/// The incremental, off-main-actor scan machinery shared by the Claude, Codex, and pi log scanners: discover
+/// The incremental, off-main-actor scan machinery shared by the Claude, Codex, Grok, Muse, and pi log scanners: discover
 /// `*.jsonl` files, re-parse only those changed since the last scan (a per-file cache keyed by path +
 /// size + mtime), and return the parsed items concatenated in file order. Each provider supplies its own
 /// file discovery, per-file parser, and post-parse dedup/aggregation; this owns the cache, the parallel

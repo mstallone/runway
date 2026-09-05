@@ -28,7 +28,8 @@ enum DefaultLayout {
 
         "kimi.session", "kimi.weekly", "kimi.extraBalance", "kimi.extraMonthly",
 
-        "muse.session", "muse.weekly",
+        "muse.session", "muse.weekly", "muse.trend",
+        "muse.today", "muse.yesterday", "muse.last30",
 
         "opencode.session", "opencode.weekly", "opencode.monthly", "opencode.trend",
         "opencode.today", "opencode.yesterday", "opencode.last30",
@@ -122,7 +123,8 @@ enum DefaultLayout {
         // Kimi: Five-Hour Usage stays above the fold; Weekly Usage and the two Extra Usage
         // account/billing rows sit below the caret.
         "kimi.weekly", "kimi.extraBalance", "kimi.extraMonthly",
-        // Muse: Five-Hour Usage and Weekly Usage both stay above the fold; there is no On Demand row.
+        // Muse: Five-Hour Usage and Weekly Usage stay above the fold; local history sits below.
+        "muse.trend", "muse.today", "muse.yesterday", "muse.last30",
         // OpenCode: the three Go caps (Session/Weekly/Monthly) and Usage Trend stay above the fold —
         // matching every other provider — with the spend tiles (Today/Yesterday/Last 30 Days) below.
         "opencode.today", "opencode.yesterday", "opencode.last30",

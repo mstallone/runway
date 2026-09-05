@@ -266,6 +266,56 @@ final class MuseProviderTests: XCTestCase {
         XCTAssertEqual(http.requests.count, 1)
     }
 
+    func testLocalLogsAppendSpendTilesAndSurviveConnectPrompt() async throws {
+        let scanner = try museLogScanner(tokens: 1_000_000)
+        let http = RoutingHTTPClient { _ in museJSONResponse(museKeyJSON()) }
+        let provider = makeMuseProvider(http: http, logUsageScanner: scanner)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(snapshot.plan, "Power Usage")
+        XCTAssertNotNil(snapshot.line(label: "Five-Hour Usage"))
+        XCTAssertNotNil(snapshot.line(label: "Weekly Usage"))
+        XCTAssertNotNil(snapshot.line(label: "Today"))
+        XCTAssertNotNil(snapshot.line(label: "Usage Trend"))
+        XCTAssertEqual(snapshot.usageHistory?.series.daily.first?.totalTokens, 1_000_000)
+
+        let connectProvider = makeMuseProvider(
+            http: http,
+            keychain: museAccountKeychain(requiresInteractiveRead: true),
+            logUsageScanner: scanner
+        )
+        let connectSnapshot = await connectProvider.refresh()
+        XCTAssertNil(connectSnapshot.line(label: "Five-Hour Usage"))
+        XCTAssertNotNil(connectSnapshot.line(label: "Today"))
+        XCTAssertEqual(connectSnapshot.warningIsConnectPrompt, true)
+        XCTAssertEqual(http.requests.count, 1)
+    }
+
+    func testLogsAloneEnableTheProviderAndShowSpendWithoutALogin() async throws {
+        let scanner = try museLogScanner(tokens: 500_000)
+        let http = RoutingHTTPClient { _ in
+            XCTFail("logs-only refresh must not call the network")
+            return museJSONResponse("{}")
+        }
+        let provider = makeMuseProvider(
+            http: http,
+            keychain: AccountKeychain(),
+            files: FakeFiles(),
+            logUsageScanner: scanner
+        )
+
+        let hasCredentials = await provider.hasLocalCredentials()
+        let snapshot = await provider.refresh()
+        XCTAssertTrue(hasCredentials)
+        XCTAssertTrue(http.requests.isEmpty)
+        XCTAssertNotNil(snapshot.line(label: "Today"))
+        XCTAssertEqual(
+            snapshot.warning,
+            "Subscription meters unavailable: \(MuseAuthError.notLoggedIn.errorDescription ?? "")"
+        )
+    }
+
     func testUnauthorizedBecomesSessionExpired() async {
         let http = RoutingHTTPClient { _ in museJSONResponse("{}", status: 401) }
         let provider = makeMuseProvider(http: http)
@@ -474,7 +524,13 @@ final class MuseProviderTests: XCTestCase {
 
     func testDescriptorsAndCatalogOrderAreStable() throws {
         let provider = MuseProvider()
-        XCTAssertEqual(provider.widgetDescriptors.map(\.id), ["muse.session", "muse.weekly"])
+        XCTAssertEqual(
+            provider.widgetDescriptors.map(\.id),
+            [
+                "muse.session", "muse.weekly", "muse.trend",
+                "muse.today", "muse.yesterday", "muse.last30"
+            ]
+        )
         XCTAssertEqual(
             provider.widgetDescriptors.flatMap(\.limitResources).map(\.key),
             ["session", "weekly"]
@@ -506,12 +562,57 @@ final class MuseLayoutTests: XCTestCase {
             storageKey: "layout"
         )
 
-        XCTAssertEqual(store.placed.map(\.descriptorID), ["muse.session", "muse.weekly"])
+        XCTAssertEqual(store.placed.map(\.descriptorID), [
+            "muse.session",
+            "muse.weekly",
+            "muse.trend",
+            "muse.today",
+            "muse.yesterday",
+            "muse.last30"
+        ])
         XCTAssertEqual(Set(store.pinnedMetricIDs), ["muse.session", "muse.weekly"])
 
         let group = store.customizeGroups.first { $0.provider.id == "muse" }
         XCTAssertEqual(group?.alwaysShownMetrics.map(\.id), ["muse.session", "muse.weekly"])
-        XCTAssertEqual(group?.expandedMetrics.map(\.id) ?? [], [])
+        XCTAssertEqual(group?.expandedMetrics.map(\.id), [
+            "muse.trend",
+            "muse.today",
+            "muse.yesterday",
+            "muse.last30"
+        ])
+    }
+
+    func testExistingLayoutKeepsMetersAlwaysShownWhenSpendTilesSeed() {
+        let suiteName = "RunwayTests.MuseLayout.ExistingSpendSeed.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set(
+            try! JSONEncoder().encode([
+                PlacedWidget(descriptorID: "muse.session"),
+                PlacedWidget(descriptorID: "muse.weekly")
+            ]),
+            forKey: "layout"
+        )
+        defaults.set(
+            try! JSONEncoder().encode(["muse.session", "muse.weekly"]),
+            forKey: "layout.seededDefaults"
+        )
+        defaults.set([] as [String], forKey: "layout.expandedMetrics")
+        defaults.set(["muse.session", "muse.weekly"], forKey: "layout.menuBarPins")
+
+        let store = LayoutStore(
+            registry: .from([MuseProvider()]),
+            defaults: defaults,
+            storageKey: "layout"
+        )
+
+        XCTAssertFalse(store.expandedMetricIDs.contains("muse.session"))
+        XCTAssertFalse(store.expandedMetricIDs.contains("muse.weekly"))
+        XCTAssertTrue(store.expandedMetricIDs.contains("muse.trend"))
+        XCTAssertTrue(store.expandedMetricIDs.contains("muse.today"))
+        XCTAssertEqual(Set(store.pinnedMetricIDs), ["muse.session", "muse.weekly"])
     }
 }
 
@@ -520,6 +621,7 @@ private func makeMuseProvider(
     http: RoutingHTTPClient,
     keychain: KeychainReading = museAccountKeychain(),
     files: FakeFiles = FakeFiles(),
+    logUsageScanner: MuseLogUsageScanner? = nil,
     now: @escaping @Sendable () -> Date = { museNow }
 ) -> MuseProvider {
     MuseProvider(
@@ -529,7 +631,36 @@ private func makeMuseProvider(
             environment: FakeEnvironment()
         ),
         usageClient: MuseUsageClient(http: http),
-        now: now
+        logUsageScanner: logUsageScanner ?? MuseLogUsageScanner(
+            environment: FakeEnvironment(["XDG_DATA_HOME": "/tmp/runway-muse-empty"]),
+            homeDirectory: { URL(fileURLWithPath: "/home/none") },
+            incrementalScanner: IncrementalJSONLScanner<MuseLogUsageScanner.Entry>()
+        ),
+        now: now,
+        pricing: { TestPricing.bundled }
+    )
+}
+
+@MainActor
+private func museLogScanner(tokens: Int) throws -> MuseLogUsageScanner {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("runway-muse-provider-\(UUID().uuidString)", isDirectory: true)
+    let recordedAt = Int(museNow.timeIntervalSince1970 * 1_000_000)
+    let line = museCompletedLine(
+        recordedAt: recordedAt,
+        model: "muse-spark-1.3",
+        input: tokens,
+        output: 0
+    )
+    let sessionDir = root.appendingPathComponent("muse/sessions/2026/08/22/session-a", isDirectory: true)
+    try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
+    let file = sessionDir.appendingPathComponent("session.jsonl")
+    try (line + "\n").write(to: file, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.modificationDate: museNow], ofItemAtPath: file.path)
+    return MuseLogUsageScanner(
+        environment: FakeEnvironment(["XDG_DATA_HOME": root.path]),
+        homeDirectory: { URL(fileURLWithPath: "/home/ignored") },
+        incrementalScanner: IncrementalJSONLScanner<MuseLogUsageScanner.Entry>()
     )
 }
 

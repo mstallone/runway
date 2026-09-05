@@ -57,6 +57,7 @@ enum PersistentJSONLScanCaches {
         await ClaudeLogUsageScanner.flushPersistentCacheWrites()
         await CodexLogUsageScanner.flushPersistentCacheWrites()
         await GrokLogUsageScanner.flushPersistentCacheWrites()
+        await MuseLogUsageScanner.flushPersistentCacheWrites()
         await PiUsageScanner.flushPersistentCacheWrites()
     }
 }

@@ -10,7 +10,7 @@ While Settings is open, Runway briefly appears in the Dock, the same as during a
 
 | Setting | Options | What it does |
 |---|---|---|
-| Show Total Spend | on/off | Whether the cross-provider [Total Spend](dashboard.md#total-spend) card shows at the top of the dashboard. On by default. The card appears whenever at least one enabled provider tracks spend (Claude, Codex, Cursor, Grok, OpenCode, Sakana Fugu). |
+| Show Total Spend | on/off | Whether the cross-provider [Total Spend](dashboard.md#total-spend) card shows at the top of the dashboard. On by default. The card appears whenever at least one enabled provider tracks spend (Claude, Codex, Cursor, Grok, Muse, OpenCode, Sakana Fugu). |
 | Launch at Login | on/off | Registers the app as a login item. The system's login-item registry is the source of truth. |
 | Global Shortcut | record a shortcut | Toggles the popover from anywhere. Click the field and press a combo. The ⓧ clears it. |
 
