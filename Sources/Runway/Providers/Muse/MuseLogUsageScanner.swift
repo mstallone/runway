@@ -35,11 +35,23 @@ struct MuseLogUsageScanner: Sendable {
     }
 
     /// Cheap local footprint probe used by provider auto-enablement. A sessions directory with no
-    /// `session.jsonl` files is not a login — `scan()` would have nothing to read.
+    /// `session.jsonl` files is not a login — `scan()` would have nothing to read. Stops at the
+    /// first journal so auto-enable does not walk a large session tree.
     func hasSessionFootprint() -> Bool {
-        JSONLScanning.jsonlFiles(under: sessionsDirectory).contains { file in
-            URL(fileURLWithPath: file.path).lastPathComponent == "session.jsonl"
+        let directory = sessionsDirectory.resolvingSymlinksInPath()
+        let keys: [URLResourceKey] = [.isRegularFileKey]
+        guard let enumerator = FileManager.default.enumerator(
+            at: directory,
+            includingPropertiesForKeys: keys,
+            options: []
+        ) else { return false }
+        for case let url as URL in enumerator {
+            guard url.lastPathComponent == "session.jsonl",
+                  (try? url.resourceValues(forKeys: Set(keys)))?.isRegularFile == true
+            else { continue }
+            return true
         }
+        return false
     }
 
     func scan(daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing) async -> LogUsageScan? {

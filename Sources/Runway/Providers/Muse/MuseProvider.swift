@@ -210,7 +210,7 @@ final class MuseProvider: ProviderRuntime {
 
         let isConnectPrompt = snapshot.lines.contains(where: \.isConnectPrompt)
             || snapshot.warningIsConnectPrompt == true
-        let rateLimited = museErrorText(snapshot) == MuseUsageError.requestFailed(429).errorDescription
+        let rateLimited = rateLimitedUntil.map { now < $0 } == true
         let lostMeters = meters.isEmpty && (snapshot.lines.contains(where: \.isError) || isConnectPrompt)
         if lostMeters {
             AppLog.warn(
