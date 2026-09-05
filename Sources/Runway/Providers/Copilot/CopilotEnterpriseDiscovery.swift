@@ -133,7 +133,8 @@ struct CopilotEnterpriseDiscovery: Sendable {
     }
 
     /// Enterprises visible to the token, with no organization filter. Used when Copilot assigned the
-    /// seat with an empty organization list.
+    /// seat with an empty organization list. A denied listing is not the last word: the provider can
+    /// still discover the slug from membership orgs and read enterprise REST billing.
     func lookupSlugs(token: String) async -> SlugLookup {
         let response: HTTPResponse
         do {

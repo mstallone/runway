@@ -35,7 +35,7 @@ extension CopilotProvider {
         case temporarilyUnavailable
     }
 
-    private enum OrgUsageLookup {
+    enum OrgUsageLookup {
         case usage([MetricLine])
         case empty([MetricLine])
         case forbidden
@@ -286,70 +286,6 @@ extension CopilotProvider {
             : .managed(provenEnterpriseAssociation: provenEnterpriseAssociation)
     }
 
-    /// Billing for a seat Copilot assigned with an empty organization list. Membership orgs are not
-    /// the billing home; list the viewer's enterprises and read each enterprise's Copilot usage with
-    /// no organization filter.
-    private func enterpriseDirectBillingLookup(token: String) async -> OrgBillingLookup {
-        if let cached = defaults.string(forKey: Self.billingEnterpriseDefaultsKey) {
-            do {
-                switch try await enterpriseWideUsageLookup(enterprise: cached, token: token) {
-                case .usage(let lines):
-                    return .usage(lines)
-                case .empty(let lines):
-                    // This slug was cached after it reported Copilot usage, so its own zero is the
-                    // owning enterprise's report — the same verified empty the org-managed path uses.
-                    return .empty(lines, enterpriseVerified: true)
-                case .forbidden, .inaccessible, .notFound:
-                    defaults.removeObject(forKey: Self.billingEnterpriseDefaultsKey)
-                }
-            } catch {
-                AppLog.warn(
-                    LogTag.plugin("copilot"),
-                    "enterprise AI credit lookup failed for the remembered enterprise: \(error.localizedDescription)"
-                )
-                return .temporarilyUnavailable
-            }
-        }
-
-        switch await CopilotEnterpriseDiscovery(client: orgBillingClient).lookupSlugs(token: token) {
-        case .slugs(let slugs):
-            var sawTransientFailure = false
-            var emptyCandidate: [MetricLine]?
-            for slug in slugs {
-                do {
-                    switch try await enterpriseWideUsageLookup(enterprise: slug, token: token) {
-                    case .usage(let lines):
-                        defaults.set(slug, forKey: Self.billingEnterpriseDefaultsKey)
-                        return .usage(lines)
-                    case .empty(let lines):
-                        emptyCandidate = emptyCandidate ?? lines
-                    case .forbidden, .inaccessible, .notFound:
-                        continue
-                    }
-                } catch {
-                    sawTransientFailure = true
-                    AppLog.warn(
-                        LogTag.plugin("copilot"),
-                        "enterprise AI credit usage failed for one enterprise; trying the next: \(error.localizedDescription)"
-                    )
-                }
-            }
-            if let emptyCandidate, !sawTransientFailure, slugs.count == 1 {
-                // Listing viewer enterprises does not prove which one owns the seat. A single
-                // readable empty is the month-start case; several candidates stay managed so an
-                // unrelated empty cannot stand in for an unreadable billing enterprise.
-                return .empty(emptyCandidate, enterpriseVerified: false)
-            }
-            return sawTransientFailure
-                ? .temporarilyUnavailable
-                : .managed(provenEnterpriseAssociation: false)
-        case .noEnterprises, .managed:
-            return .managed(provenEnterpriseAssociation: false)
-        case .temporarilyUnavailable:
-            return .temporarilyUnavailable
-        }
-    }
-
     private func enterpriseBillingLookup(
         token: String,
         seatOrgLogins: [String],
@@ -435,7 +371,7 @@ extension CopilotProvider {
         return try billingUsageLookup(response, scope: "enterprise")
     }
 
-    private func enterpriseWideUsageLookup(enterprise: String, token: String) async throws -> OrgUsageLookup {
+    func enterpriseWideUsageLookup(enterprise: String, token: String) async throws -> OrgUsageLookup {
         let response = try await orgBillingClient.fetchAICreditUsage(enterprise: enterprise, token: token)
         return try billingUsageLookup(response, scope: "enterprise")
     }
