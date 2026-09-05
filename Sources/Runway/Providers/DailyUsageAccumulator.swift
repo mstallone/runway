@@ -1,7 +1,7 @@
 import Foundation
 
 /// Accumulates priced per-day usage — tokens, cost, and the per-model breakdown — then assembles a
-/// `LogUsageScan`. Shared by the log scanners (Claude, Codex, Grok) so the "accumulate then assemble"
+/// `LogUsageScan`. Shared by the log scanners (Claude, Codex, Grok, Muse) so the "accumulate then assemble"
 /// tail lives in one place instead of a byte-identical copy per provider; each scanner keeps only its
 /// format-specific parse/pricing loop.
 ///

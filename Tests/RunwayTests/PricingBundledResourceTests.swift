@@ -82,6 +82,21 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertNotNil(pricing.resolve(model: "gpt-5.1-codex"))
         XCTAssertEqual(pricing.resolve(model: "grok-build-0.1")?.inputPerMillion, 1)
         XCTAssertEqual(pricing.resolve(model: "grok-4.3")?.inputPerMillion, 1.25)
+        XCTAssertEqual(pricing.resolve(model: "muse-spark-1.3")?.inputPerMillion, 1.25)
+        XCTAssertEqual(pricing.resolve(model: "muse-spark-1.3")?.cacheReadPerMillion, 0.15)
+        XCTAssertEqual(pricing.resolve(model: "muse-spark-1.3")?.outputPerMillion, 4.25)
+        XCTAssertEqual(pricing.resolve(model: "muse-spark-1.2")?.inputPerMillion, 1.25)
+        XCTAssertEqual(pricing.resolve(model: "muse-spark-1.3-contributor")?.inputPerMillion, 0.10)
+        XCTAssertEqual(pricing.resolve(model: "muse-spark-1.3-contributor")?.cacheReadPerMillion, 0.002)
+        XCTAssertEqual(pricing.resolve(model: "muse-spark-1.3-contributor")?.outputPerMillion, 0.20)
+        XCTAssertEqual(pricing.resolve(model: "muse-spark-1.2-contributor")?.inputPerMillion, 0.10)
+        XCTAssertEqual(pricing.resolve(model: "muse-spark-1.1")?.inputPerMillion, 1.25)
+        XCTAssertEqual(pricing.resolve(model: "meta/muse-spark-1.3")?.inputPerMillion, 1.25)
+        XCTAssertEqual(pricing.resolve(model: "meta/muse-spark-1.2-contributor")?.inputPerMillion, 0.10)
+        XCTAssertNotEqual(
+            pricing.resolve(model: "muse-spark-1.3-contributor")?.inputPerMillion,
+            pricing.resolve(model: "muse-spark-1.3")?.inputPerMillion
+        )
     }
 
     /// Claude Fable 5 (carried over from the old manifest tests): priced at 2x standard Claude 4.8

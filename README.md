@@ -39,7 +39,7 @@ Runway is a fork of OpenUsage rebuilt for speed. We measured both on the same ma
 - **[Devin](docs/providers/devin.md)**: weekly and daily quota, extra usage balance
 - **[Grok](docs/providers/grok.md)**: weekly shared pool, pay-as-you-go, local daily spend
 - **[Kimi](docs/providers/kimi.md)**: five-hour and weekly Kimi Code quota, Extra Usage balance and monthly spend
-- **[Muse](docs/providers/muse.md)**: five-hour and weekly Muse Code subscription quota
+- **[Muse](docs/providers/muse.md)**: five-hour and weekly Muse Code subscription quota, local daily spend
 - **[OpenCode](docs/providers/opencode.md)**: Go session, weekly, and monthly caps, Zen spend, local daily spend
 - **[OpenRouter](docs/providers/openrouter.md)**: credit balance, daily, weekly, and monthly spend (API key)
 - **[Sakana Fugu](docs/providers/sakana.md)**: subscription quota plus local Fugu Ultra usage trend and estimated API-rate value

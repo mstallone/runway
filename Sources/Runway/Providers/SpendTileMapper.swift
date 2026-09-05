@@ -2,14 +2,14 @@ import Foundation
 
 /// Turns local daily token/cost data into the shared Today / Yesterday / Last 30 Days spend tiles.
 /// Every spend-tracking provider funnels through here so the tiles render identically regardless of
-/// source: Claude / Codex / Grok feed token/cost from their CLI logs, while Cursor feeds token/cost
+/// source: Claude / Codex / Grok / Muse feed token/cost from their CLI logs, while Cursor feeds token/cost
 /// derived from its CSV export. The data shape
 /// (`DailyUsageSeries`) is a provider-neutral per-day carrier shared by every source.
 enum SpendTileMapper {
     /// Append the three spend tiles (Today / Yesterday / Last 30 Days). A period with no usage is left
     /// unbacked so the tile reads "No data" — a zero here is indistinguishable from "the source hasn't
     /// accounted for this day yet," and a confident `$0.00 · 0 tokens` contradicts a live session meter
-    /// that proves otherwise. This holds for every source (the Claude/Codex/Grok log scanners,
+    /// that proves otherwise. This holds for every source (the Claude/Codex/Grok/Muse log scanners,
     /// Cursor's CSV export); there's no per-source branching. "No data" is also what a tile shows when
     /// the source couldn't be read at all (missing log, failed API/CSV), where the caller appends
     /// nothing. `estimated` controls whether the dollar value carries the local-estimate marker (ⓘ).
