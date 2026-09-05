@@ -23,7 +23,7 @@ Runway is a fork of OpenUsage rebuilt for speed. We measured both on the same ma
 | | OpenUsage | Runway |
 |---|---|---|
 | Launch to menu bar icon | 5.4 s | **0.29 s** |
-| Popup open to first frame | 61 ms | **23 ms** |
+| Popover open to first frame | 61 ms | **23 ms** |
 | First open after launch | 2.59 s | **44 ms** |
 | One refresh pass | 8.6 s | **2.3 s** |
 | Memory (steady / peak) | 1.09 GB / 2.6 GB | **238 MB / 322 MB** |

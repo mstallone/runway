@@ -41,7 +41,7 @@ grep '\[refresh\]' ~/Library/Logs/Runway/Runway.log
 
 ## What is never logged
 
-Secrets never reach the log. The app redacts access and refresh tokens, cookies, session tokens, and API keys before it writes any line. A sensitive value becomes `first4...last4`, or `[REDACTED]` when it is too short to mask safely. Paths under your home directory become `[PATH]`. The app never logs a full response body. On an HTTP error it can record a redacted, truncated (500 byte) preview at Debug. A test suite guards the redaction rules.
+Secrets never reach the log. The app redacts access and refresh tokens, cookies, session tokens, and API keys before it writes any line. A sensitive value becomes `first4...last4`, or `[REDACTED]` when it is too short to mask safely. Paths under your home directory become `[PATH]`. The app never logs a full response body. On an HTTP error it can record a redacted, truncated preview of at most 500 bytes at Debug. A test suite guards the redaction rules.
 
 ## File size cap
 

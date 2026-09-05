@@ -10,8 +10,8 @@ Steady state (caches warm, normal daily use), measured 2026-08-02:
 |---|---|---|---|
 | Launch to menu bar icon visible | 5.4 s | 0.29 s | 18× faster |
 | CPU in the first 30 s after launch | 21.3 s | 3.8 s | 5.6× less |
-| Open the popup (warm) to first frame | 61 ms | 23 ms | 2.7× faster |
-| First popup open after launch to first frame | 2.59 s | 44 ms | 59× faster |
+| Open the popover (warm) to first frame | 61 ms | 23 ms | 2.7× faster |
+| First popover open after launch to first frame | 2.59 s | 44 ms | 59× faster |
 | One refresh pass (all providers, wall time) | 8.6 s | 2.3 s | 3.7× faster |
 | Main-thread stall time, 10 screen switches | 2.0 s | 0.7 s | 2.9× less |
 | Main-thread stall time, 10 card expands | 6.6 s | 4.1 s | 1.6× less |
@@ -31,7 +31,7 @@ Both apps ran the same scripted workload on the same machine (Apple Silicon MacB
 
 - **Fixed points.** Runway at `f752361` (the `main` tip after PRs #54 to #59, 2026-08-02) vs OpenUsage at its `main` tip (`9d2bf09`, 2026-07-19, also the fork point), built with the same Swift toolchain in release configuration, with the same measurement harness compiled into both.
 - **Matched content.** Both apps had the same provider set (claude, codex, copilot, grok, sakana plus the same two account cards), the same credentials, and the same session-log corpus (about 27 GB of Codex JSONL and 400 MB of Claude logs).
-- **Same workload.** The in-app driver (`RUNWAY_UI_PROFILE=1`, see `docs/debugging.md`) ran the same phases in both apps: a cold popup open, 12 warm open/close cycles, 10 screen switches, 10 card expand/collapse toggles, and an idle soak, with an 8 ms main-thread stall watchdog. Launch and refresh figures come from process accounting (`ps`) and each app's own batch logs.
+- **Same workload.** The in-app driver (`RUNWAY_UI_PROFILE=1`, see `docs/debugging.md`) ran the same phases in both apps: a cold popover open, 12 warm open/close cycles, 10 screen switches, 10 card expand/collapse toggles, and an idle soak, with an 8 ms main-thread stall watchdog. Launch and refresh figures come from process accounting (`ps`) and each app's own batch logs.
 - **Steady state vs first launch.** Each app ran twice. The first run populated its log-scan caches ("first launch"). The second is the steady-state table.
 
 Caveats:
@@ -42,7 +42,7 @@ Caveats:
 
 ## Reproducing
 
-The UI rows (popup opens, stall totals) come from the built-in harness:
+The UI rows (popover opens, stall totals) come from the built-in harness:
 
 ```
 script/profile_ui.sh
