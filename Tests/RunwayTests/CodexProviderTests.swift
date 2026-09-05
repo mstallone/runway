@@ -763,6 +763,7 @@ final class CodexProviderTests: XCTestCase {
             ),
             usageClient: CodexUsageClient(http: httpClient),
             logUsageScanner: CodexLogFixture.scanner(home: home),
+            openCodeUsageScanner: CodexLogFixture.inactiveOpenCodeScanner(),
             now: { now },
             pricing: {
                 // 150 tokens -> $0.25 at these fixture rates: (100 x 1000 + 50 x 3000) / 1M.
@@ -791,12 +792,92 @@ final class CodexProviderTests: XCTestCase {
         })
     }
 
+    func testLocalUsageSourceNoteJoinsCodexPiAndOpenCode() {
+        XCTAssertEqual(CodexProvider.localUsageSourceNote(hasPi: false, hasOpenCode: false), "From your Codex logs (estimated)")
+        XCTAssertEqual(CodexProvider.localUsageSourceNote(hasPi: true, hasOpenCode: false), "From your Codex logs and pi (estimated)")
+        XCTAssertEqual(CodexProvider.localUsageSourceNote(hasPi: false, hasOpenCode: true), "From your Codex logs and OpenCode (estimated)")
+        XCTAssertEqual(
+            CodexProvider.localUsageSourceNote(hasPi: true, hasOpenCode: true),
+            "From your Codex logs, pi, and OpenCode (estimated)"
+        )
+    }
+
+    func testOpenCodeOAuthUsageFoldsIntoDefaultCardAndStaysOffExtraCards() async throws {
+        let now = RunwayISO8601.date(from: "2026-07-12T12:00:00.000Z")!
+        let milliseconds = Int(RunwayISO8601.date(from: "2026-07-12T10:00:00.000Z")!.timeIntervalSince1970 * 1000)
+        let rows = "[[\(milliseconds),0,150,\"gpt-test\",100,0,0,50,0,\"oauth-row\"]]"
+        let sqlite = TrackingOpenCodeSQLite(data: ["/oc/opencode.db": rows])
+        let openCodeScanner = OpenCodeCodexUsageScanner(
+            authStore: OpenCodeAuthStore(
+                files: FakeFiles(["/oc/auth.json": #"{"openai":{"type":"oauth","access":"token"}}"#]),
+                environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/oc"]),
+                homeDirectory: { URL(fileURLWithPath: "/unused") }
+            ),
+            sqlite: sqlite,
+            databasePaths: { ["/oc/opencode.db"] }
+        )
+        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8)))
+        let pricing = ModelPricing(
+            supplement: PricingSupplement(),
+            primary: PricingCatalog(entries: ["gpt-test": ModelRates(
+                inputPerMillion: 2, outputPerMillion: 10,
+                cacheWritePerMillion: 2, cacheReadPerMillion: 0.2
+            )]),
+            secondary: PricingCatalog(entries: [:])
+        )
+
+        func makeProvider(id: String, piUsageCardID: String?) -> CodexProvider {
+            CodexProvider(
+                provider: CodexProvider.makeProvider(id: id, displayName: id),
+                authStore: CodexAuthStore(
+                    environment: FakeEnvironment(["CODEX_HOME": "/tmp/codex-home"]),
+                    files: FakeFiles(["/tmp/codex-home/auth.json": #"{"tokens":{"access_token":"token"}}"#]),
+                    keychain: FakeKeychain()
+                ),
+                usageClient: CodexUsageClient(http: http),
+                logUsageScanner: CodexLogFixture.scanner(home: nil),
+                openCodeUsageScanner: openCodeScanner,
+                now: { now },
+                pricing: { pricing },
+                piUsageCardID: piUsageCardID
+            )
+        }
+
+        let defaultSnapshot = await makeProvider(id: "codex", piUsageCardID: "codex").refresh()
+        XCTAssertEqual(values(defaultSnapshot.lines, "Today"),
+                       [MetricValue(number: 0.0007, kind: .dollars, estimated: true),
+                        MetricValue(number: 150, kind: .count, label: "tokens")])
+        XCTAssertNotNil(sqlite.lastDataSQL, "the default-source card must scan OpenCode")
+
+        sqlite.lastDataSQL = nil
+        let extraSnapshot = await makeProvider(id: "codex@work", piUsageCardID: nil).refresh()
+        XCTAssertNil(values(extraSnapshot.lines, "Today"))
+        XCTAssertNil(sqlite.lastDataSQL, "extra account cards must not scan OpenCode")
+    }
+
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
         guard case .values(_, let values, _, _, _, _) = lines.first(where: { $0.label == label }) else {
             return nil
         }
         return values
     }
+}
+
+/// Records whether Codex asked OpenCode's local database, so extra-account cards can be proven idle.
+private final class TrackingOpenCodeSQLite: SQLiteAccessing, @unchecked Sendable {
+    var data: [String: String]
+    var lastDataSQL: String?
+
+    init(data: [String: String]) {
+        self.data = data
+    }
+
+    func queryValue(path: String, sql: String) throws -> String? {
+        lastDataSQL = sql
+        return data[path]
+    }
+
+    func queryJSONRows(path: String, sql: String) throws -> String? { nil }
 }
 
 final class CodexUsageClientRefreshTests: XCTestCase {
@@ -941,6 +1022,7 @@ final class CodexReadOnlyCredentialTests: XCTestCase {
             ),
             usageClient: CodexUsageClient(http: http),
             logUsageScanner: CodexLogFixture.scanner(home: nil),
+            openCodeUsageScanner: CodexLogFixture.inactiveOpenCodeScanner(),
             now: { now },
             pricing: { TestPricing.bundled }
         )
@@ -977,6 +1059,7 @@ final class CodexReadOnlyCredentialTests: XCTestCase {
             ),
             usageClient: CodexUsageClient(http: http),
             logUsageScanner: CodexLogFixture.scanner(home: nil),
+            openCodeUsageScanner: CodexLogFixture.inactiveOpenCodeScanner(),
             now: { now },
             pricing: { TestPricing.bundled }
         )

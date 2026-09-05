@@ -41,11 +41,12 @@ struct DailyUsageAccumulator {
         modelsByDay[day, default: [:]][model, default: ModelAccumulator()].add(tokens: tokens, costUSD: cost)
     }
 
-    /// Merge already-built scans (a provider's native log scan plus its pi slice) into one, by replaying
-    /// each scan's per-model daily usage through a fresh accumulator so the combined `series`,
-    /// `modelUsage`, and unknown-model set stay consistent. Every input must be accumulator-built (its
-    /// `series` derived from the same per-model maps), which the native and pi scanners guarantee. Nil
-    /// inputs are skipped; returns nil when they are all nil (the provider then folds in nothing).
+    /// Merge already-built scans (a provider's native log scan plus optional pi / OpenCode slices) into
+    /// one, by replaying each scan's per-model daily usage through a fresh accumulator so the combined
+    /// `series`, `modelUsage`, and unknown-model set stay consistent. Every input must be accumulator-built
+    /// (its `series` derived from the same per-model maps), which the native, pi, and OpenCode scanners
+    /// guarantee. Nil inputs are skipped; returns nil when they are all nil (the provider then folds in
+    /// nothing).
     static func merged(_ scans: [LogUsageScan?]) -> LogUsageScan? {
         let present = scans.compactMap { $0 }
         guard !present.isEmpty else { return nil }

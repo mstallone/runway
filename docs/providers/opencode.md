@@ -33,7 +33,8 @@ Go meters are percents from `GET https://opencode.ai/zen/go/v1/usage` — OpenCo
 an estimate. Each spend tile shows cost and tokens together (`$4.08 · 1.2M tokens`), the same as Claude /
 Codex / Cursor. Those dollars come straight from the per-message cost OpenCode records for its hosted
 gateways on this Mac, so they can be lower than account-wide Go usage. A period with no recorded local
-usage reads "No data" rather than a misleading `$0.00`. No log data leaves your Mac.
+usage reads "No data" rather than a misleading `$0.00`. Codex usage that goes through OpenCode's
+ChatGPT OAuth login is attributed to the Codex card, not these spend tiles. No log data leaves your Mac.
 
 ## Troubleshooting
 

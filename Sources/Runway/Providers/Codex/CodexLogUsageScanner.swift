@@ -32,8 +32,8 @@ import Foundation
 ///   rate`, all x the model's Codex priority multiplier when the session ran on the fast/priority
 ///   service tier. The tier is tracked per session from `thread_settings_applied` lines — never from
 ///   the current `config.toml`, which would retroactively reprice the whole history when toggled.
-///   Events with no recorded tier price at standard rates. Supported GPT-5.4/5.5/5.6 requests above
-///   272k input tokens use OpenAI's higher rates for the whole request.
+///   Events with no recorded tier price at standard rates. Supported GPT-5.4/5.5/5.6/GPT-6 requests above
+///   272k input tokens use OpenAI's higher rates for the whole request, via `CodexUsagePricing`.
 ///
 /// An actor for the same reasons as `ClaudeLogUsageScanner`: scans run off the main actor, and a
 /// versioned Application Support cache keyed by path + size + mtime makes both refreshes and relaunches
