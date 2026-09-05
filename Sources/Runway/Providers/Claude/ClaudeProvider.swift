@@ -174,7 +174,7 @@ final class ClaudeProvider: ProviderRuntime {
                 break
             }
             AppLog.info(LogTag.auth("claude"), "no access token, not logged in")
-            return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.notLoggedIn)
+            return await unauthenticatedLocalUsageSnapshot()
         }
 
         // Per-source diagnostics at info level (token-free: source kind + expired boolean) so a
@@ -220,6 +220,24 @@ final class ClaudeProvider: ProviderRuntime {
             lastFallbackError ?? ClaudeAuthError.notLoggedIn,
             renewalState: candidates.first
         )
+    }
+
+    /// API-key-only (or otherwise unauthenticated) installs still have local session logs. Serve those
+    /// spend tiles under the existing Not logged in notice when they contain usage; otherwise keep the
+    /// hard error card so an empty machine does not grow a blank Claude card.
+    private func unauthenticatedLocalUsageSnapshot() async -> ProviderSnapshot {
+        let error = ClaudeAuthError.notLoggedIn
+        let snapshot = await localUsageSnapshot(
+            mapped: ClaudeMappedUsage(plan: nil, lines: []),
+            warning: error.localizedDescription
+        )
+        let hasLocalUsage = snapshot.usageHistory?.series.daily.contains {
+            $0.totalTokens > 0 || ($0.costUSD ?? 0) > 0
+        } == true
+        guard hasLocalUsage else {
+            return ProviderSnapshot.error(provider: provider, error: error)
+        }
+        return snapshot
     }
 
     /// Terminal failure handling: a lapsed login (`isLoginRenewal`) degrades to the local spend tiles

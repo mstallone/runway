@@ -1199,6 +1199,36 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertEqual(badge(corruptSnapshot.lines, "Error"), ClaudeAuthError.notLoggedIn.localizedDescription)
     }
 
+    func testUnauthenticatedRefreshKeepsLocalSpendWhenLogsExist() async throws {
+        let home = try ClaudeLogFixture.makeHome(files: [
+            "proj/session.jsonl": ClaudeLogFixture.usageLine(
+                timestamp: "2026-09-04T08:00:00.000Z",
+                input: 100,
+                output: 50
+            )
+        ])
+        let now = RunwayISO8601.date(from: "2026-09-04T12:00:00.000Z")!
+        let provider = ClaudeProvider(
+            authStore: ClaudeAuthStore(
+                environment: FakeEnvironment(),
+                files: FakeFiles(),
+                keychain: FakeKeychain()
+            ),
+            usageClient: ClaudeUsageClient(httpClient: FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data()))),
+            logUsageScanner: ClaudeLogFixture.scanner(home: home),
+            now: { now },
+            pricing: { TestPricing.bundled }
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertNil(badge(snapshot.lines, "Error"))
+        XCTAssertEqual(snapshot.warning, ClaudeAuthError.notLoggedIn.localizedDescription)
+        XCTAssertNil(snapshot.line(label: "Session"))
+        XCTAssertNotNil(values(snapshot.lines, "Today"))
+        XCTAssertGreaterThan(values(snapshot.lines, "Today")?.first { $0.kind == .count }?.number ?? 0, 0)
+    }
+
     func testRateLimitedResponseMapsToRetryBadgeNotError() async {
         let now = RunwayISO8601.date(from: "2026-02-20T16:00:00.000Z")!
         let httpClient = FakeHTTPClient(response: HTTPResponse(

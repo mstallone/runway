@@ -21,7 +21,7 @@ Sign in once with the Grok CLI (`grok login`); Runway reads the same `~/.grok/au
 
 ## The spend tiles
 
-Today / Yesterday / Last 30 Days are computed **locally** from Grok CLI's persisted session activity under `~/.grok/sessions/` (or `$GROK_HOME/sessions/`). Grok 1.x records measured token buckets and per-model totals when each turn completes; Runway reads those records directly, excludes nested subagent sessions already included in their parent turn, and removes replayed turns from forked sessions. For older Grok CLI versions, Runway still falls back to `~/.grok/logs/unified.jsonl`.
+Today / Yesterday / Last 30 Days are computed **locally** from Grok CLI's persisted session activity under `~/.grok/sessions/` (or `$GROK_HOME/sessions/`). Grok 1.x records measured token buckets and per-model totals when each turn completes; Runway reads those records directly, includes nested subagent and resumed sessions, and removes replayed turns from forked sessions. For older Grok CLI versions, Runway still falls back to `~/.grok/logs/unified.jsonl`.
 
 Each period is one tile showing cost and tokens together (`$4.08 · 1.2M tokens`), the same as Claude/Codex/Cursor. The dollars are estimated from measured token counts at public API rates using the shared [model pricing](../pricing.md) (that's the ⓘ), and these estimates are separate from the weekly subscription pool that Grok's billing API reports. No session data leaves your Mac. A period with no recorded usage reads "No data" rather than a misleading `$0.00 · 0 tokens` — the same as every other spend-tracking provider.
 

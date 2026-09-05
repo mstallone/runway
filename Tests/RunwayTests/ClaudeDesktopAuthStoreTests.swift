@@ -103,6 +103,57 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         XCTAssertEqual(oauth.accessToken, "full-scope-token")
     }
 
+    func testAccountPrefixedCacheKeySelectsTheActiveAccount() throws {
+        let account = "11111111-1111-4111-8111-111111111111"
+        let otherAccount = "22222222-2222-4222-8222-222222222222"
+        let legacy = cacheKey(organization: organization)
+        let selection = ClaudeDesktopAuthStore.selectCredential(
+            activeOrganization: organization,
+            activeAccountUUID: account,
+            v2: [
+                "acct:\(otherAccount)|\(legacy)": tokenEntry("foreign-token", expiresIn: 7_200),
+                "acct:\(account)|\(legacy)": tokenEntry("account-token", expiresIn: 3_600)
+            ],
+            v1: nil,
+            now: now
+        )
+
+        guard case .available(let oauth) = selection else {
+            return XCTFail("expected the active account's prefixed token, got \(selection)")
+        }
+        XCTAssertEqual(oauth.accessToken, "account-token")
+    }
+
+    func testAccountPrefixedTombstoneSuppressesLegacyV1Alias() throws {
+        let account = "11111111-1111-4111-8111-111111111111"
+        let legacy = cacheKey(organization: organization)
+        let selection = ClaudeDesktopAuthStore.selectCredential(
+            activeOrganization: organization,
+            activeAccountUUID: account,
+            v2: ["acct:\(account)|\(legacy)": NSNull()],
+            v1: [legacy: tokenEntry("resurrected-token", expiresIn: 3_600)],
+            now: now
+        )
+
+        guard case .notFound = selection else {
+            return XCTFail("scoped V2 tombstone should suppress the matching V1 token, got \(selection)")
+        }
+    }
+
+    func testPrefixedCacheWithoutAccountUUIDIsIgnored() throws {
+        let account = "11111111-1111-4111-8111-111111111111"
+        let selection = ClaudeDesktopAuthStore.selectCredential(
+            activeOrganization: organization,
+            v2: ["acct:\(account)|\(cacheKey(organization: organization))": tokenEntry("prefixed-token", expiresIn: 3_600)],
+            v1: nil,
+            now: now
+        )
+
+        guard case .notFound = selection else {
+            return XCTFail("prefixed keys must not be used without the signed-in account, got \(selection)")
+        }
+    }
+
     func testBackgroundReadDoesNotPromptButManualReadCan() throws {
         let fixture = try makeFixture(
             activeOrganization: organization,
@@ -127,6 +178,23 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(fixture.store.load(allowInteraction: false).status, .stale)
+    }
+
+    func testLoadReadsAccountPrefixedCacheForSignedInUser() throws {
+        let account = "11111111-1111-4111-8111-111111111111"
+        let fixture = try makeFixture(
+            activeOrganization: organization,
+            v2: [
+                "acct:\(account)|\(cacheKey(organization: organization))":
+                    tokenEntry("prefixed-desktop-token", expiresIn: 3_600)
+            ],
+            lastKnownAccountUUID: account
+        )
+
+        let result = fixture.store.load(allowInteraction: false)
+
+        XCTAssertEqual(result.status, .available)
+        XCTAssertEqual(result.oauth?.accessToken, "prefixed-desktop-token")
     }
 
     func testWorkingCLICredentialsSkipDesktopProbe() throws {
@@ -473,7 +541,8 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         activeOrganization: String,
         v2: [String: Any],
         v1: [String: Any]? = nil,
-        requiresInteraction: Bool = false
+        requiresInteraction: Bool = false,
+        lastKnownAccountUUID: String? = nil
     ) throws -> DesktopFixture {
         let key = try ClaudeDesktopAuthStore.deriveKey(password: password)
         let cookieHost = ".claude.ai"
@@ -482,6 +551,9 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         let v2Data = try JSONSerialization.data(withJSONObject: v2)
         let encryptedV2 = try encrypt(v2Data, key: key)
         var config: [String: Any] = ["oauth:tokenCacheV2": encryptedV2.base64EncodedString()]
+        if let lastKnownAccountUUID {
+            config["lastKnownAccountUuid"] = lastKnownAccountUUID
+        }
         if let v1 {
             let v1Data = try JSONSerialization.data(withJSONObject: v1)
             config["oauth:tokenCache"] = try encrypt(v1Data, key: key).base64EncodedString()

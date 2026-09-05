@@ -13,7 +13,7 @@ Tracks your ChatGPT/Codex subscription limits using the login from the Codex CLI
 | Extra Usage | Flex credits, shown verbatim as dollars + credits (e.g. `$31.84 · 796 credits`) |
 | Today / Yesterday / Last 30 Days | Local spend, as cost, tokens, or both (see below) |
 
-When Codex reports your plan name, Runway shows it beside the provider name.
+When Codex reports your plan name, Runway shows it beside the provider name. `self_serve_business_prolite` is shown as **Business Premium**.
 
 ## Where credentials come from
 
