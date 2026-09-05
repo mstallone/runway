@@ -5,6 +5,9 @@ final class CopilotProvider: ProviderRuntime {
     /// `UserDefaults` key caching the slug of the org whose billing carried Copilot credit usage, so
     /// steady-state refreshes make one billing call instead of re-probing every org.
     static let billingOrgDefaultsKey = "copilot.billingOrg"
+    /// Cached enterprise slug for a seat Copilot assigned with an empty organization list. Steady-state
+    /// refreshes then hit one enterprise billing URL instead of re-listing enterprises.
+    static let billingEnterpriseDefaultsKey = "copilot.billingEnterprise"
 
     /// Above the store default: an org-managed account's billing fallback sequentially probes every
     /// seat org (up to 15s each), may repeat the list for a second local credential, and can finish
@@ -130,16 +133,15 @@ final class CopilotProvider: ProviderRuntime {
             // Credits count (issue #1094), which must survive alongside whatever the org lookup adds.
             var lines = mapped.lines
             if mapped.isOrgManagedSeat {
-                // A second local token may belong to another GitHub account. It is safe for billing
-                // only when Copilot named the seat org; otherwise `/user/orgs` must stay tied to the
-                // same credential that produced this Copilot card.
+                // A second local token may belong to another GitHub account. Membership discovery
+                // (`/user/orgs`) must stay on the credential that produced this Copilot card. When
+                // Copilot named the seat org — or explicitly named none (enterprise-direct) — a
+                // GitHub CLI token is safe for billing because it is aimed at a known billing home.
                 let billingTokens: [CopilotToken]
                 // Set when the preferred GitHub CLI credential exists but needs a manual load, so a
                 // failed billing lookup can name the real fix instead of blaming billing access.
                 var billingKeychainError: CopilotAuthError?
-                if mapped.organizationLogins.isEmpty {
-                    billingTokens = [token]
-                } else {
+                if mapped.hasNoSeatOrganization || !mapped.organizationLogins.isEmpty {
                     let candidates = await loadOffMainActor { [authStore] in
                         authStore.loadBillingTokenCandidates(
                             usageToken: token,
@@ -148,11 +150,14 @@ final class CopilotProvider: ProviderRuntime {
                     }
                     billingTokens = candidates.tokens
                     billingKeychainError = candidates.keychainError
+                } else {
+                    billingTokens = [token]
                 }
                 switch await orgBillingLookup(
                     tokens: billingTokens,
                     seatOrgLogins: mapped.organizationLogins,
-                    isEnterpriseSeat: mapped.isEnterpriseSeat
+                    isEnterpriseSeat: mapped.isEnterpriseSeat,
+                    hasNoSeatOrganization: mapped.hasNoSeatOrganization
                 ) {
                 case .usage(let usageLines):
                     lines += usageLines
@@ -175,8 +180,12 @@ final class CopilotProvider: ProviderRuntime {
                     lines += [
                         .badge(
                             label: "Organization Usage",
-                            text: "Managed by Your Organization",
-                            subtitle: "You need organization billing access to view totals."
+                            text: mapped.hasNoSeatOrganization
+                                ? "Managed by Your Enterprise"
+                                : "Managed by Your Organization",
+                            subtitle: mapped.hasNoSeatOrganization
+                                ? "You need enterprise billing access to view totals."
+                                : "You need organization billing access to view totals."
                         )
                     ]
                 case .temporarilyUnavailable:

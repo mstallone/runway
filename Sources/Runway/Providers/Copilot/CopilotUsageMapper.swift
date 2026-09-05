@@ -23,6 +23,11 @@ struct CopilotMappedUsage: Equatable, Sendable {
     /// Credits count (issue #1094) — the provider must merge that with any org-billing lines rather
     /// than replace it.
     var isOrgManagedSeat: Bool = false
+    /// True when Copilot listed seat organizations and the list was empty. That is an enterprise-direct
+    /// seat, not "we don't know": `/user/orgs` memberships must not be probed, because a 503 on an
+    /// unrelated org would fail the whole card. Omitted lists stay `false` so older payloads can still
+    /// fall back to membership discovery.
+    var hasNoSeatOrganization: Bool = false
 }
 
 /// Normalizes the `/copilot_internal/user` response into meters. Since 2026-06-01 every plan is on
@@ -47,7 +52,7 @@ enum CopilotUsageMapper {
 
     static func map(body: [String: Any]) throws -> CopilotMappedUsage {
         let plan = planLabel(body["copilot_plan"])
-        let organizationLogins = organizationLogins(body)
+        let (organizationLogins, hasNoSeatOrganization) = organizationAssociation(body)
         let isEnterpriseSeat = (body["copilot_plan"] as? String)?
             .lowercased().contains("enterprise") == true
         let resetsAt = parseResetDate(body["quota_reset_date"])
@@ -101,7 +106,8 @@ enum CopilotUsageMapper {
                     plan: plan,
                     lines: [],
                     usesFreeTierQuotas: true,
-                    organizationLogins: organizationLogins
+                    organizationLogins: organizationLogins,
+                    hasNoSeatOrganization: hasNoSeatOrganization
                 )
             }
             if ProviderParse.bool(body["token_based_billing"]) == true {
@@ -110,7 +116,8 @@ enum CopilotUsageMapper {
                     lines: personalCreditsLines(premium),
                     organizationLogins: organizationLogins,
                     isEnterpriseSeat: isEnterpriseSeat,
-                    isOrgManagedSeat: true
+                    isOrgManagedSeat: true,
+                    hasNoSeatOrganization: hasNoSeatOrganization
                 )
             }
             throw CopilotUsageError.quotaUnavailable
@@ -120,7 +127,8 @@ enum CopilotUsageMapper {
             plan: plan,
             lines: lines,
             usesFreeTierQuotas: usesFreeTierQuotas,
-            organizationLogins: organizationLogins
+            organizationLogins: organizationLogins,
+            hasNoSeatOrganization: hasNoSeatOrganization
         )
     }
 
@@ -223,14 +231,18 @@ enum CopilotUsageMapper {
         return raw.titleCased(separator: { $0 == "_" || $0 == " " || $0 == "-" }, lowercasingTail: true)
     }
 
-    private static func organizationLogins(_ body: [String: Any]) -> [String] {
-        var candidates = (body["organization_login_list"] as? [Any])?.compactMap { $0 as? String } ?? []
-        if let organizations = body["organization_list"] as? [[String: Any]] {
+    private static func organizationAssociation(_ body: [String: Any]) -> (logins: [String], hasNoSeatOrganization: Bool) {
+        let loginList = body["organization_login_list"] as? [Any]
+        let organizations = body["organization_list"] as? [[String: Any]]
+        let listsPresent = loginList != nil || organizations != nil
+
+        var candidates = loginList?.compactMap { $0 as? String } ?? []
+        if let organizations {
             candidates.append(contentsOf: organizations.compactMap { $0["login"] as? String })
         }
 
         var seen: Set<String> = []
-        return candidates.compactMap { candidate in
+        let logins = candidates.compactMap { candidate -> String? in
             guard let login = candidate.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty else {
                 return nil
             }
@@ -238,6 +250,7 @@ enum CopilotUsageMapper {
             guard seen.insert(normalized).inserted else { return nil }
             return login
         }
+        return (logins, listsPresent && logins.isEmpty)
     }
 
     /// Parse a reset timestamp. Paid tier sends an ISO-8601 datetime (`quota_reset_date`, sometimes with

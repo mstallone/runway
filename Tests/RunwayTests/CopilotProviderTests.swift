@@ -433,6 +433,24 @@ final class CopilotUsageMapperTests: XCTestCase {
         XCTAssertTrue(mapped.lines.isEmpty)
         XCTAssertEqual(mapped.organizationLogins, ["seat-org"])
         XCTAssertTrue(mapped.isOrgManagedSeat)
+        XCTAssertFalse(mapped.hasNoSeatOrganization)
+    }
+
+    func testExplicitEmptyOrganizationListsMarkEnterpriseDirectSeat() throws {
+        let body = makeBusinessPlaceholderBody(seatOrgs: [])
+        let mapped = try CopilotUsageMapper.map(body: body)
+
+        XCTAssertTrue(mapped.isOrgManagedSeat)
+        XCTAssertTrue(mapped.organizationLogins.isEmpty)
+        XCTAssertTrue(mapped.hasNoSeatOrganization)
+    }
+
+    func testOmittedOrganizationListsAreNotEnterpriseDirect() throws {
+        let mapped = try CopilotUsageMapper.map(body: makeBusinessPlaceholderBody())
+
+        XCTAssertTrue(mapped.isOrgManagedSeat)
+        XCTAssertTrue(mapped.organizationLogins.isEmpty)
+        XCTAssertFalse(mapped.hasNoSeatOrganization)
     }
 
     func testEnterpriseTokenBillingUsesOrganizationScope() throws {
@@ -1058,6 +1076,79 @@ final class CopilotProviderTests: XCTestCase {
             snapshot.applicableMetricIDs,
             ["copilot.premium", "copilot.orgCredits", "copilot.orgSpend"]
         )
+    }
+
+    func testEnterpriseDirectSeatSkipsMembershipOrgsAndKeepsPersonalCredits() async {
+        let unavailable = HTTPResponse(statusCode: 503, headers: [:], body: Data())
+        let http = routedClient([
+            (
+                "/copilot_internal/user",
+                ok(makeBusinessPlaceholderBodyWithPersonalCredits(283, seatOrgs: []))
+            ),
+            ("/user/orgs", unavailable),
+            ("/graphql", ok(makeInsufficientScopesGraphQLBody()))
+        ])
+        let provider = makeOrgProvider(http: http, defaults: freshDefaults())
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(countValue(snapshot.lines, "Credits"), 283)
+        guard case .badge(_, let text, _, _) = snapshot.line(label: "Organization Usage") else {
+            return XCTFail("expected enterprise-managed status")
+        }
+        XCTAssertEqual(text, "Managed by Your Enterprise")
+        XCTAssertFalse(snapshot.lines.contains { $0.isError })
+        XCTAssertFalse(http.requests.contains { $0.url.path == "/user/orgs" })
+        XCTAssertEqual(snapshot.applicableMetricIDs, ["copilot.premium", "copilot.orgManaged"])
+    }
+
+    func testEnterpriseDirectSeatReadsEnterpriseUsageWithoutOrganizationFilter() async {
+        let http = routedClient([
+            (
+                "/copilot_internal/user",
+                ok(makeBusinessPlaceholderBodyWithPersonalCredits(283, seatOrgs: []))
+            ),
+            ("/graphql", ok(makeViewerEnterpriseSlugsBody(["nextbyte"]))),
+            ("/enterprises/nextbyte/settings/billing/ai_credit/usage", ok(makeOrgSummaryBody()))
+        ])
+        let defaults = freshDefaults()
+        let provider = makeOrgProvider(http: http, defaults: defaults)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(countValue(snapshot.lines, "Credits"), 283)
+        XCTAssertEqual(orgCount(snapshot.lines, "Org Credits") ?? -1, 298.698546, accuracy: 0.0001)
+        XCTAssertNil(snapshot.line(label: "Organization Usage"))
+        XCTAssertEqual(defaults.string(forKey: CopilotProvider.billingEnterpriseDefaultsKey), "nextbyte")
+        XCTAssertFalse(http.requests.contains { $0.url.path == "/user/orgs" })
+        let enterpriseRequest = http.requests.first {
+            $0.url.path == "/enterprises/nextbyte/settings/billing/ai_credit/usage"
+        }
+        XCTAssertEqual(
+            URLComponents(url: try! XCTUnwrap(enterpriseRequest?.url), resolvingAgainstBaseURL: false)?
+                .queryItems,
+            [URLQueryItem(name: "product", value: "Copilot")]
+        )
+    }
+
+    func testEnterpriseDirectSeatUsesCachedEnterpriseWithoutListing() async {
+        let http = routedClient([
+            (
+                "/copilot_internal/user",
+                ok(makeBusinessPlaceholderBodyWithPersonalCredits(283, seatOrgs: []))
+            ),
+            ("/enterprises/nextbyte/settings/billing/ai_credit/usage", ok(makeOrgSummaryBody()))
+        ])
+        let defaults = freshDefaults()
+        defaults.set("nextbyte", forKey: CopilotProvider.billingEnterpriseDefaultsKey)
+        let provider = makeOrgProvider(http: http, defaults: defaults)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(orgCount(snapshot.lines, "Org Credits") ?? -1, 298.698546, accuracy: 0.0001)
+        XCTAssertFalse(http.requests.contains { $0.url.path == "/graphql" })
+        XCTAssertFalse(http.requests.contains { $0.url.path == "/user/orgs" })
+        XCTAssertEqual(defaults.string(forKey: CopilotProvider.billingEnterpriseDefaultsKey), "nextbyte")
     }
 
     func testConsolidatedEnterpriseBillingFallsBackFromOrganization404() async {
@@ -2015,8 +2106,11 @@ private func makeBusinessPlaceholderBody(seatOrgs: [String]? = nil) -> [String: 
 /// The org-managed placeholder body from upstream issue #1094: same shape as
 /// `makeBusinessPlaceholderBody`, but the premium bucket carries a real `credits_used` — the user's
 /// own per-seat consumption.
-private func makeBusinessPlaceholderBodyWithPersonalCredits(_ creditsUsed: Double) -> [String: Any] {
-    var body = makeBusinessPlaceholderBody()
+private func makeBusinessPlaceholderBodyWithPersonalCredits(
+    _ creditsUsed: Double,
+    seatOrgs: [String]? = nil
+) -> [String: Any] {
+    var body = makeBusinessPlaceholderBody(seatOrgs: seatOrgs)
     var quota = body["quota_snapshots"] as! [String: Any]
     var premium = quota["premium_interactions"] as! [String: Any]
     premium["credits_used"] = creditsUsed
@@ -2059,6 +2153,36 @@ private func makeOtherAICreditBody() -> [String: Any] {
                 "netAmount": 0.25
             ]
         ]
+    ]
+}
+
+private func makeViewerEnterpriseSlugsBody(_ slugs: [String]) -> [String: Any] {
+    [
+        "data": [
+            "viewer": [
+                "enterprises": [
+                    "nodes": slugs.map { ["slug": $0] },
+                    "pageInfo": makePageInfo(nextCursor: nil)
+                ]
+            ]
+        ]
+    ]
+}
+
+private func makeInsufficientScopesGraphQLBody() -> [String: Any] {
+    [
+        "data": [
+            "viewer": [
+                "enterprises": [
+                    "nodes": [] as [Any],
+                    "pageInfo": makePageInfo(nextCursor: nil)
+                ]
+            ]
+        ],
+        "errors": [[
+            "type": "INSUFFICIENT_SCOPES",
+            "message": "Your token has not been granted the required scopes to execute this query."
+        ]]
     ]
 }
 

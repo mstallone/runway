@@ -125,6 +125,46 @@ struct CopilotEnterpriseDiscovery: Sendable {
         return targets.isEmpty ? .noAssociation : .targets(targets, complete: true)
     }
 
+    enum SlugLookup: Sendable {
+        case slugs([String])
+        case noEnterprises
+        case managed
+        case temporarilyUnavailable
+    }
+
+    /// Enterprises visible to the token, with no organization filter. Used when Copilot assigned the
+    /// seat with an empty organization list.
+    func lookupSlugs(token: String) async -> SlugLookup {
+        let response: HTTPResponse
+        do {
+            response = try await client.fetchViewerEnterprises(after: nil, token: token)
+        } catch {
+            AppLog.warn(LogTag.plugin("copilot"), "enterprise slug discovery failed: \(error.localizedDescription)")
+            return .temporarilyUnavailable
+        }
+        guard response.statusCode == 200 else {
+            AppLog.info(
+                LogTag.plugin("copilot"),
+                "enterprise slug discovery HTTP \(response.statusCode); skipping enterprise billing lookup"
+            )
+            if response.isGitHubRateLimited || response.statusCode >= 500 {
+                return .temporarilyUnavailable
+            }
+            return .managed
+        }
+        if let failure = graphQLFailure(in: response) {
+            return failure == .accessDenied ? .managed : .temporarilyUnavailable
+        }
+        guard let slugs = CopilotOrgBillingMapper.enterpriseSlugs(response) else {
+            AppLog.warn(
+                LogTag.plugin("copilot"),
+                "enterprise slug discovery returned a malformed success response"
+            )
+            return .temporarilyUnavailable
+        }
+        return slugs.isEmpty ? .noEnterprises : .slugs(slugs)
+    }
+
     private func membershipPage(
         organization: String,
         after cursor: String?,
