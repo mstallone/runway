@@ -109,6 +109,58 @@ final class GrokCreditsConfigMapperTests: XCTestCase {
         XCTAssertEqual(colorHex, "#22c55e")
     }
 
+    func testMapsRemainingResetsAfterTheBadge() throws {
+        let now = Date(timeIntervalSince1970: 1_787_000_000)
+        let soon = now.addingTimeInterval(2 * 24 * 3600)
+        let later = now.addingTimeInterval(10 * 24 * 3600)
+        let mapped = try GrokUsageMapper.mapCreditsConfig(
+            HTTPResponse(statusCode: 200, headers: [:], body: GrokCreditsFixtures.capturedResponseBody),
+            remainingResets: GrokRemainingResetsFixtures.http(
+                GrokRemainingResetsFixtures.tokens([
+                    (id: "restok_b", grantedAt: nil, expiresAt: later),
+                    (id: "restok_a", grantedAt: nil, expiresAt: soon)
+                ])
+            ),
+            now: now
+        )
+        let labels = mapped.lines.map(\.label)
+        XCTAssertEqual(labels, ["Weekly limit", "Pay as you go", "Rate Limit Resets"])
+        guard case .values(_, let values, _, let expiries, _, _) =
+                mapped.lines.first(where: { $0.label == "Rate Limit Resets" }) else {
+            return XCTFail("expected a Rate Limit Resets values line")
+        }
+        XCTAssertEqual(values, [MetricValue(number: 2, kind: .count, label: "available")])
+        XCTAssertEqual(expiries, [soon, later])
+    }
+
+    func testKnownZeroRemainingResetsStillMapsARow() throws {
+        let mapped = try GrokUsageMapper.mapCreditsConfig(
+            HTTPResponse(statusCode: 200, headers: [:], body: GrokCreditsFixtures.capturedResponseBody),
+            remainingResets: GrokRemainingResetsFixtures.http(GrokRemainingResetsFixtures.emptySuccess())
+        )
+        guard case .values(_, let values, _, let expiries, _, _) =
+                mapped.lines.first(where: { $0.label == "Rate Limit Resets" }) else {
+            return XCTFail("expected a Rate Limit Resets values line")
+        }
+        XCTAssertEqual(values, [MetricValue(number: 0, kind: .count, label: "available")])
+        XCTAssertTrue(expiries.isEmpty)
+    }
+
+    func testUnusableRemainingResetsOmitsTheRow() throws {
+        let mapped = try GrokUsageMapper.mapCreditsConfig(
+            HTTPResponse(statusCode: 200, headers: [:], body: GrokCreditsFixtures.capturedResponseBody),
+            remainingResets: GrokRemainingResetsFixtures.http(Data("not grpc".utf8), statusCode: 200)
+        )
+        XCTAssertNil(mapped.lines.first(where: { $0.label == "Rate Limit Resets" }))
+    }
+
+    func testMissingRemainingResetsOmitsTheRow() throws {
+        let mapped = try GrokUsageMapper.mapCreditsConfig(HTTPResponse(
+            statusCode: 200, headers: [:], body: GrokCreditsFixtures.capturedResponseBody
+        ))
+        XCTAssertNil(mapped.lines.first(where: { $0.label == "Rate Limit Resets" }))
+    }
+
     func testNonWeeklyPeriodMapsToNoWeeklyLine() throws {
         // An account still on monthly-only billing has no weekly pool; the tile must read "No data"
         // rather than mislabel a monthly percent as weekly. The badge still renders.

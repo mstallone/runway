@@ -42,6 +42,11 @@ struct GrokUsageClient: Sendable {
     /// the CLI's stability guarantees, auth headers, and token-refresh path.
     static let creditsConfigURL = URL(string: "https://cli-chat-proxy.grok.com/v1/billing?format=credits")!
 
+    /// Banked usage-limit resets (count + per-token expiry). grok.com's Settings → Usage card calls
+    /// this gRPC-web RPC; the CLI billing JSON does not carry it. List-only — Runway never calls
+    /// `RedeemReset`.
+    static let remainingResetsURL = URL(string: "https://grok.com/prod_mc_billing.ConsumerUiSvc/GetRemainingResets")!
+
     var httpClient: HTTPClient
 
     init(httpClient: HTTPClient = URLSessionHTTPClient()) {
@@ -81,6 +86,18 @@ struct GrokUsageClient: Sendable {
         ))
     }
 
+    /// Lists remaining reset tokens. Empty protobuf request (uncompressed gRPC-web data frame of
+    /// length 0). Best-effort: the provider omits the row rather than failing weekly usage.
+    func fetchRemainingResets(accessToken: String) async throws -> HTTPResponse {
+        try await httpClient.send(HTTPRequest(
+            method: "POST",
+            url: Self.remainingResetsURL,
+            headers: remainingResetsHeaders(accessToken: accessToken),
+            body: GrokRemainingResetsDecoder.emptyRequest,
+            timeout: 10
+        ))
+    }
+
     func decodeRefreshResponse(_ response: HTTPResponse) -> GrokRefreshResponse? {
         try? JSONDecoder().decode(GrokRefreshResponse.self, from: response.body)
     }
@@ -90,6 +107,19 @@ struct GrokUsageClient: Sendable {
             "Authorization": "Bearer \(accessToken.trimmingCharacters(in: .whitespacesAndNewlines))",
             "X-XAI-Token-Auth": Self.tokenAuthHeader,
             "Accept": "application/json",
+            "User-Agent": "Runway"
+        ]
+    }
+
+    private func remainingResetsHeaders(accessToken: String) -> [String: String] {
+        [
+            "Authorization": "Bearer \(accessToken.trimmingCharacters(in: .whitespacesAndNewlines))",
+            "Content-Type": "application/grpc-web+proto",
+            "x-grpc-web": "1",
+            "x-user-agent": "connect-es/2.1.1",
+            "Origin": "https://grok.com",
+            "Referer": "https://grok.com/?_s=usage",
+            "Accept": "*/*",
             "User-Agent": "Runway"
         ]
     }

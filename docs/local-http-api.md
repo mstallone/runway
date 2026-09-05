@@ -111,7 +111,7 @@ For bounded progress resources, `unit` follows the provider's live metric format
 | Antigravity | `geminiSession`, `geminiWeekly`, `nonGeminiSession`, `nonGeminiWeekly` |
 | Copilot | `premiumCredits`, `extraUsage`, `orgCredits`, `orgSpend`, `chat`, `completions` |
 | Devin | `daily`, `weekly`, `extraUsageBalance` |
-| Grok | `weekly` |
+| Grok | `weekly`, `rateLimitResets` |
 | Kimi | `session`, `weekly` |
 | OpenCode | `session`, `weekly`, `monthly` |
 | OpenRouter | `credits`, `balance`, `keyLimit` |

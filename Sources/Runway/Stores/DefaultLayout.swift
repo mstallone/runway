@@ -23,7 +23,7 @@ enum DefaultLayout {
 
         "devin.daily", "devin.weekly", "devin.extra",
 
-        "grok.weekly", "grok.trend",
+        "grok.weekly", "grok.rateLimitResets", "grok.trend",
         "grok.today", "grok.yesterday", "grok.last30",
 
         "kimi.session", "kimi.weekly", "kimi.extraBalance", "kimi.extraMonthly",
@@ -111,8 +111,8 @@ enum DefaultLayout {
         // credits/spend stay above the fold; free-tier Chat + Completions sit below the caret.
         "copilot.chat", "copilot.completions",
         "devin.extra",
-        // Grok: Weekly stays above the fold; local history sits below the caret.
-        "grok.trend", "grok.today", "grok.yesterday", "grok.last30",
+        // Grok: Weekly stays above the fold; reset details and local history sit below the caret.
+        "grok.rateLimitResets", "grok.trend", "grok.today", "grok.yesterday", "grok.last30",
         // Kimi: Five-Hour Usage stays above the fold; Weekly Usage and the two Extra Usage
         // account/billing rows sit below the caret.
         "kimi.weekly", "kimi.extraBalance", "kimi.extraMonthly",
