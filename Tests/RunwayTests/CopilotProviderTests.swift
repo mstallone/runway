@@ -1152,6 +1152,29 @@ final class CopilotProviderTests: XCTestCase {
         XCTAssertNil(defaults.string(forKey: CopilotProvider.billingEnterpriseDefaultsKey))
     }
 
+    func testEnterpriseDirectSeatEmptyDoesNotMaskUnreadableEnterprise() async {
+        let forbidden = HTTPResponse(statusCode: 403, headers: [:], body: Data())
+        let http = routedClient([
+            (
+                "/copilot_internal/user",
+                ok(makeBusinessPlaceholderBodyWithPersonalCredits(283, seatOrgs: []))
+            ),
+            ("/graphql", ok(makeViewerEnterpriseSlugsBody(["other-co", "nextbyte"]))),
+            ("/enterprises/other-co/settings/billing/ai_credit/usage", ok(["usageItems": []])),
+            ("/enterprises/nextbyte/settings/billing/ai_credit/usage", forbidden)
+        ])
+        let provider = makeOrgProvider(http: http, defaults: freshDefaults())
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(countValue(snapshot.lines, "Credits"), 283)
+        XCTAssertNil(snapshot.line(label: "Org Credits"))
+        guard case .badge(_, let text, _, _) = snapshot.line(label: "Organization Usage") else {
+            return XCTFail("expected enterprise-managed status")
+        }
+        XCTAssertEqual(text, "Managed by Your Enterprise")
+    }
+
     func testEnterpriseDirectSeatCachedEmptyEnterpriseReportStaysZero() async {
         let http = routedClient([
             (

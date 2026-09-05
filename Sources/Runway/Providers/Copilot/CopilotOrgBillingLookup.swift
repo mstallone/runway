@@ -334,9 +334,10 @@ extension CopilotProvider {
                     )
                 }
             }
-            if let emptyCandidate, !sawTransientFailure {
-                // Listing viewer enterprises does not prove which one owns the seat. Treat the
-                // empty as org-only so another credential's proven association can still displace it.
+            if let emptyCandidate, !sawTransientFailure, slugs.count == 1 {
+                // Listing viewer enterprises does not prove which one owns the seat. A single
+                // readable empty is the month-start case; several candidates stay managed so an
+                // unrelated empty cannot stand in for an unreadable billing enterprise.
                 return .empty(emptyCandidate, enterpriseVerified: false)
             }
             return sawTransientFailure
