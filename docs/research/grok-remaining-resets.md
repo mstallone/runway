@@ -1,24 +1,16 @@
 # Grok Banked Usage Resets: How Listing Works
 
-Research + live list (not redeem) of Grok's "Reset Available" tokens, done 2026-08-23.
-This is the protocol reference for the shipped read-only row in
-`Sources/Runway/Providers/Grok/GrokRemainingResetsDecoder.swift`.
+Research and a live list (not redeem) of Grok's "Reset Available" tokens, done 2026-08-23. This is the protocol reference for the read-only row in `Sources/Runway/Providers/Grok/GrokRemainingResetsDecoder.swift`.
 
-Sources: grok.com Settings → Usage, the public `GetRemainingResets` / `RedeemReset`
-gRPC-web RPCs (`prod_mc_billing.ConsumerUiSvc`), plus a live **list-only** call with
-the Grok CLI OAuth token from `~/.grok/auth.json`. Runway does not call `RedeemReset`.
+Sources: grok.com Settings → Usage, the `GetRemainingResets` and `RedeemReset` gRPC-web RPCs (`prod_mc_billing.ConsumerUiSvc`), plus a live list-only call with the Grok CLI OAuth token from `~/.grok/auth.json`. Runway does not call `RedeemReset`.
 
 ## What a reset token is
 
-xAI grants SuperGrok users occasional banked usage-limit resets (the "Reset Available /
-Expires on …" card on Settings → Usage). Redeeming one immediately resets the weekly
-shared pool. Tokens expire (observed live: 30 days after grant) and drop out of the
-list once redeemed or expired. They do not stack past the list the RPC returns.
+xAI grants SuperGrok users occasional banked usage-limit resets (the "Reset Available / Expires on …" card on Settings → Usage). Redeeming one immediately resets the weekly shared pool. Tokens expire (observed live: 30 days after grant) and drop out of the list once redeemed or expired. They do not stack past the list the RPC returns.
 
 ## Endpoints
 
-Both live under `https://grok.com`. The Grok CLI's `GET /v1/billing?format=credits`
-JSON does **not** carry this list.
+Both live under `https://grok.com`. The Grok CLI's `GET /v1/billing?format=credits` JSON does not carry this list.
 
 Headers on the list call (gRPC-web empty request):
 
@@ -44,18 +36,12 @@ ConsumerResetToken
   google.protobuf.Timestamp validity_end = 30;   // expiry; field 1 = unix seconds
 ```
 
-A successful empty list is a known zero: an empty data frame plus `grpc-status: 0`.
-Redeemed/expired tokens drop out of the list. Tokens missing an id or whose
-`validity_end` is in the past are ignored, matching grok.com's own filter.
+A successful empty list is a known zero: an empty data frame plus `grpc-status: 0`. Redeemed and expired tokens drop out of the list. Tokens missing an id or whose `validity_end` is in the past are ignored, matching grok.com's own filter.
 
 ### Redeem (not implemented)
 
-`POST /prod_mc_billing.ConsumerUiSvc/RedeemReset` consumes a token. Runway never
-calls this: claiming stays on grok.com. A display-only timeline is enough to see
-how many resets remain and when they expire.
+`POST /prod_mc_billing.ConsumerUiSvc/RedeemReset` consumes a token. Runway never calls this. Claiming stays on grok.com. A display-only timeline is enough to see how many resets remain and when they expire.
 
 ## Live list (2026-08-23)
 
-The CLI OAuth bearer is accepted by grok.com for this RPC (no browser cookie, no
-WKE). One still-valid token was present; `validity_end` was 30 days after
-`granted_at`. The token was not redeemed.
+The CLI OAuth bearer is accepted by grok.com for this RPC (no browser cookie needed). One still-valid token was present. `validity_end` was 30 days after `granted_at`. The token was not redeemed.

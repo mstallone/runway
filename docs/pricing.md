@@ -1,56 +1,38 @@
 # Model Pricing
 
-How Runway turns token counts into the estimated dollars on the spend tiles (Claude, Codex,
-Cursor, Grok, and fixed-rate Sakana Fugu models). OpenRouter and OpenCode are the exceptions:
-OpenRouter's API reports billed dollars directly, and OpenCode records its own per-message cost in its
-local logs, so nothing here applies to them.
+How Runway turns token counts into the estimated dollars on the spend tiles (Claude, Codex, Cursor, Grok, and fixed-rate Sakana Fugu models). OpenRouter and OpenCode are different: OpenRouter's API reports billed dollars directly, and OpenCode records its own per-message cost in its local logs.
 
 ## Where prices come from
 
 Runway layers prices from three sources. When the same model appears in more than one, the higher layer wins:
 
-1. **Runway pricing supplement** — a small JSON file maintained in this repo and published to GitHub Pages. It covers models no public catalog carries (Cursor-native models like `auto` and `composer-*`), fast-variant multipliers, and alias rules that map provider log/CSV slugs to catalog keys.
-2. **LiteLLM** — the community-maintained `model_prices_and_context_window.json`, covering the vast majority of API-priced models.
-3. **models.dev** — a gap-filler for models LiteLLM misses (e.g. some brand-new or niche models).
+1. **Runway pricing supplement**: a small JSON file in this repo, published to GitHub Pages. It covers models no public catalog has (Cursor-native models like `auto` and `composer-*`), fast-variant multipliers, and alias rules that map provider log and CSV slugs to catalog keys.
+2. **LiteLLM**: the community-maintained `model_prices_and_context_window.json`, which covers most API-priced models.
+3. **models.dev**: a gap-filler for models LiteLLM misses.
 
-The app ships with bundled snapshots of all three, so pricing works offline and on first launch. At runtime the app refetches each source about once an hour (with ETag revalidation) and caches it in `~/Library/Application Support/Runway/pricing/`. A refresh never blocks a usage scan — scans always price against the freshest data already on hand.
+The app ships with bundled snapshots of all three, so pricing works offline and on first launch. At runtime it refetches each source about once an hour (with ETag revalidation) and caches it in `~/Library/Application Support/Runway/pricing/`. A refresh never blocks a usage scan. Scans price against the freshest data already on hand.
 
-Because the supplement is published to GitHub Pages on merge, a pricing correction reaches installed apps within about an hour — no app update needed.
+Because the supplement is published to GitHub Pages on merge, a pricing correction reaches installed apps within about an hour with no app update.
 
-Updating the app also works. The supplement carries an `updated_at` date, and the app uses whichever of the cached and bundled copies is newer, so a build shipping fresher rates applies them straight away instead of waiting on the cache to expire. That matters most offline: without it, an old cache would shadow the shipped rates for as long as the feed stayed unreachable. When the two dates are equal the cache keeps winning, so a second supplement revision on the same day must use a full ISO timestamp (`2026-08-13T14:30:00Z`) as its `updated_at` — timestamps sort after the bare date, so the later revision wins.
+Updating the app also works. The supplement carries an `updated_at` date, and the app uses whichever of the cached and bundled copies is newer, so a build with fresher rates applies them right away. When the two dates are equal the cache wins, so a second supplement revision on the same day must use a full ISO timestamp (`2026-08-13T14:30:00Z`) as its `updated_at`. Timestamps sort after the bare date, so the later revision wins.
 
-Sakana Fugu is a narrow provider-specific exception to the layered catalogs. Runway carries
-Sakana's published fixed Ultra and Cyber rates beside its log scanner because those prices include a
-provider-specific 272K-token tier and are not general model-catalog entries. Plain `fugu` remains
-unpriced because its rate depends on the underlying routed model.
+Sakana Fugu is a provider-specific exception. Runway carries Sakana's published fixed Ultra and Cyber rates beside its log scanner, because those prices include a 272K-token tier and are not general catalog entries. Plain `fugu` stays unpriced because its rate depends on the underlying routed model.
 
 ## How a model name resolves
 
-Log and CSV model names rarely match a catalog key exactly. Resolution tries these steps in order: supplement alias rules, exact key match, fast-variant handling (a `-fast` suffix resolves the base model and applies its fast multiplier), then fuzzy matching. Fuzzy matching covers provider prefixes (`anthropic/`, `xai/`, …), dated suffixes (`claude-sonnet-4` ↔ `claude-sonnet-4-20250514`), and separator differences (`grok-4-3` ↔ `grok-4.3`). Fast variants without an explicit price or model-specific multiplier stay unpriced instead of silently using the standard-speed rate. Some providers flag fast mode on the request instead of the model name (Claude logs carry a `speed` field); those requests keep the base model name and bill at the base entry's fast multiplier — whether it comes from a catalog or from the supplement's `fast_multipliers`.
+Log and CSV model names rarely match a catalog key exactly. Resolution tries these steps in order: supplement alias rules, exact key match, fast-variant handling (a `-fast` suffix resolves the base model and applies its fast multiplier), then fuzzy matching. Fuzzy matching covers provider prefixes (`anthropic/`, `xai/`), dated suffixes (`claude-sonnet-4` ↔ `claude-sonnet-4-20250514`), and separator differences (`grok-4-3` ↔ `grok-4.3`). Fast variants without an explicit price or model-specific multiplier stay unpriced instead of silently using the standard rate. Some providers flag fast mode on the request instead of the model name (Claude logs carry a `speed` field). Those requests keep the base model name and bill at the base entry's fast multiplier, from a catalog or from the supplement's `fast_multipliers`.
 
-When no source can price a model, Runway leaves it out of the spend figures entirely. Its tokens do not count toward the day's tile, the Usage Trend, or the model breakdown — a token count next to a dollar figure that ignores part of it is misleading. Instead, a warning triangle on the affected tiles lists the unpriced models, so you know the figures are incomplete and which model is responsible. A day where *nothing* could be priced reads "No data".
+When no source can price a model, Runway leaves it out of the spend figures. Its tokens do not count toward the day's tile, the Usage Trend, or the model breakdown, because a token count next to a dollar figure that ignores part of it would mislead. A warning triangle on the affected tiles lists the unpriced models. A day where nothing could be priced reads "No data".
 
 ## What the estimate includes
 
-Runway computes costs per usage event from token buckets at the model's per-million-token rates.
-This includes cache pricing, long-context tiers, and fast-variant multipliers. Most catalog tiers start
-above 200k prompt tokens; supported GPT-5.4, GPT-5.5, and GPT-5.6 Codex models switch above 272k input
-tokens. Fugu Ultra and Cyber also switch the whole request above 272k, using Sakana's published input,
-cached-input, and output rates. Codex rollouts do not preserve Sakana's separate orchestration-detail
-fields, so Fugu estimates and graph tokens can undercount orchestration; reasoning output is already
-part of output and is not added again. Runway uses a published cache discount when available; Codex cached
-input falls back to the full input rate when the source publishes no discount. Cursor's export combines
-many requests into each row, so Runway uses the normal rate there rather than guessing that one
-request crossed the limit. When a Claude log line carries an explicit `costUSD`, Runway uses that value
-as-is. Nested Claude advisor usage has no carried cost, so Runway prices it separately from its
-tokens using the advisor model. The result is an estimate of API-rate value, not a bill: subscription plans
-don't charge per token.
+Runway computes costs per usage event from token buckets at the model's per-million-token rates. This includes cache pricing, long-context tiers, and fast-variant multipliers. Most catalog tiers start above 200k prompt tokens. Supported GPT-5.4, GPT-5.5, and GPT-5.6 Codex models switch above 272k input tokens. Fugu Ultra and Cyber also switch the whole request above 272k, using Sakana's published input, cached-input, and output rates. Codex rollouts do not preserve Sakana's separate orchestration-detail fields, so Fugu estimates and graph tokens can undercount orchestration. Reasoning output is already part of output and is not added again. Runway uses a published cache discount when available. Codex cached input falls back to the full input rate when the source publishes no discount. Cursor's export combines many requests into each row, so Runway uses the normal rate there rather than guessing that one request crossed the limit. When a Claude log line carries an explicit `costUSD`, Runway uses that value as-is. Nested Claude advisor usage has no carried cost, so Runway prices it separately using the advisor model. The result is an estimate of API-rate value, not a bill. Subscription plans do not charge per token.
 
 ## Privacy
 
-The pricing refresh fetches three public price lists (from `raw.githubusercontent.com`, `models.dev`, and this repo's GitHub Pages). These requests carry no usage or log data — nothing about your usage leaves your Mac.
+The pricing refresh fetches three public price lists (from `raw.githubusercontent.com`, `models.dev`, and this repo's GitHub Pages). These requests carry no usage or log data.
 
 ## Maintainer notes
 
-- **Supplement changes** (new Cursor-native model, price correction, new alias): edit `Sources/Runway/Resources/pricing_supplement.json`, sync entries from [Cursor models & pricing](https://cursor.com/docs/models-and-pricing.md), and update `updated_at`. On merge to `main`, `.github/workflows/pricing-supplement.yml` publishes it to `update-feed`; installed apps pick it up within about an hour. The bundled copy ships with the next release for first launches. The **pricing-update skill** (`.agents/skills/pricing-update/`) walks an agent through the whole sync: pull the Cursor page, diff, edit, validate, and open a PR.
-- **Bundled snapshots** (`pricing_litellm_snapshot.json`, `pricing_models_dev_snapshot.json`): regenerate occasionally (e.g. before a release) with `script/update_pricing_snapshots.sh`. Staleness is harmless — runtime fetches override them.
+- **Supplement changes** (new Cursor-native model, price correction, new alias): edit `Sources/Runway/Resources/pricing_supplement.json`, sync entries from [Cursor models & pricing](https://cursor.com/docs/models-and-pricing.md), and update `updated_at`. On merge to `main`, `.github/workflows/pricing-supplement.yml` publishes it to `update-feed`. Installed apps pick it up within about an hour. The bundled copy ships with the next release for first launches. The pricing-update skill (`.agents/skills/pricing-update/`) walks an agent through the sync: pull the Cursor page, diff, edit, validate, and open a PR.
+- **Bundled snapshots** (`pricing_litellm_snapshot.json`, `pricing_models_dev_snapshot.json`): regenerate before a release with `script/update_pricing_snapshots.sh`. Staleness is harmless because runtime fetches override them.

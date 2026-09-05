@@ -25,7 +25,7 @@ that script as the default build/run entrypoint.
 3. Create or update `script/build_and_run.sh` so it always stops the current app, builds the macOS target, and launches the fresh result.
 4. For SwiftPM, keep raw executable launch only for true CLI tools; for AppKit/SwiftUI GUI apps, create a project-local `.app` bundle and launch it with `/usr/bin/open -n`.
 5. Support optional script flags for `--debug`, `--logs`, `--telemetry`, and `--verify`.
-6. Follow the canonical bootstrap contract in `../build-run-debug/references/build-script.md` for the exact script shape.
+6. Follow the canonical bootstrap contract in `../macos-build-run-debug/references/build-run-script.md` for the exact script shape.
 7. Run the script in the requested mode and summarize any build, script, or launch failure.
 
 ## Guardrails

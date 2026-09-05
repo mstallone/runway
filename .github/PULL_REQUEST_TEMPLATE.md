@@ -1,28 +1,26 @@
-<!-- Runway has a strict, issue-first PR policy. External pull requests are closed
-unless they link an issue a maintainer has approved with the `approved` label and
-stay under 1,000 changed lines. See CONTRIBUTING.md. Maintainers and collaborators
-can open PRs directly. -->
+<!-- External pull requests must link an issue a maintainer has approved with the
+`approved` label and stay under 1,000 changed lines. See CONTRIBUTING.md.
+Maintainers and collaborators can open PRs directly. -->
 
 ## Approved issue
 
-<!-- External PRs require an open issue approved with the `approved` label. -->
 Fixes #
 
 ## TL;DR
 
-<!-- One or two plain-English sentences: what does this PR do? -->
+<!-- One or two sentences: what does this PR do? -->
 
 ## What was happening
 
-<!-- The prior behavior, bug, or gap that motivated this change. -->
+<!-- The prior behavior, bug, or gap. -->
 
 ## What this changes
 
-<!-- What this PR actually changes. -->
+<!-- What this PR changes. -->
 
 ## Heads-up
 
-<!-- Optional: risks, follow-ups, or trade-offs a reviewer should know. Delete if none. -->
+<!-- Optional: risks, follow-ups, or trade-offs. Delete if none. -->
 
 ## Tests
 

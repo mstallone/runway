@@ -1,13 +1,13 @@
 # Trademark Policy
 
-## The Runway Brand
+## The Runway brand
 
-This fork is independently branded as Runway and uses its own name, icon, and visual identity.
+Runway is independently branded. It uses its own name, icon, and visual identity.
 
-## Upstream Brand
+## Upstream brand
 
-Runway is derived from the original OpenUsage project. The "OpenUsage" name, logo, and associated visual identity remain trademarks of Robin Ebers. The MIT license covers the upstream source code, not that upstream brand.
+Runway is derived from the OpenUsage project. The "OpenUsage" name, logo, and visual identity are trademarks of Robin Ebers. The MIT license covers the upstream source code, not the upstream brand.
 
-Runway is not endorsed by, affiliated with, or an official part of the original OpenUsage project.
+Runway is not endorsed by, affiliated with, or part of the OpenUsage project.
 
-Questions about the OpenUsage brand should be directed to [rob@robinebers.com](mailto:rob@robinebers.com).
+Questions about the OpenUsage brand go to [rob@robinebers.com](mailto:rob@robinebers.com).

@@ -8,13 +8,13 @@ Tracks your Devin quota using the login from the Devin CLI or the Devin app.
 |---|---|
 | Weekly | Weekly quota used (falls back to the daily figure when Devin reports no weekly quota) |
 | Daily | Daily quota used (hidden when Devin hides the daily quota) |
-| Extra Balance | Overage/extra-usage balance in dollars |
+| Extra Balance | Overage or extra-usage balance in dollars |
 
 When Devin reports your plan name, Runway shows it beside the provider name.
 
 ## Where credentials come from
 
-Checked in this order — whichever works first wins:
+Checked in this order. The first that works wins:
 
 1. Devin CLI credentials: `~/.local/share/devin/credentials.toml` (uses `windsurf_api_key`, and `api_server_url` when present)
 2. The Devin app's local state database
@@ -23,9 +23,9 @@ If the CLI credentials fail but the app is signed in with a different account, R
 
 ## Troubleshooting
 
-- **"Not logged in"** — run `devin auth login`, or sign into the Devin app, then refresh.
-- **Weekly shows the daily figure** — when Devin reports no separate weekly quota, the daily quota is shown in the Weekly row so it stays meaningful.
+- **"Not logged in"**: run `devin auth login`, or sign into the Devin app, then refresh.
+- **Weekly shows the daily figure**: when Devin reports no separate weekly quota, the daily quota is shown in the Weekly row.
 
 ## Under the hood
 
-Connect RPC `GetUserStatus` on the configured API server (default `server.codeium.com`). Quota percentages arrive as "remaining" and are flipped to "used". No token refresh — a 401/403 switches to the next auth source instead.
+Connect RPC `GetUserStatus` on the configured API server (default `server.codeium.com`). Quota percentages arrive as remaining and are flipped to used. No token refresh. A 401/403 switches to the next auth source.
