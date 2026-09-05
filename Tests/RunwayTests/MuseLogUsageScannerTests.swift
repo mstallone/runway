@@ -141,7 +141,6 @@ final class MuseLogUsageScannerTests: XCTestCase {
         try writeSession(root: root, sessionID: "session-a", subagent: "sub-1", lines: child)
 
         let scanner = MuseLogUsageScanner(
-            files: LocalTextFileAccessor(),
             environment: FakeEnvironment(["XDG_DATA_HOME": root.path]),
             homeDirectory: { URL(fileURLWithPath: "/home/ignored") },
             incrementalScanner: IncrementalJSONLScanner<MuseLogUsageScanner.Entry>()
@@ -154,9 +153,26 @@ final class MuseLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(usage.series.daily.first?.costUSD ?? 0, 3.75, accuracy: 0.0001)
     }
 
+    func testEmptySessionsDirectoryIsNotAFootprint() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("runway-muse-empty-sessions-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("muse/sessions", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+
+        let scanner = MuseLogUsageScanner(
+            environment: FakeEnvironment(["XDG_DATA_HOME": root.path]),
+            homeDirectory: { URL(fileURLWithPath: "/home/ignored") },
+            incrementalScanner: IncrementalJSONLScanner<MuseLogUsageScanner.Entry>()
+        )
+
+        XCTAssertFalse(scanner.hasSessionFootprint())
+    }
+
     func testScanReturnsNilWhenSessionsAreMissing() async {
         let scanner = MuseLogUsageScanner(
-            files: FakeFiles(),
             environment: FakeEnvironment(["XDG_DATA_HOME": "/tmp/runway-muse-missing"]),
             homeDirectory: { URL(fileURLWithPath: "/home/none") },
             incrementalScanner: IncrementalJSONLScanner<MuseLogUsageScanner.Entry>()

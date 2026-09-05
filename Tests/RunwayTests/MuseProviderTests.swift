@@ -632,7 +632,6 @@ private func makeMuseProvider(
         ),
         usageClient: MuseUsageClient(http: http),
         logUsageScanner: logUsageScanner ?? MuseLogUsageScanner(
-            files: FakeFiles(),
             environment: FakeEnvironment(["XDG_DATA_HOME": "/tmp/runway-muse-empty"]),
             homeDirectory: { URL(fileURLWithPath: "/home/none") },
             incrementalScanner: IncrementalJSONLScanner<MuseLogUsageScanner.Entry>()
@@ -659,7 +658,6 @@ private func museLogScanner(tokens: Int) throws -> MuseLogUsageScanner {
     try (line + "\n").write(to: file, atomically: true, encoding: .utf8)
     try FileManager.default.setAttributes([.modificationDate: museNow], ofItemAtPath: file.path)
     return MuseLogUsageScanner(
-        files: LocalTextFileAccessor(),
         environment: FakeEnvironment(["XDG_DATA_HOME": root.path]),
         homeDirectory: { URL(fileURLWithPath: "/home/ignored") },
         incrementalScanner: IncrementalJSONLScanner<MuseLogUsageScanner.Entry>()

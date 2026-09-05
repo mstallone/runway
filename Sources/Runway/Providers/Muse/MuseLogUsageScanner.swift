@@ -11,7 +11,6 @@ import Foundation
 /// convention Muse records: `input_tokens` includes cache reads/writes, and `output_tokens`
 /// already includes reasoning. `goal_usage_attribution` repeats the same totals and is ignored.
 struct MuseLogUsageScanner: Sendable {
-    var files: TextFileAccessing
     var environment: EnvironmentReading
     var homeDirectory: @Sendable () -> URL
     private let sessionScanner: IncrementalJSONLScanner<Entry>
@@ -22,12 +21,10 @@ struct MuseLogUsageScanner: Sendable {
     )
 
     init(
-        files: TextFileAccessing = LocalTextFileAccessor(),
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
         incrementalScanner: IncrementalJSONLScanner<Entry>? = nil
     ) {
-        self.files = files
         self.environment = environment
         self.homeDirectory = homeDirectory
         self.sessionScanner = incrementalScanner ?? Self.sharedSessionScanner
@@ -37,10 +34,12 @@ struct MuseLogUsageScanner: Sendable {
         await sharedSessionScanner.flushPendingWrites()
     }
 
-    /// Cheap local footprint probe used by provider auto-enablement. Directory presence only —
-    /// session contents are parsed only during refresh.
+    /// Cheap local footprint probe used by provider auto-enablement. A sessions directory with no
+    /// `session.jsonl` files is not a login — `scan()` would have nothing to read.
     func hasSessionFootprint() -> Bool {
-        files.exists(sessionsDirectory.path)
+        JSONLScanning.jsonlFiles(under: sessionsDirectory).contains { file in
+            URL(fileURLWithPath: file.path).lastPathComponent == "session.jsonl"
+        }
     }
 
     func scan(daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing) async -> LogUsageScan? {
