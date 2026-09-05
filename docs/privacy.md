@@ -25,7 +25,7 @@ Release builds also check the signed update feed. See [Updates](updates.md).
 
 ## Local usage cache
 
-To avoid re-reading unchanged Claude, Codex, and pi logs after every relaunch, Runway keeps parsed usage events in `~/Library/Application Support/Runway/log-scan-cache/`. These records hold the usage metadata needed for local totals, including any per-event cost a provider recorded, but not raw JSONL lines or conversation text.
+To avoid re-reading unchanged Claude, Codex, Muse, and pi logs after every relaunch, Runway keeps parsed usage events in `~/Library/Application Support/Runway/log-scan-cache/`. These records hold the usage metadata needed for local totals, including any per-event cost a provider recorded, but not raw JSONL lines or conversation text.
 
 The cache is private to your macOS account and is never sent to a provider or iCloud. Runway drops old source-file records as the scan window advances and removes identity caches unused for 35 days. Pricing runs after the cache is read, so computed totals are not stored in it.
 

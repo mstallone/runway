@@ -1,7 +1,7 @@
 import Foundation
 
 /// Per-million-token USD rates for one model, plus optional long-context tiers and a fast-variant
-/// multiplier. All spend imputation (Claude, Codex, Cursor, Grok) prices through these.
+/// multiplier. All spend imputation (Claude, Codex, Cursor, Grok, Muse) prices through these.
 struct ModelRates: Sendable, Equatable {
     var inputPerMillion: Double
     var outputPerMillion: Double

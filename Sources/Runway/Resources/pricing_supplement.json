@@ -1,6 +1,6 @@
 {
-  "$comment": "Runway pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Published to update-feed by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries; https://developers.openai.com/api/docs/models/daybreak-blue-latest and https://developers.openai.com/api/docs/pricing for Daybreak aliases and rates.",
-  "updated_at": "2026-09-04T17:30:00Z",
+  "$comment": "Runway pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Muse Spark rates come from Meta's Model API pricing page. Published to update-feed by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries; https://developers.openai.com/api/docs/models/daybreak-blue-latest and https://developers.openai.com/api/docs/pricing for Daybreak aliases and rates; https://dev.meta.ai/docs/pricing-rate-limits for Muse Spark.",
+  "updated_at": "2026-09-05",
   "pricing": {
     "auto": {
       "input_per_million": 1.25,
@@ -157,6 +157,20 @@
       "cache_write_per_million": 12.5,
       "cache_read_per_million": 1.0,
       "output_per_million": 50.0
+    },
+    "muse-spark-1.3": {
+      "$comment": "Meta Model API Standard tier (dev.meta.ai/docs/pricing-rate-limits). Muse Spark 1.1, 1.2, and 1.3 share these rates. Cache write is unpublished, so it bills at the input rate. There is no long-context premium.",
+      "input_per_million": 1.25,
+      "cache_write_per_million": 1.25,
+      "cache_read_per_million": 0.15,
+      "output_per_million": 4.25
+    },
+    "muse-spark-1.3-contributor": {
+      "$comment": "Meta Model API Contributor tier. Prompts and completions may be used to train Meta models. Muse Spark 1.2-contributor shares these rates.",
+      "input_per_million": 0.10,
+      "cache_write_per_million": 0.10,
+      "cache_read_per_million": 0.002,
+      "output_per_million": 0.20
     }
   },
   "fast_multipliers": {
@@ -294,6 +308,11 @@
     { "pattern": "(?i)^Gemini 3\\.8 Flash \\(Auto[^)]*\\)$", "canonical": "gemini-3.8-flash" },
     { "pattern": "(?i)^GLM 5\\.2 \\(Auto[^)]*\\)$", "canonical": "glm-5.2" },
     { "pattern": "(?i)^GLM 5\\.3 \\(Auto[^)]*\\)$", "canonical": "glm-5.3" },
-    { "pattern": "(?i)^Kimi K3 \\(Auto[^)]*\\)$", "canonical": "moonshot/kimi-k3" }
+    { "pattern": "(?i)^Kimi K3 \\(Auto[^)]*\\)$", "canonical": "moonshot/kimi-k3" },
+    { "pattern": "^(?:meta/)?muse-spark-1\\.3-contributor(?:-(?:none|minimal|low|medium|high|xhigh|max|ultra))?$", "canonical": "muse-spark-1.3-contributor" },
+    { "pattern": "^(?:meta/)?muse-spark-1\\.2-contributor(?:-(?:none|minimal|low|medium|high|xhigh|max|ultra))?$", "canonical": "muse-spark-1.3-contributor" },
+    { "pattern": "^(?:meta/)?muse-spark-1\\.3(?:-(?:none|minimal|low|medium|high|xhigh|max|ultra))?$", "canonical": "muse-spark-1.3" },
+    { "pattern": "^(?:meta/)?muse-spark-1\\.2(?:-(?:none|minimal|low|medium|high|xhigh|max|ultra))?$", "canonical": "muse-spark-1.3" },
+    { "pattern": "^(?:meta/)?muse-spark-1\\.1(?:-(?:none|minimal|low|medium|high|xhigh|max|ultra))?$", "canonical": "muse-spark-1.3" }
   ]
 }
