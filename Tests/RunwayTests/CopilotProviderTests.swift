@@ -1095,13 +1095,13 @@ final class CopilotProviderTests: XCTestCase {
     }
 
     func testEnterpriseDirectSeatKeepsPersonalCreditsWhenEnterpriseListingIsDenied() async {
-        let unavailable = HTTPResponse(statusCode: 503, headers: [:], body: Data())
+        let forbidden = HTTPResponse(statusCode: 403, headers: [:], body: Data())
         let http = routedClient([
             (
                 "/copilot_internal/user",
                 ok(makeBusinessPlaceholderBodyWithPersonalCredits(283, seatOrgs: []))
             ),
-            ("/user/orgs", unavailable),
+            ("/user/orgs", forbidden),
             ("/graphql", ok(makeInsufficientScopesGraphQLBody()))
         ])
         let provider = makeOrgProvider(http: http, defaults: freshDefaults())
@@ -1117,6 +1117,48 @@ final class CopilotProviderTests: XCTestCase {
         XCTAssertTrue(http.requests.contains { $0.url.path == "/user/orgs" })
         XCTAssertFalse(http.requests.contains { $0.url.path.contains("/organizations/") })
         XCTAssertEqual(snapshot.applicableMetricIDs, ["copilot.premium", "copilot.orgManaged"])
+    }
+
+    func testEnterpriseDirectMembershipOrgListOutageFailsRefreshInsteadOfReplacingData() async {
+        let unavailable = HTTPResponse(statusCode: 503, headers: [:], body: Data())
+        let http = routedClient([
+            (
+                "/copilot_internal/user",
+                ok(makeBusinessPlaceholderBodyWithPersonalCredits(283, seatOrgs: []))
+            ),
+            ("/user/orgs", unavailable),
+            ("/graphql", ok(makeInsufficientScopesGraphQLBody()))
+        ])
+        let provider = makeOrgProvider(http: http, defaults: freshDefaults())
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertNil(snapshot.line(label: "Organization Usage"))
+        XCTAssertNil(snapshot.line(label: "Org Credits"))
+        XCTAssertFalse(http.requests.contains { $0.url.path.contains("/organizations/") })
+    }
+
+    func testEnterpriseDirectMembershipUsageOutageFailsRefreshInsteadOfReplacingData() async {
+        let unavailable = HTTPResponse(statusCode: 503, headers: [:], body: Data())
+        let http = routedClient([
+            (
+                "/copilot_internal/user",
+                ok(makeBusinessPlaceholderBodyWithPersonalCredits(283, seatOrgs: []))
+            ),
+            ("/graphql", ok(makeInsufficientScopesGraphQLBody())),
+            ("/user/orgs", okJSON([["login": "nextbyte-ai"]])),
+            ("/enterprises/nextbyte-ai/settings/billing/ai_credit/usage", unavailable),
+            ("/enterprises/nextbyte/settings/billing/ai_credit/usage", unavailable)
+        ])
+        let provider = makeOrgProvider(http: http, defaults: freshDefaults())
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertNil(snapshot.line(label: "Organization Usage"))
+        XCTAssertNil(snapshot.line(label: "Org Credits"))
+        XCTAssertFalse(http.requests.contains { $0.url.path.contains("/organizations/") })
     }
 
     func testEnterpriseDirectSeatReadsEnterpriseUsageFromMembershipOrgSlug() async {

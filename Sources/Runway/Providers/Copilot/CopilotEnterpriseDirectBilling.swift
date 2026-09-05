@@ -52,6 +52,9 @@ extension CopilotProvider {
                     LogTag.plugin("copilot"),
                     "org list HTTP \(response.statusCode); skipping membership-derived enterprise billing"
                 )
+                if response.isGitHubRateLimited || response.statusCode >= 500 {
+                    return .temporarilyUnavailable
+                }
                 return .managed(provenEnterpriseAssociation: false)
             }
             orgs = CopilotOrgBillingMapper.orgLogins(response)
@@ -60,7 +63,7 @@ extension CopilotProvider {
                 LogTag.plugin("copilot"),
                 "org list fetch failed during enterprise-direct discovery: \(error.localizedDescription)"
             )
-            return .managed(provenEnterpriseAssociation: false)
+            return .temporarilyUnavailable
         }
 
         let slugs = CopilotOrgBillingMapper.candidateEnterpriseSlugs(fromOrgLogins: orgs)
@@ -115,11 +118,8 @@ extension CopilotProvider {
         if let emptyCandidate, !sawTransientFailure, acceptEmpty {
             return .empty(emptyCandidate, enterpriseVerified: false)
         }
-        // Guessed slugs must not turn a membership 503 into a failed card. GraphQL-listed
-        // enterprises still surface a transient outage so last-good totals can stay on screen.
-        if sawTransientFailure, emptyAcceptance == .singleListedSlug {
-            return .temporarilyUnavailable
-        }
-        return .managed(provenEnterpriseAssociation: false)
+        return sawTransientFailure
+            ? .temporarilyUnavailable
+            : .managed(provenEnterpriseAssociation: false)
     }
 }
