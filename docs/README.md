@@ -33,6 +33,7 @@ What each provider tracks, where its credentials come from, and what to do when 
 - [Devin](providers/devin.md)
 - [Grok](providers/grok.md)
 - [Kimi](providers/kimi.md)
+- [Muse](providers/muse.md)
 - [OpenCode](providers/opencode.md)
 - [OpenRouter](providers/openrouter.md)
 - [Sakana Fugu](providers/sakana.md)

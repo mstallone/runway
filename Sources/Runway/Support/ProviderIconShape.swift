@@ -107,6 +107,7 @@ enum ProviderMarks {
         case "cursor": return "cube"
         case "grok": return "bolt.fill"
         case "kimi": return "moon.stars"
+        case "muse": return "sparkles"
         case "opencode": return "chevron.left.forwardslash.chevron.right"
         case "openrouter": return "point.3.connected.trianglepath.dotted"
         case "sakana": return "fish.fill"
