@@ -13,11 +13,15 @@
 - Keep Codex Auto-Review Visible and Price Grok Proxy Logs ([#111](https://github.com/mstallone/runway/pull/111)) by @mstallone
 - Fix Grok CLI token usage estimates ([#110](https://github.com/mstallone/runway/pull/110)) by @mstallone
 
+### Chores
+- Bump Sparkle From 2.9.5 to 2.9.6 ([#117](https://github.com/mstallone/runway/pull/117)) by @mstallone
+
 ---
 
 ### Changelog
 **Full Changelog**: [v0.8.11...v0.8.12](https://github.com/mstallone/runway/compare/v0.8.11...v0.8.12)
 
+- [2984190](https://github.com/mstallone/runway/commit/2984190484f44e7ad701b6f8b67c1ff9f2a29206) Bump Sparkle From 2.9.5 to 2.9.6 (#117) by @mstallone
 - [c8b64cb](https://github.com/mstallone/runway/commit/c8b64cb86d4808c1d86f143202b4786a1ef0655d) Show Kimi Membership Plan Beside the Provider (#116) by @mstallone
 - [ded5224](https://github.com/mstallone/runway/commit/ded5224698f389361e52e52b6968dc74de654719) Show Cursor Grok Bot Weekly Allowance (#115) by @mstallone
 - [d05f615](https://github.com/mstallone/runway/commit/d05f61567d3a663209f4cdf0ea7950c56f9d115d) Port Upstream Accuracy and Pricing Fixes (#113) by @mstallone
