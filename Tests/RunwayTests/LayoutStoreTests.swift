@@ -655,7 +655,7 @@ final class LayoutStoreTests: XCTestCase {
         ])
         // Cursor's spend tiles + usage trend are enabled, so they trail the live meters in declaration order.
         XCTAssertEqual(store.orderedSupportedMetrics(for: "cursor").map(\.id), [
-            "cursor.usage", "cursor.auto", "cursor.api", "cursor.onDemand", "cursor.requests",
+            "cursor.usage", "cursor.auto", "cursor.api", "cursor.grokBot", "cursor.onDemand", "cursor.requests",
             "cursor.credits", "cursor.trend", "cursor.today", "cursor.yesterday", "cursor.last30"
         ])
     }
@@ -679,7 +679,7 @@ final class LayoutStoreTests: XCTestCase {
             "devin.daily", "devin.weekly", "devin.extra",
             "grok.weekly", "grok.rateLimitResets", "grok.trend", "grok.today", "grok.yesterday", "grok.last30",
             // Cursor spend tiles + usage trend are enabled, joining its live meters in the default layout.
-            "cursor.usage", "cursor.auto", "cursor.api", "cursor.trend",
+            "cursor.usage", "cursor.auto", "cursor.api", "cursor.grokBot", "cursor.trend",
             "cursor.onDemand", "cursor.today", "cursor.yesterday", "cursor.last30",
             "sakana.session", "sakana.weekly", "sakana.trend",
             "sakana.today", "sakana.yesterday", "sakana.last30"
@@ -720,7 +720,7 @@ final class LayoutStoreTests: XCTestCase {
         // today/yesterday/last30 rows sit below the caret alongside the other secondary metrics.
         XCTAssertEqual(primaryByProvider["cursor"], ["cursor.usage", "cursor.auto", "cursor.api", "cursor.trend"])
         XCTAssertEqual(expandedByProvider["cursor"], [
-            "cursor.onDemand", "cursor.today", "cursor.yesterday", "cursor.last30"
+            "cursor.grokBot", "cursor.onDemand", "cursor.today", "cursor.yesterday", "cursor.last30"
         ])
         XCTAssertEqual(primaryByProvider["sakana"], ["sakana.session", "sakana.weekly"])
         XCTAssertEqual(expandedByProvider["sakana"], [

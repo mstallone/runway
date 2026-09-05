@@ -37,6 +37,48 @@ final class CursorUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "On-demand")?.used, 40)
     }
 
+    func testMapsGrokBotWeeklyUsageAndItsOwnResetWindow() throws {
+        let line = try XCTUnwrap(CursorUsageMapper.mapGrokBotUsage([
+            "usagePercent": 37.5,
+            "currentPeriodStart": "2026-08-20T00:00:00Z",
+            "nextResetTimestampUtc": "2026-08-27T00:00:00Z",
+            "hasNonZeroIncludedLimit": true
+        ]))
+
+        let usage = try XCTUnwrap(progress([line], "Grok Bot usage"))
+        XCTAssertEqual(usage.used, 37.5)
+        XCTAssertEqual(usage.limit, 100)
+        XCTAssertEqual(usage.resetsAt, RunwayISO8601.date(from: "2026-08-27T00:00:00Z"))
+        XCTAssertEqual(usage.periodDurationMs, MetricPeriod.weekMs)
+    }
+
+    func testGrokBotUsageAllowsZeroAndClampsOverages() throws {
+        let zero = try XCTUnwrap(CursorUsageMapper.mapGrokBotUsage(["usagePercent": 0]))
+        let overage = try XCTUnwrap(CursorUsageMapper.mapGrokBotUsage(["usagePercent": 125]))
+
+        XCTAssertEqual(progress([zero], "Grok Bot usage")?.used, 0)
+        XCTAssertEqual(progress([zero], "Grok Bot usage")?.periodDurationMs, MetricPeriod.weekMs)
+        XCTAssertEqual(progress([overage], "Grok Bot usage")?.used, 100)
+    }
+
+    func testGrokBotUsageRejectsPooledAndInvalidPersonalMeters() {
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage([
+            "usagePercent": 42,
+            "usesPooledEnterpriseAllowance": true
+        ]))
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage([
+            "usagePercent": 0,
+            "hasNonZeroIncludedLimit": false
+        ]))
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage([
+            "usagePercent": 0,
+            "includedLimitZero": true
+        ]))
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage(["usagePercent": true]))
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage(["usagePercent": -1]))
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage(["hasNonZeroIncludedLimit": true]))
+    }
+
     func testBoundedOnDemandDoesNotLetZeroSpendMaskPositiveUsage() throws {
         let mapped = try CursorUsageMapper.mapUsage(
             usage: [
@@ -157,6 +199,17 @@ final class CursorUsageMapperTests: XCTestCase {
 
 @MainActor
 final class CursorProviderTests: XCTestCase {
+    func testGrokBotDescriptorIsEnabledOnDemandAndUnpinned() {
+        let grokBot = CursorProvider().widgetDescriptors.first { $0.id == "cursor.grokBot" }
+        XCTAssertEqual(grokBot?.sample.title, "Grok Bot")
+        XCTAssertEqual(grokBot?.metricLabel, "Grok Bot usage")
+        XCTAssertEqual(grokBot?.limitResources.map(\.key), ["grokBot"])
+        XCTAssertTrue(DefaultLayout.metricIDs.contains("cursor.grokBot"))
+        XCTAssertTrue(DefaultLayout.expandedMetricIDs.contains("cursor.grokBot"))
+        XCTAssertFalse(DefaultLayout.pinnedMetricIDs.contains("cursor.grokBot"))
+        XCTAssertFalse(DefaultLayout.migrationBaselineMetricIDs.contains("cursor.grokBot"))
+    }
+
     func testRefreshFetchesLiveCursorUsage() async {
         let accessToken = makeCursorJWT(sub: "google-oauth2|user_abc123")
         let http = RoutingHTTPClient { request in
@@ -183,6 +236,19 @@ final class CursorProviderTests: XCTestCase {
             if url.contains("GetPlanInfo") {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"pro plan"}}"#.utf8))
             }
+            if url.contains("GetSandUsageStatus") {
+                XCTAssertEqual(request.method, "POST")
+                XCTAssertEqual(request.headers["Authorization"], "Bearer \(accessToken)")
+                XCTAssertEqual(request.headers["Connect-Protocol-Version"], "1")
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
+                {
+                  "usagePercent": 37.5,
+                  "currentPeriodStart": "2026-08-20T00:00:00Z",
+                  "nextResetTimestampUtc": "2026-08-27T00:00:00Z",
+                  "hasNonZeroIncludedLimit": true
+                }
+                """.utf8))
+            }
             if url.contains("GetCreditGrantsBalance") {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"hasCreditGrants":false}"#.utf8))
             }
@@ -206,6 +272,11 @@ final class CursorProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.plan, "Pro Plan")
         XCTAssertEqual(dollarValue(snapshot.lines, "Credits") ?? -1, 500)
         XCTAssertEqual(progress(snapshot.lines, "Total usage")?.used, 20)
+        XCTAssertEqual(progress(snapshot.lines, "Grok Bot usage")?.used, 37.5)
+        XCTAssertEqual(
+            progress(snapshot.lines, "Grok Bot usage")?.resetsAt,
+            RunwayISO8601.date(from: "2026-08-27T00:00:00Z")
+        )
         XCTAssertEqual(progress(snapshot.lines, "Cursor models")?.used, 12.5)
         XCTAssertEqual(progress(snapshot.lines, "Other models")?.used, 7.5)
         XCTAssertEqual(progress(snapshot.lines, "On-demand")?.used, 40)

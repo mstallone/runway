@@ -11,9 +11,12 @@ Tracks your Cursor plan usage using the login from the Cursor app.
 | Requests | Optional copy of the included request count vs. cap for custom layouts |
 | Cursor Models | Cursor-native model usage percent (Grok, Composer) |
 | Other Models | Third-party model usage percent |
+| Grok Bot | Grok Bot weekly usage percent and reset countdown; enabled by default, below the caret |
 | Extra Usage | On-demand spend; user-scoped when available, otherwise the team aggregate; shown as a meter when Cursor returns a limit |
 
 When Cursor reports your plan name, Runway shows it beside the provider name.
+
+Grok Bot has its own weekly allowance, separate from Cursor's billing-cycle meter. It uses the existing Cursor login — signing into the Grok CLI is not required. Accounts without a personal included allowance (including pooled enterprise seats) hide the meter.
 
 ## Where credentials come from
 
@@ -32,8 +35,8 @@ Today, Yesterday, Last 30 Days, and Usage Trend come from Cursor's usage export.
 
 - **"Not logged in" / token errors** — open Cursor and make sure you're signed in, then refresh.
 - **Some metrics missing** — Cursor omits fields depending on plan type; missing metrics simply show "No data".
-- **Optional lookup failed** — plan, credit-grant, prepaid-balance, and request-fallback failures stay nonfatal when primary usage is available. Runway records fixed, credential-free reasons in the diagnostic log.
+- **Optional lookup failed** — plan, credit-grant, prepaid-balance, Grok Bot, and request-fallback failures stay nonfatal when primary usage is available. Runway records fixed, credential-free reasons in the diagnostic log.
 
 ## Under the hood
 
-Connect RPC on `api2.cursor.sh` (dashboard usage), combined REST fallback at `cursor.com/api/usage` and `cursor.com/api/usage-summary` for Enterprise/team accounts, Stripe balance at `cursor.com/api/auth/stripe`, and the usage-events CSV export at `cursor.com/api/dashboard/export-usage-events-csv`. The fallback combines the included request allowance with structured percentages and user-scoped on-demand spend; neither REST response is treated as the whole account snapshot by itself. All requests are read-only against the stored token — a 401/403 shows the renewal notice instead of refreshing and retrying; optional endpoint failures stay nonfatal when the other fallback response is usable and are recorded in the diagnostic log. Per-day spend imputation uses exported token counts priced through the shared [model pricing](../pricing.md); Cursor-native models (`auto`, `composer-*`, …) come from its supplement layer, which maintainers sync from [Cursor models & pricing](https://cursor.com/docs/models-and-pricing.md).
+Connect RPC on `api2.cursor.sh` (dashboard usage and `DashboardService/GetSandUsageStatus` for Grok Bot), combined REST fallback at `cursor.com/api/usage` and `cursor.com/api/usage-summary` for Enterprise/team accounts, Stripe balance at `cursor.com/api/auth/stripe`, and the usage-events CSV export at `cursor.com/api/dashboard/export-usage-events-csv`. The fallback combines the included request allowance with structured percentages and user-scoped on-demand spend; neither REST response is treated as the whole account snapshot by itself. All requests are read-only against the stored token — a 401/403 shows the renewal notice instead of refreshing and retrying; optional endpoint failures stay nonfatal when the other fallback response is usable and are recorded in the diagnostic log. Per-day spend imputation uses exported token counts priced through the shared [model pricing](../pricing.md); Cursor-native models (`auto`, `composer-*`, …) come from its supplement layer, which maintainers sync from [Cursor models & pricing](https://cursor.com/docs/models-and-pricing.md).
