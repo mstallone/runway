@@ -28,17 +28,13 @@ enum GrokRemainingResetsDecoder {
 
     static func decode(_ response: HTTPResponse, now: Date = Date()) -> GrokRemainingResets? {
         guard (200..<300).contains(response.statusCode) else { return nil }
-        if let headerStatus = grpcStatus(inHTTPHeaders: response.headers), headerStatus != 0 {
-            return nil
-        }
+        if grpcStatusFailed(inHTTPHeaders: response.headers) { return nil }
         return decodeBody(response.body, now: now)
     }
 
     static func decodeBody(_ data: Data, now: Date) -> GrokRemainingResets? {
         guard let split = grpcWebSplit(data) else { return nil }
-        if let trailerStatus = grpcStatus(inTrailers: split.trailers), trailerStatus != 0 {
-            return nil
-        }
+        if grpcStatusFailed(inTrailers: split.trailers) { return nil }
         guard !split.frames.isEmpty else { return nil }
 
         var expiries: [Date] = []
@@ -102,14 +98,16 @@ enum GrokRemainingResetsDecoder {
         return nil
     }
 
-    private static func grpcStatus(inHTTPHeaders headers: [String: String]) -> Int? {
+    /// Present `grpc-status` that isn't exactly 0 (including a garbled value) is unusable.
+    /// Missing is fine — the status may live in trailers or HTTP headers instead.
+    private static func grpcStatusFailed(inHTTPHeaders headers: [String: String]) -> Bool {
         guard let raw = headers.first(where: { $0.key.lowercased() == "grpc-status" })?.value else {
-            return nil
+            return false
         }
-        return Int(raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        return !isSuccessfulGrpcStatus(raw)
     }
 
-    private static func grpcStatus(inTrailers trailers: [Data]) -> Int? {
+    private static func grpcStatusFailed(inTrailers trailers: [Data]) -> Bool {
         for trailer in trailers {
             guard let text = String(data: trailer, encoding: .utf8) else { continue }
             for line in text.split(whereSeparator: { $0 == "\r" || $0 == "\n" }) {
@@ -117,10 +115,14 @@ enum GrokRemainingResetsDecoder {
                 guard parts.count == 2, parts[0].trimmingCharacters(in: .whitespaces).lowercased() == "grpc-status" else {
                     continue
                 }
-                return Int(parts[1].trimmingCharacters(in: .whitespaces))
+                return !isSuccessfulGrpcStatus(String(parts[1]))
             }
         }
-        return nil
+        return false
+    }
+
+    private static func isSuccessfulGrpcStatus(_ raw: String) -> Bool {
+        Int(raw.trimmingCharacters(in: .whitespacesAndNewlines)) == 0
     }
 
     private struct GrpcWebSplit {

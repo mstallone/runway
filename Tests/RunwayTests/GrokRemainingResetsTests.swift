@@ -18,6 +18,10 @@ final class GrokRemainingResetsDecoderTests: XCTestCase {
         XCTAssertNil(GrokRemainingResetsDecoder.decodeBody(
             GrokRemainingResetsFixtures.grpcTrailer(16), now: now
         ))
+        XCTAssertNil(GrokRemainingResetsDecoder.decodeBody(
+            GrokRemainingResetsFixtures.grpcFrame(flags: 0x80, payload: Data("grpc-status: nope\r\n".utf8)),
+            now: now
+        ))
     }
 
     func testUnframedOrUnmatchedBodiesAreNotZero() {
@@ -123,6 +127,13 @@ final class GrokRemainingResetsDecoderTests: XCTestCase {
             GrokRemainingResetsFixtures.http(
                 GrokRemainingResetsFixtures.emptySuccess(),
                 headers: ["GRPC-Status": "12"]
+            ),
+            now: now
+        ))
+        XCTAssertNil(GrokRemainingResetsDecoder.decode(
+            GrokRemainingResetsFixtures.http(
+                GrokRemainingResetsFixtures.emptySuccess(),
+                headers: ["grpc-status": "not-a-number"]
             ),
             now: now
         ))
