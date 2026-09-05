@@ -36,6 +36,20 @@ final class GrokProvider: ProviderRuntime {
             .percent(id: "grok.weekly", provider: provider, title: "Weekly", metricLabel: "Weekly limit")
                 .exportingLimit("weekly", unit: "percent"),
             .badge(id: "grok.payAsYouGo", provider: provider, title: "Extra Usage", metricLabel: "Pay as you go"),
+            .values(
+                id: "grok.rateLimitResets",
+                provider: provider,
+                title: "Rate Limit Resets",
+                metricLabel: "Rate Limit Resets",
+                traySuffix: "resets",
+                showsResetExpiries: true
+            )
+                .exportingLimit(
+                    "rateLimitResets",
+                    kind: .balance,
+                    unit: "resets",
+                    source: .value(kind: .count, label: "available")
+                ),
             .usageTrend(provider: provider)
                 .exportingHistory(
                     scope: .machineLocal,
@@ -89,7 +103,13 @@ final class GrokProvider: ProviderRuntime {
         // `?format=credits` — the call the Grok CLI itself makes. This is the provider's primary
         // remote fetch; a failure here fails the provider like any other usage call.
         let creditsResponse = try await fetchCreditsConfigWithRetry(accessToken: accessToken, state: &state)
-        var mapped = try GrokUsageMapper.mapCreditsConfig(creditsResponse)
+        // Token may have rotated during the credits retry; use the live one for the extra RPC.
+        let remainingResets = await fetchRemainingResetsBestEffort(accessToken: state.token)
+        var mapped = try GrokUsageMapper.mapCreditsConfig(
+            creditsResponse,
+            remainingResets: remainingResets,
+            now: now()
+        )
 
         let plan = await fetchPlanName(accessToken: state.token)
 
@@ -203,6 +223,19 @@ final class GrokProvider: ProviderRuntime {
             return tokenExpiry
         }
         return now().addingTimeInterval(60 * 60)
+    }
+
+    /// Banked reset tokens (count + expiry). Supplementary to the weekly meter: a network error,
+    /// timeout, or unusable payload just yields `nil` and the mapper omits the row. Logged, not
+    /// thrown — the user still gets Weekly / Extra Usage even if grok.com's resets RPC is down.
+    /// List-only: this never calls `RedeemReset`.
+    private func fetchRemainingResetsBestEffort(accessToken: String) async -> HTTPResponse? {
+        do {
+            return try await usageClient.fetchRemainingResets(accessToken: accessToken)
+        } catch {
+            AppLog.warn(LogTag.plugin("grok"), "remaining-resets fetch failed; omitting the row: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     private func fetchPlanName(accessToken: String) async -> String? {

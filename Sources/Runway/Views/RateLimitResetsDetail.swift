@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Hover detail for the Codex rate-limit-resets row: a vertical timeline of each still-available reset
+/// Hover detail for a rate-limit-resets row: a vertical timeline of each still-available reset
 /// credit, one node per credit, ordered soonest-expiry first. Each node is a single line — a numbered,
 /// severity-colored dot (the number IS the reset number; blue > 7 days, yellow within a week, red
 /// within 48 hours — the same `expirySeverity` bands as the row's status dot), the exact expiry time,
@@ -11,10 +11,11 @@ import SwiftUI
 ///
 /// When a `claim` closure is supplied (the Codex resets row), each node also becomes claimable: hovering
 /// a node reveals a "Use" affordance, clicking it expands that node in place into an inline confirm, and
-/// confirming runs the claim and shows the outcome. `claim` is `nil` for any non-claimable row, which
-/// renders exactly the read-only timeline. Each credit's claim carries an idempotency key (a UUID minted
-/// the first time that credit enters confirm and reused for any retry), so a retried claim can never
-/// double-spend — the server answers `already_redeemed`, which counts as success.
+/// confirming runs the claim and shows the outcome. `claim` is `nil` for any non-claimable row (Grok,
+/// previews, share-card renders), which renders exactly the read-only timeline. Each credit's claim
+/// carries an idempotency key (a UUID minted the first time that credit enters confirm and reused for
+/// any retry), so a retried claim can never double-spend — the server answers `already_redeemed`,
+/// which counts as success.
 struct RateLimitResetsDetail: View {
     /// The row's "N available" count. Only used to disambiguate an empty `expiries` list: 0 → genuinely
     /// no credits (empty state); > 0 → credits we have but whose expiry times weren't fetched.
