@@ -10,7 +10,7 @@ struct ShellEnvironmentSnapshot: Codable, Equatable, Sendable {
     /// Identity-relevant, non-secret configuration variables. Secrets (API keys, tokens) must never
     /// be added here — the snapshot lives in UserDefaults as plain text.
     static let capturedKeys = [
-        "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME",
+        "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME", "MUSE_AUTH_PATH",
         "KIMI_CODE_HOME", "KIMI_CODE_BASE_URL",
         "KIMI_CODE_OAUTH_HOST", "KIMI_OAUTH_HOST",
         "USER_TYPE", "USE_LOCAL_OAUTH", "USE_STAGING_OAUTH",

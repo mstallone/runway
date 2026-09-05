@@ -281,7 +281,7 @@ final class SakanaProviderTests: XCTestCase {
 
         XCTAssertEqual(ids, [
             "claude", "codex", "cursor",
-            "antigravity", "copilot", "devin", "grok", "kimi",
+            "antigravity", "copilot", "devin", "grok", "kimi", "muse",
             "opencode", "openrouter", "sakana", "zai"
         ])
     }

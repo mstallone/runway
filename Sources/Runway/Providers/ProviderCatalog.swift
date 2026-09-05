@@ -54,6 +54,7 @@ enum ProviderCatalog {
             DevinProvider(),
             GrokProvider(),
             KimiProvider(),
+            MuseProvider(),
             OpenCodeProvider(),
             OpenRouterProvider(),
             SakanaProvider(),

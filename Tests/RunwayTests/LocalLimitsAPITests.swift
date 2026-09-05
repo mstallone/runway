@@ -263,6 +263,7 @@ final class LocalLimitsAPITests: XCTestCase {
             "devin": ["daily", "weekly", "extraUsageBalance"],
             "grok": ["weekly", "rateLimitResets"],
             "kimi": ["session", "weekly"],
+            "muse": ["session", "weekly"],
             "opencode": ["session", "weekly", "monthly"],
             "openrouter": ["credits", "balance", "keyLimit"],
             "sakana": ["session", "weekly"],
