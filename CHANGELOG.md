@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.8.14
+
+### Bug Fixes
+- Honor Muse Mint Error Envelopes and Back Off on 429 ([#126](https://github.com/mstallone/runway/pull/126)) by @mstallone
+- Keep Copilot Working for Enterprise-Direct Seats ([#125](https://github.com/mstallone/runway/pull/125)) by @mstallone
+
+---
+
+### Changelog
+**Full Changelog**: [v0.8.13...v0.8.14](https://github.com/mstallone/runway/compare/v0.8.13...v0.8.14)
+
+- [9a52d21](https://github.com/mstallone/runway/commit/9a52d2158b3733c0f1b680f394576db8fa5d1687) Honor Muse Mint Error Envelopes and Back Off on 429 (#126) by @mstallone
+- [026c2a1](https://github.com/mstallone/runway/commit/026c2a1d7cc9e0032eec4c1865ad971cc026eaf8) Keep Copilot Working for Enterprise-Direct Seats (#125) by @mstallone
+
 ## v0.8.13
 
 ### Bug Fixes
