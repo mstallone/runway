@@ -19,7 +19,7 @@ final class MuseProvider: ProviderRuntime {
     /// `/muse-code/key` mints a Model API key. Polling it every refresh cycle trips Meta's rate
     /// limit and can fail Muse Code's own `credential.refresh`. On 429, serve last-good meters and
     /// skip the network until this cooldown ends.
-    private var lastGood: (usage: MuseMappedUsage, refreshedAt: Date)?
+    private var lastGood: (usage: MuseMappedUsage, refreshedAt: Date, accessToken: String)?
     private var rateLimitedUntil: Date?
     static let rateLimitCooldown: TimeInterval = 15 * 60
 
@@ -67,6 +67,10 @@ final class MuseProvider: ProviderRuntime {
 
         switch load {
         case .token(let auth):
+            if lastGood?.accessToken != auth.accessToken {
+                lastGood = nil
+                rateLimitedUntil = nil
+            }
             if let until = rateLimitedUntil, now() < until {
                 AppLog.info(LogTag.auth("muse"), "mint endpoint cooldown; skipping network")
                 return rateLimitedSnapshot(retryAfterSeconds: Int(ceil(until.timeIntervalSince(now()))))
@@ -124,7 +128,7 @@ final class MuseProvider: ProviderRuntime {
             }
             let mapped = try MuseUsageMapper.map(response.body)
             let refreshedAt = now()
-            lastGood = (mapped, refreshedAt)
+            lastGood = (mapped, refreshedAt, auth.accessToken)
             rateLimitedUntil = nil
             return ProviderSnapshot.make(
                 provider: provider,

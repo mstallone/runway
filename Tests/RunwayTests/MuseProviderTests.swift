@@ -370,6 +370,38 @@ final class MuseProviderTests: XCTestCase {
         XCTAssertEqual(http.requests.count, 2)
     }
 
+    func testRateLimitDoesNotServeLastGoodAfterTokenChange() async {
+        let probe = MuseRefreshProbe()
+        let keychain = museAccountKeychain(token: "first")
+        let http = RoutingHTTPClient { _ in
+            if probe.remainingSuccesses > 0 {
+                probe.remainingSuccesses -= 1
+                return museJSONResponse(museKeyJSON())
+            }
+            return museJSONResponse(museGatewayJSON(status: 429))
+        }
+        let provider = makeMuseProvider(http: http, keychain: keychain, now: { probe.now })
+
+        _ = await provider.refresh()
+        probe.now = museNow.addingTimeInterval(1)
+        _ = await provider.refresh()
+        XCTAssertEqual(http.requests.count, 2)
+
+        probe.remainingSuccesses = 1
+        keychain.accountValues[
+            AccountKeychain.key(
+                service: MuseAuthStore.keychainService,
+                account: MuseAuthStore.keychainAccount
+            )
+        ] = museKeychainJSON("second")
+        probe.now = museNow.addingTimeInterval(2)
+        let switched = await provider.refresh()
+
+        XCTAssertEqual(switched.plan, "Power Usage")
+        XCTAssertNil(switched.warning)
+        XCTAssertEqual(http.requests.count, 3)
+    }
+
     func testInactivePlanBecomesNoSubscription() async {
         let http = RoutingHTTPClient { _ in museJSONResponse(museKeyJSON(isActive: false)) }
         let provider = makeMuseProvider(http: http)
