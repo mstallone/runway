@@ -1131,6 +1131,79 @@ final class CopilotProviderTests: XCTestCase {
         )
     }
 
+    func testEnterpriseDirectSeatEmptyEnterpriseReportShowsZeroUsage() async {
+        let http = routedClient([
+            (
+                "/copilot_internal/user",
+                ok(makeBusinessPlaceholderBodyWithPersonalCredits(283, seatOrgs: []))
+            ),
+            ("/graphql", ok(makeViewerEnterpriseSlugsBody(["nextbyte"]))),
+            ("/enterprises/nextbyte/settings/billing/ai_credit/usage", ok(["usageItems": []]))
+        ])
+        let defaults = freshDefaults()
+        let provider = makeOrgProvider(http: http, defaults: defaults)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(countValue(snapshot.lines, "Credits"), 283)
+        XCTAssertEqual(orgCount(snapshot.lines, "Org Credits"), 0)
+        XCTAssertEqual(orgDollars(snapshot.lines, "Org Spend"), 0)
+        XCTAssertNil(snapshot.line(label: "Organization Usage"))
+        XCTAssertNil(defaults.string(forKey: CopilotProvider.billingEnterpriseDefaultsKey))
+    }
+
+    func testEnterpriseDirectSeatCachedEmptyEnterpriseReportStaysZero() async {
+        let http = routedClient([
+            (
+                "/copilot_internal/user",
+                ok(makeBusinessPlaceholderBodyWithPersonalCredits(283, seatOrgs: []))
+            ),
+            ("/enterprises/nextbyte/settings/billing/ai_credit/usage", ok(["usageItems": []]))
+        ])
+        let defaults = freshDefaults()
+        defaults.set("nextbyte", forKey: CopilotProvider.billingEnterpriseDefaultsKey)
+        let provider = makeOrgProvider(http: http, defaults: defaults)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(orgCount(snapshot.lines, "Org Credits"), 0)
+        XCTAssertEqual(orgDollars(snapshot.lines, "Org Spend"), 0)
+        XCTAssertNil(snapshot.line(label: "Organization Usage"))
+        XCTAssertFalse(http.requests.contains { $0.url.path == "/graphql" })
+        XCTAssertEqual(defaults.string(forKey: CopilotProvider.billingEnterpriseDefaultsKey), "nextbyte")
+    }
+
+    func testEnterpriseDirectEmptyReportSurvivesSecondCredentialWithoutEnterpriseScope() async {
+        let http = RoutingHTTPClient { request in
+            switch request.url.path {
+            case "/copilot_internal/user":
+                return ok(makeBusinessPlaceholderBodyWithPersonalCredits(283, seatOrgs: []))
+            case "/graphql":
+                return request.headers["Authorization"] == "token gho_billing"
+                    ? ok(makeViewerEnterpriseSlugsBody(["nextbyte"]))
+                    : ok(makeInsufficientScopesGraphQLBody())
+            case "/enterprises/nextbyte/settings/billing/ai_credit/usage":
+                return request.headers["Authorization"] == "token gho_billing"
+                    ? ok(["usageItems": []])
+                    : HTTPResponse(statusCode: 403, headers: [:], body: Data())
+            default:
+                return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            }
+        }
+        let provider = CopilotProvider(
+            authStore: editorAndGhTokenStore(),
+            usageClient: CopilotUsageClient(http: http),
+            orgBillingClient: CopilotOrgBillingClient(http: http),
+            defaults: freshDefaults()
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(countValue(snapshot.lines, "Credits"), 283)
+        XCTAssertEqual(orgCount(snapshot.lines, "Org Credits"), 0)
+        XCTAssertNil(snapshot.line(label: "Organization Usage"))
+    }
+
     func testEnterpriseDirectSeatUsesCachedEnterpriseWithoutListing() async {
         let http = routedClient([
             (

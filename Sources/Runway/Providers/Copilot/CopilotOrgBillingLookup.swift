@@ -296,6 +296,8 @@ extension CopilotProvider {
                 case .usage(let lines):
                     return .usage(lines)
                 case .empty(let lines):
+                    // This slug was cached after it reported Copilot usage, so its own zero is the
+                    // owning enterprise's report — the same verified empty the org-managed path uses.
                     return .empty(lines, enterpriseVerified: true)
                 case .forbidden, .inaccessible, .notFound:
                     defaults.removeObject(forKey: Self.billingEnterpriseDefaultsKey)
@@ -333,13 +335,15 @@ extension CopilotProvider {
                 }
             }
             if let emptyCandidate, !sawTransientFailure {
-                return .empty(emptyCandidate, enterpriseVerified: true)
+                // Listing viewer enterprises does not prove which one owns the seat. Treat the
+                // empty as org-only so another credential's proven association can still displace it.
+                return .empty(emptyCandidate, enterpriseVerified: false)
             }
             return sawTransientFailure
                 ? .temporarilyUnavailable
-                : .managed(provenEnterpriseAssociation: true)
+                : .managed(provenEnterpriseAssociation: false)
         case .noEnterprises, .managed:
-            return .managed(provenEnterpriseAssociation: true)
+            return .managed(provenEnterpriseAssociation: false)
         case .temporarilyUnavailable:
             return .temporarilyUnavailable
         }
