@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.8.13
+
+### Bug Fixes
+- Show Muse Weekly Above the Fold With the Meta Mark ([#122](https://github.com/mstallone/runway/pull/122)) by @mstallone
+- Attribute OpenCode Codex OAuth Usage to the Codex Card ([#118](https://github.com/mstallone/runway/pull/118)) by @mstallone
+- Insert New Metrics at Their Default Position ([#120](https://github.com/mstallone/runway/pull/120)) by @mstallone
+
+### Chores
+- Simplify All Documentation and Deduplicate Agent Skills ([#121](https://github.com/mstallone/runway/pull/121)) by @mstallone
+
+---
+
+### Changelog
+**Full Changelog**: [v0.8.12...v0.8.13](https://github.com/mstallone/runway/compare/v0.8.12...v0.8.13)
+
+- [bad4f58](https://github.com/mstallone/runway/commit/bad4f586c2982210b76d59f352aca20273bbe003) Simplify All Documentation and Deduplicate Agent Skills (#121) by @mstallone
+- [b4cccc8](https://github.com/mstallone/runway/commit/b4cccc869da6b3c303d7ee4948e21dff04cd0b69) Show Muse Weekly Above the Fold With the Meta Mark (#122) by @mstallone
+- [b9a2133](https://github.com/mstallone/runway/commit/b9a21339d3804cff0d238ec8c4e1cfe610118057) Attribute OpenCode Codex OAuth Usage to the Codex Card (#118) by @mstallone
+- [7384e5d](https://github.com/mstallone/runway/commit/7384e5d2b16c0df0e851ce958f62261d6cb2141b) Insert New Metrics at Their Default Position (#120) by @mstallone
+
 ## v0.8.12
 
 ### New Features
