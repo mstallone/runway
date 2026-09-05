@@ -2,6 +2,9 @@ import Foundation
 
 struct MuseUsageClient: Sendable {
     static let keyURL = URL(string: "https://api.meta.ai/muse-code/key")!
+    /// Muse Code's mint client labels itself with Meta's surface header. The same header is required
+    /// for `/muse-code/key`; `tbh:tui` is the CLI's value for this call.
+    static let clientSurface = "tbh:tui"
 
     var http: any HTTPClient
 
@@ -9,8 +12,9 @@ struct MuseUsageClient: Sendable {
         self.http = http
     }
 
-    /// Muse Code subscription meters. The JSON also snapshots an API key; callers must not persist
-    /// that field — Runway reads `subs_usage` only.
+    /// Muse Code subscription meters, returned as a side effect of minting a Model API key. Callers
+    /// must not persist that key — Runway reads `subs_usage` only. This is not a poll-safe usage
+    /// endpoint; the provider backs off when Meta rate-limits it.
     func fetchKey(accessToken: String) async throws -> HTTPResponse {
         do {
             return try await http.send(HTTPRequest(
@@ -21,7 +25,8 @@ struct MuseUsageClient: Sendable {
                     "Accept": "application/json",
                     "Content-Type": "application/json",
                     "User-Agent": "Runway",
-                    "x-api-version": "1.0.0"
+                    "x-api-version": "1.0.0",
+                    "x-client-id": Self.clientSurface
                 ],
                 body: Data("{}".utf8),
                 timeout: 8

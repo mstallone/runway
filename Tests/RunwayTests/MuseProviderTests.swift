@@ -211,6 +211,27 @@ final class MuseUsageMapperTests: XCTestCase {
         }
     }
 
+    func testGatewayErrorEnvelopeIsRequestFailedNotInvalidResponse() {
+        XCTAssertThrowsError(try MuseUsageMapper.map(Data(museGatewayJSON(status: 429).utf8))) { error in
+            XCTAssertEqual(error as? MuseUsageError, .requestFailed(429))
+        }
+        XCTAssertEqual(
+            MuseUsageMapper.effectiveStatus(of: museJSONResponse(museGatewayJSON(status: 429))),
+            429
+        )
+        XCTAssertEqual(
+            MuseUsageMapper.effectiveStatus(of: museJSONResponse(museGatewayJSON(status: 401))),
+            401
+        )
+    }
+
+    func testWrappedDataPayloadStillMaps() throws {
+        let wrapped = #"{"data":\#(museKeyJSON())}"#
+        let mapped = try MuseUsageMapper.map(Data(wrapped.utf8))
+        XCTAssertEqual(mapped.plan, "Power Usage")
+        XCTAssertEqual(mapped.lines.map(\.label), ["Five-Hour Usage", "Weekly Usage"])
+    }
+
     func testDisplayPlanStripsMuseCodePrefix() {
         XCTAssertEqual(MuseUsageMapper.displayPlan("Muse Code Power Usage"), "Power Usage")
         XCTAssertEqual(MuseUsageMapper.displayPlan("High Usage"), "High Usage")
@@ -231,6 +252,7 @@ final class MuseProviderTests: XCTestCase {
             XCTAssertEqual(request.headers["Content-Type"], "application/json")
             XCTAssertEqual(request.headers["User-Agent"], "Runway")
             XCTAssertEqual(request.headers["x-api-version"], "1.0.0")
+            XCTAssertEqual(request.headers["x-client-id"], MuseUsageClient.clientSurface)
             XCTAssertEqual(String(decoding: request.body ?? Data(), as: UTF8.self), "{}")
             return museJSONResponse(museKeyJSON())
         }
@@ -259,6 +281,69 @@ final class MuseProviderTests: XCTestCase {
             } ?? nil,
             MuseAuthError.sessionExpired.errorDescription
         )
+    }
+
+    func testHTTP200AuthEnvelopeBecomesSessionExpired() async {
+        let http = RoutingHTTPClient { _ in museJSONResponse(museGatewayJSON(status: 401)) }
+        let provider = makeMuseProvider(http: http)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(museErrorText(snapshot), MuseAuthError.sessionExpired.errorDescription)
+        XCTAssertEqual(http.requests.count, 1)
+    }
+
+    func testRotatedAccessTokenIsRetriedOnce() async {
+        let keychain = museAccountKeychain(token: "first")
+        let http = RoutingHTTPClient { request in
+            XCTAssertEqual(request.headers["x-client-id"], MuseUsageClient.clientSurface)
+            if request.headers["Authorization"] == "Bearer first" {
+                keychain.accountValues[
+                    AccountKeychain.key(
+                        service: MuseAuthStore.keychainService,
+                        account: MuseAuthStore.keychainAccount
+                    )
+                ] = museKeychainJSON("second")
+                return museJSONResponse(museGatewayJSON(status: 401))
+            }
+            XCTAssertEqual(request.headers["Authorization"], "Bearer second")
+            return museJSONResponse(museKeyJSON())
+        }
+        let provider = makeMuseProvider(http: http, keychain: keychain)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(snapshot.plan, "Power Usage")
+        XCTAssertEqual(http.requests.count, 2)
+    }
+
+    func testRateLimitServesLastGoodAndSkipsLaterMint() async {
+        let probe = MuseRefreshProbe()
+        let http = RoutingHTTPClient { _ in
+            if probe.remainingSuccesses > 0 {
+                probe.remainingSuccesses -= 1
+                return museJSONResponse(museKeyJSON())
+            }
+            return museJSONResponse(museGatewayJSON(status: 429))
+        }
+        let provider = makeMuseProvider(http: http, now: { probe.now })
+
+        let fresh = await provider.refresh()
+        XCTAssertEqual(fresh.plan, "Power Usage")
+        XCTAssertNil(fresh.warning)
+
+        probe.now = museNow.addingTimeInterval(1)
+        let limited = await provider.refresh()
+        XCTAssertEqual(limited.plan, "Power Usage")
+        XCTAssertEqual(limited.lines.map(\.label), fresh.lines.map(\.label))
+        XCTAssertEqual(limited.warningAction, .wait)
+        XCTAssertTrue(limited.warning?.contains("manual refreshes will make it worse") == true)
+        XCTAssertEqual(http.requests.count, 2)
+
+        probe.now = museNow.addingTimeInterval(60)
+        let skipped = await provider.refresh()
+        XCTAssertEqual(skipped.warningAction, .wait)
+        XCTAssertEqual(http.requests.count, 2, "cooldown must not mint again")
     }
 
     func testInactivePlanBecomesNoSubscription() async {
@@ -378,7 +463,8 @@ final class MuseLayoutTests: XCTestCase {
 private func makeMuseProvider(
     http: RoutingHTTPClient,
     keychain: KeychainReading = museAccountKeychain(),
-    files: FakeFiles = FakeFiles()
+    files: FakeFiles = FakeFiles(),
+    now: @escaping @Sendable () -> Date = { museNow }
 ) -> MuseProvider {
     MuseProvider(
         authStore: MuseAuthStore(
@@ -387,7 +473,7 @@ private func makeMuseProvider(
             environment: FakeEnvironment()
         ),
         usageClient: MuseUsageClient(http: http),
-        now: { museNow }
+        now: now
     )
 }
 
@@ -439,6 +525,12 @@ private func museJSONResponse(_ body: String, status: Int = 200) -> HTTPResponse
     HTTPResponse(statusCode: status, headers: [:], body: Data(body.utf8))
 }
 
+private func museGatewayJSON(status: Int, title: String = "Too Many Requests") -> String {
+    #"""
+    {"title":"\#(title)","detail":"Wait a bit and try again.","status":\#(status)}
+    """#
+}
+
 private struct MuseProgressFields {
     var used: Double
     var limit: Double
@@ -469,4 +561,9 @@ private func museErrorText(_ snapshot: ProviderSnapshot) -> String? {
         }
         return text
     }.first
+}
+
+private final class MuseRefreshProbe: @unchecked Sendable {
+    var now = museNow
+    var remainingSuccesses = 1
 }
