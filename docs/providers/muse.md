@@ -9,7 +9,7 @@ Tracks Muse Code subscription quota using the Meta account login from the offici
 | Five-Hour Usage | Usage percentage in the rolling five-hour prompt window |
 | Weekly Usage | Usage percentage in the weekly quota window |
 
-When Muse reports a subscription tier (Everyday Usage, High Usage, or Power Usage), Runway shows it beside the provider name. A pay-as-you-go `META_API_KEY` is not a subscription login and is not used.
+When Muse reports a subscription tier (Everyday Usage, High Usage, or Power Usage), Runway shows it beside the provider name. A pay-as-you-go `META_API_KEY` is not a subscription login and is not used. Both meters start always visible, with both starred in the menu bar.
 
 ## Where credentials come from
 

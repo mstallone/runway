@@ -71,6 +71,7 @@ enum DefaultLayout {
         "codex.weekly",
         "cursor.auto", "cursor.api",
         "copilot.premium",
+        "muse.session", "muse.weekly",
         "openrouter.credits",
         "zai.session", "zai.weekly"
     ]
@@ -107,19 +108,21 @@ enum DefaultLayout {
         "claude.trend", "claude.today", "claude.yesterday", "claude.last30",
         // Codex: Weekly stays above the fold; reset details and local history sit below the caret.
         "codex.rateLimitResets", "codex.trend", "codex.today", "codex.yesterday", "codex.last30",
+        // Cursor: Total / Cursor Models / Other Models stay above the fold; Grok Bot sits above
+        // Extra Usage in the On Demand section, then spend tiles.
         "cursor.grokBot", "cursor.onDemand", "cursor.requests", "cursor.credits",
         "cursor.today", "cursor.yesterday", "cursor.last30",
         // Copilot adapts its visible rows to the account: personal Credits/Extra Usage or org-wide
         // credits/spend stay above the fold; free-tier Chat + Completions sit below the caret.
         "copilot.chat", "copilot.completions",
         "devin.extra",
-        // Grok: Weekly stays above the fold; reset details and local history sit below the caret.
+        // Grok: Weekly stays above the fold; Rate Limit Resets sit above Usage Trend and the
+        // spend tiles below the caret, matching Codex.
         "grok.rateLimitResets", "grok.trend", "grok.today", "grok.yesterday", "grok.last30",
         // Kimi: Five-Hour Usage stays above the fold; Weekly Usage and the two Extra Usage
         // account/billing rows sit below the caret.
         "kimi.weekly", "kimi.extraBalance", "kimi.extraMonthly",
-        // Muse: Five-Hour Usage stays above the fold; Weekly Usage sits below the caret.
-        "muse.weekly",
+        // Muse: Five-Hour Usage and Weekly Usage both stay above the fold; there is no On Demand row.
         // OpenCode: the three Go caps (Session/Weekly/Monthly) and Usage Trend stay above the fold —
         // matching every other provider — with the spend tiles (Today/Yesterday/Last 30 Days) below.
         "opencode.today", "opencode.yesterday", "opencode.last30",

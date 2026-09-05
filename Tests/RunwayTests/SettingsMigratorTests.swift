@@ -263,14 +263,87 @@ final class SettingsMigratorTests: XCTestCase {
 
         let result = SettingsMigrator.migrate(defaults: defaults, domainName: domain)
 
-        XCTAssertEqual(result, 4)
+        XCTAssertEqual(result, SettingsSchema.current)
         XCTAssertNil(defaults.persistentDomain(forName: telemetryDomain))
         XCTAssertEqual(defaults.string(forKey: "openusage.layout.v1"), "custom")
 
         // The cleanup is safe to retry after an interrupted launch.
         defaults.set(3, forKey: SettingsMigrator.schemaVersionKey)
-        XCTAssertEqual(SettingsMigrator.migrate(defaults: defaults, domainName: domain), 4)
+        XCTAssertEqual(SettingsMigrator.migrate(defaults: defaults, domainName: domain), SettingsSchema.current)
         XCTAssertNil(defaults.persistentDomain(forName: telemetryDomain))
+    }
+
+    func testV5MovesGrokBotAboveExtraUsageAndGrokResetsAboveUsageStats() throws {
+        let (defaults, domain) = makeDefaults("V5MetricOrder")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(4, forKey: SettingsMigrator.schemaVersionKey)
+        let key = "runway.layout.v1.metricOrderByProvider"
+        let saved: [String: [String]] = [
+            "cursor": [
+                "cursor.usage", "cursor.auto", "cursor.api", "cursor.onDemand",
+                "cursor.trend", "cursor.today", "cursor.yesterday", "cursor.last30",
+                "cursor.grokBot"
+            ],
+            "grok": [
+                "grok.weekly", "grok.payAsYouGo", "grok.trend",
+                "grok.today", "grok.yesterday", "grok.last30",
+                "grok.rateLimitResets"
+            ],
+            "codex": [
+                "codex.weekly", "codex.rateLimitResets", "codex.trend",
+                "codex.today", "codex.yesterday", "codex.last30"
+            ]
+        ]
+        defaults.set(try JSONEncoder().encode(saved), forKey: key)
+
+        XCTAssertEqual(SettingsMigrator.migrate(defaults: defaults, domainName: domain), SettingsSchema.current)
+
+        let migrated = try JSONDecoder().decode(
+            [String: [String]].self,
+            from: try XCTUnwrap(defaults.data(forKey: key))
+        )
+        XCTAssertEqual(migrated["cursor"], [
+            "cursor.usage", "cursor.auto", "cursor.api", "cursor.grokBot", "cursor.onDemand",
+            "cursor.trend", "cursor.today", "cursor.yesterday", "cursor.last30"
+        ])
+        XCTAssertEqual(migrated["grok"], [
+            "grok.weekly", "grok.payAsYouGo", "grok.rateLimitResets", "grok.trend",
+            "grok.today", "grok.yesterday", "grok.last30"
+        ])
+        XCTAssertEqual(migrated["codex"], saved["codex"], "unrelated providers stay untouched")
+    }
+
+    func testV6PromotesMuseWeeklyAndStarsBothMeters() {
+        let (defaults, domain) = makeDefaults("V6MuseLayout")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(5, forKey: SettingsMigrator.schemaVersionKey)
+        defaults.set(
+            ["muse.weekly", "claude.trend", "cursor.onDemand"],
+            forKey: "runway.layout.v1.expandedMetrics"
+        )
+        defaults.set(
+            ["muse.weekly", "cursor.requests"],
+            forKey: "runway.layout.v1.expandOnEnable"
+        )
+        defaults.set(
+            ["claude.session", "cursor.auto"],
+            forKey: "runway.layout.v1.menuBarPins"
+        )
+
+        XCTAssertEqual(SettingsMigrator.migrate(defaults: defaults, domainName: domain), SettingsSchema.current)
+
+        XCTAssertEqual(
+            defaults.stringArray(forKey: "runway.layout.v1.expandedMetrics"),
+            ["claude.trend", "cursor.onDemand"]
+        )
+        XCTAssertEqual(
+            defaults.stringArray(forKey: "runway.layout.v1.expandOnEnable"),
+            ["cursor.requests"]
+        )
+        XCTAssertEqual(
+            defaults.stringArray(forKey: "runway.layout.v1.menuBarPins"),
+            ["claude.session", "cursor.auto", "muse.session", "muse.weekly"]
+        )
     }
 
     /// A legacy install with no disabled providers (the all-on default) converts to all-on.

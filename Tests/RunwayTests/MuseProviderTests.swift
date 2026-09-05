@@ -366,11 +366,11 @@ final class MuseLayoutTests: XCTestCase {
         )
 
         XCTAssertEqual(store.placed.map(\.descriptorID), ["muse.session", "muse.weekly"])
-        XCTAssertTrue(store.pinnedMetricIDs.isEmpty)
+        XCTAssertEqual(Set(store.pinnedMetricIDs), ["muse.session", "muse.weekly"])
 
         let group = store.customizeGroups.first { $0.provider.id == "muse" }
-        XCTAssertEqual(group?.alwaysShownMetrics.map(\.id), ["muse.session"])
-        XCTAssertEqual(group?.expandedMetrics.map(\.id), ["muse.weekly"])
+        XCTAssertEqual(group?.alwaysShownMetrics.map(\.id), ["muse.session", "muse.weekly"])
+        XCTAssertEqual(group?.expandedMetrics.map(\.id) ?? [], [])
     }
 }
 

@@ -147,6 +147,18 @@ enum CodexLogFixture {
         )
     }
 
+    /// An OpenCode Codex scanner that never reads the machine's real `auth.json` or databases.
+    static func inactiveOpenCodeScanner() -> OpenCodeCodexUsageScanner {
+        OpenCodeCodexUsageScanner(
+            authStore: OpenCodeAuthStore(
+                files: FakeFiles(),
+                environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/unused-opencode"]),
+                homeDirectory: { URL(fileURLWithPath: "/unused") }
+            ),
+            databasePaths: { [] }
+        )
+    }
+
     /// A `turn_context` line carrying the session's active model.
     static func turnContext(timestamp: String, model: String) -> String {
         jsonLine([
