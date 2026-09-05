@@ -562,6 +562,22 @@ final class CopilotOrgBillingMapperTests: XCTestCase {
         XCTAssertEqual(CopilotOrgBillingMapper.orgLogins(response), [])
     }
 
+    func testCandidateEnterpriseSlugsUseOrgLoginAndHyphenPrefix() {
+        XCTAssertEqual(
+            CopilotOrgBillingMapper.candidateEnterpriseSlugs(
+                fromOrgLogins: ["MIC-DevOps", "nextbyte-ai", "TryNextByte", "AI-at-MIT"]
+            ),
+            ["mic-devops", "mic", "nextbyte-ai", "nextbyte", "trynextbyte", "ai-at-mit", "ai-at"]
+        )
+    }
+
+    func testCandidateEnterpriseSlugsDropShortPrefixesAndDuplicates() {
+        XCTAssertEqual(
+            CopilotOrgBillingMapper.candidateEnterpriseSlugs(fromOrgLogins: ["ab-cd", "NextByte", "nextbyte"]),
+            ["ab-cd", "nextbyte"]
+        )
+    }
+
     func testEnterpriseMembershipPageIncludesOnlyEnterpriseOwningSeatOrganization() throws {
         let response = ok(makeEnterpriseMembershipBody(
             enterprises: [
@@ -1078,7 +1094,7 @@ final class CopilotProviderTests: XCTestCase {
         )
     }
 
-    func testEnterpriseDirectSeatSkipsMembershipOrgsAndKeepsPersonalCredits() async {
+    func testEnterpriseDirectSeatKeepsPersonalCreditsWhenEnterpriseListingIsDenied() async {
         let unavailable = HTTPResponse(statusCode: 503, headers: [:], body: Data())
         let http = routedClient([
             (
@@ -1098,8 +1114,45 @@ final class CopilotProviderTests: XCTestCase {
         }
         XCTAssertEqual(text, "Managed by Your Enterprise")
         XCTAssertFalse(snapshot.lines.contains { $0.isError })
-        XCTAssertFalse(http.requests.contains { $0.url.path == "/user/orgs" })
+        XCTAssertTrue(http.requests.contains { $0.url.path == "/user/orgs" })
+        XCTAssertFalse(http.requests.contains { $0.url.path.contains("/organizations/") })
         XCTAssertEqual(snapshot.applicableMetricIDs, ["copilot.premium", "copilot.orgManaged"])
+    }
+
+    func testEnterpriseDirectSeatReadsEnterpriseUsageFromMembershipOrgSlug() async {
+        // GraphQL `viewer.enterprises` needs `read:enterprise`. Org owners can still read the
+        // enterprise REST usage report, so membership orgs must supply the slug (`nextbyte-ai` →
+        // `nextbyte`) without probing those orgs' own billing endpoints.
+        let orgBillingUnavailable = HTTPResponse(statusCode: 503, headers: [:], body: Data())
+        let notFound = HTTPResponse(statusCode: 404, headers: [:], body: Data())
+        let http = routedClient([
+            (
+                "/copilot_internal/user",
+                ok(makeBusinessPlaceholderBodyWithPersonalCredits(1115, seatOrgs: []))
+            ),
+            ("/graphql", ok(makeInsufficientScopesGraphQLBody())),
+            ("/user/orgs", okJSON([["login": "MIC-DevOps"], ["login": "nextbyte-ai"]])),
+            ("/organizations/MIC-DevOps/settings/billing/ai_credit/usage", orgBillingUnavailable),
+            ("/organizations/nextbyte-ai/settings/billing/ai_credit/usage", orgBillingUnavailable),
+            ("/enterprises/mic-devops/settings/billing/ai_credit/usage", notFound),
+            ("/enterprises/mic/settings/billing/ai_credit/usage", notFound),
+            ("/enterprises/nextbyte-ai/settings/billing/ai_credit/usage", notFound),
+            ("/enterprises/nextbyte/settings/billing/ai_credit/usage", ok(makeOrgSummaryBody()))
+        ])
+        let defaults = freshDefaults()
+        let provider = makeOrgProvider(http: http, defaults: defaults)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(countValue(snapshot.lines, "Credits"), 1115)
+        XCTAssertEqual(orgCount(snapshot.lines, "Org Credits") ?? -1, 298.698546, accuracy: 0.0001)
+        XCTAssertNil(snapshot.line(label: "Organization Usage"))
+        XCTAssertEqual(defaults.string(forKey: CopilotProvider.billingEnterpriseDefaultsKey), "nextbyte")
+        XCTAssertFalse(http.requests.contains { $0.url.path.contains("/organizations/") })
+        XCTAssertEqual(
+            snapshot.applicableMetricIDs,
+            ["copilot.premium", "copilot.orgCredits", "copilot.orgSpend"]
+        )
     }
 
     func testEnterpriseDirectSeatReadsEnterpriseUsageWithoutOrganizationFilter() async {

@@ -24,9 +24,10 @@ struct CopilotMappedUsage: Equatable, Sendable {
     /// than replace it.
     var isOrgManagedSeat: Bool = false
     /// True when Copilot listed seat organizations and the list was empty. That is an enterprise-direct
-    /// seat, not "we don't know": `/user/orgs` memberships must not be probed, because a 503 on an
-    /// unrelated org would fail the whole card. Omitted lists stay `false` so older payloads can still
-    /// fall back to membership discovery.
+    /// seat, not "we don't know": those memberships' *billing* endpoints must not be queried, because
+    /// a 503 on an unrelated org would fail the whole card. `/user/orgs` is still used to guess
+    /// enterprise slugs when GraphQL cannot list enterprises. Omitted lists stay `false` so older
+    /// payloads can still fall back to membership discovery.
     var hasNoSeatOrganization: Bool = false
 }
 

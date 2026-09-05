@@ -133,10 +133,10 @@ final class CopilotProvider: ProviderRuntime {
             // Credits count (issue #1094), which must survive alongside whatever the org lookup adds.
             var lines = mapped.lines
             if mapped.isOrgManagedSeat {
-                // A second local token may belong to another GitHub account. Membership discovery
-                // (`/user/orgs`) must stay on the credential that produced this Copilot card. When
-                // Copilot named the seat org — or explicitly named none (enterprise-direct) — a
-                // GitHub CLI token is safe for billing because it is aimed at a known billing home.
+                // A second local token may belong to another GitHub account. When Copilot named the
+                // seat org — or listed none (enterprise-direct) — prefer the GitHub CLI token for
+                // billing: it can carry org and enterprise REST billing access the editor token
+                // often lacks, and `read:org` is enough to guess an enterprise slug.
                 let billingTokens: [CopilotToken]
                 // Set when the preferred GitHub CLI credential exists but needs a manual load, so a
                 // failed billing lookup can name the real fix instead of blaming billing access.

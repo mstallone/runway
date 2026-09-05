@@ -43,6 +43,30 @@ enum CopilotOrgBillingMapper {
         }
     }
 
+    /// Enterprise slugs to try when GraphQL cannot list `viewer.enterprises` (`read:enterprise` is
+    /// missing) but REST billing still works for an org owner. GitHub lets an org owner read
+    /// `GET /enterprises/{slug}/settings/billing/ai_credit/usage` without that GraphQL scope, so the
+    /// remaining problem is discovering the slug. Each membership org login is a candidate, plus the
+    /// hyphen/underscore prefix (`nextbyte-ai` → `nextbyte`). Short leftovers under 3 characters are
+    /// dropped so a name like `AI-at-MIT` does not probe `/enterprises/ai`.
+    static func candidateEnterpriseSlugs(fromOrgLogins orgLogins: [String]) -> [String] {
+        var seen: Set<String> = []
+        var slugs: [String] = []
+        func add(_ raw: String) {
+            let slug = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard slug.count >= 3, seen.insert(slug).inserted else { return }
+            slugs.append(slug)
+        }
+        for login in orgLogins {
+            add(login)
+            let parts = login.split { $0 == "-" || $0 == "_" }
+            if parts.count >= 2 {
+                add(parts.dropLast().joined(separator: "-"))
+            }
+        }
+        return slugs
+    }
+
     /// Enterprise slugs from a viewer-enterprises GraphQL page that does not filter by organization.
     static func enterpriseSlugs(_ response: HTTPResponse) -> [String]? {
         guard
