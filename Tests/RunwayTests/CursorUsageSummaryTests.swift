@@ -42,8 +42,8 @@ final class CursorUsageSummaryMapperTests: XCTestCase {
         let requests = try XCTUnwrap(progress(mapped.lines, "Requests"))
         XCTAssertEqual(requests.used, 37)
         XCTAssertEqual(requests.limit, 750)
-        XCTAssertEqual(progress(mapped.lines, "Auto usage")?.used, 0)
-        XCTAssertEqual(progress(mapped.lines, "API usage")?.used, 6.25)
+        XCTAssertEqual(progress(mapped.lines, "Cursor models")?.used, 0)
+        XCTAssertEqual(progress(mapped.lines, "Other models")?.used, 6.25)
 
         let onDemand = try XCTUnwrap(progress(mapped.lines, "On-demand"))
         XCTAssertEqual(onDemand.used, 0)

@@ -139,7 +139,7 @@ enum CursorUsageMapper {
 
         if let autoPercentUsed = ProviderParse.number(planUsage["autoPercentUsed"]) {
             lines.append(.progress(
-                label: "Auto usage",
+                label: "Cursor models",
                 used: autoPercentUsed,
                 limit: 100,
                 format: .percent,
@@ -150,7 +150,7 @@ enum CursorUsageMapper {
 
         if let apiPercentUsed = ProviderParse.number(planUsage["apiPercentUsed"]) {
             lines.append(.progress(
-                label: "API usage",
+                label: "Other models",
                 used: apiPercentUsed,
                 limit: 100,
                 format: .percent,

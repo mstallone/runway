@@ -25,7 +25,7 @@ final class GrokLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(entry.reportedTotalTokens, 1_050)
     }
 
-    func testModernSessionScanExcludesSubagentsAndDeduplicatesForkReplay() async throws {
+    func testModernSessionScanIncludesSubagentsAndDeduplicatesForkReplay() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("runway-grok-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -74,9 +74,9 @@ final class GrokLogUsageScannerTests: XCTestCase {
         let usage = try XCTUnwrap(scannedUsage)
 
         XCTAssertEqual(usage.series.daily.count, 1)
-        XCTAssertEqual(usage.series.daily.first?.totalTokens, 3_100_000)
-        // Main: $1.00 uncached input + $0.25 cache read + $0.60 output. Fork-only: $4 input.
-        XCTAssertEqual(usage.series.daily.first?.costUSD ?? 0, 5.85, accuracy: 0.0001)
+        XCTAssertEqual(usage.series.daily.first?.totalTokens, 12_100_000)
+        // Main: $1.00 uncached input + $0.25 cache read + $0.60 output. Fork-only: $4 input. Child: $18 input.
+        XCTAssertEqual(usage.series.daily.first?.costUSD ?? 0, 23.85, accuracy: 0.0001)
         XCTAssertEqual(usage.modelUsage?.daily.first?.models.map(\.model), ["grok-4.6-build"])
         XCTAssertTrue(usage.unknownModelsByDay.isEmpty)
     }

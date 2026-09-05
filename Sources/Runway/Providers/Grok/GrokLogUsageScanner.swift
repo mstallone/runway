@@ -103,7 +103,9 @@ struct GrokLogUsageScanner: Sendable {
 
     private func scanSessions(since: Date, pricing: ModelPricing) async -> LogUsageScan? {
         let directory = grokHome.appendingPathComponent("sessions", isDirectory: true)
-        let discovered = Self.primarySessionFiles(under: directory, since: since)
+        // Child sessions can contain usage absent from their coordinator. Include every ledger;
+        // prompt-id dedup still drops forked parent replays.
+        let discovered = Self.sessionLedgerFiles(under: directory, since: since)
         let identity = directory.resolvingSymlinksInPath().standardizedFileURL.path
         guard !discovered.isEmpty else {
             _ = await sessionScanner.items(
@@ -121,29 +123,12 @@ struct GrokLogUsageScanner: Sendable {
         return Self.aggregateSessionEntries(Self.dedupSessionEntries(entries), since: since, pricing: pricing)
     }
 
-    /// Discover only the authoritative update stream for top-level/fork sessions. A top-level turn's
-    /// ledger already includes its completed subagents; scanning each child session as well would
-    /// count that usage twice. Forks remain included because their new turns are real usage; replayed
-    /// parent turns are removed later by stable prompt id.
-    private static func primarySessionFiles(under directory: URL, since: Date) -> [JSONLScanning.DiscoveredFile] {
+    /// Every durable `updates.jsonl` ledger under the sessions tree, including subagent and resumed
+    /// child sessions. `summary.json` is not required: an unreadable or missing summary must not
+    /// drop an otherwise valid usage ledger.
+    private static func sessionLedgerFiles(under directory: URL, since: Date) -> [JSONLScanning.DiscoveredFile] {
         JSONLScanning.jsonlFiles(under: directory).filter { file in
-            guard file.mtime >= since,
-                  URL(fileURLWithPath: file.path).lastPathComponent == "updates.jsonl"
-            else { return false }
-            let summary = URL(fileURLWithPath: file.path)
-                .deletingLastPathComponent()
-                .appendingPathComponent("summary.json")
-            guard let data = FileManager.default.contents(atPath: summary.path) else {
-                // A live session can publish updates before its summary. Include it; stable prompt-id
-                // dedup still protects against fork replay, and the next refresh can classify it.
-                return true
-            }
-            guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-                AppLog.warn(LogTag.plugin("grok"), "could not decode Grok session summary: \(summary.path)")
-                return true
-            }
-            let kind = (object["session_kind"] as? String)?.lowercased()
-            return kind != "subagent" && kind != "subagent_resume"
+            file.mtime >= since && URL(fileURLWithPath: file.path).lastPathComponent == "updates.jsonl"
         }
     }
 

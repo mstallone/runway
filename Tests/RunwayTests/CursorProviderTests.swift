@@ -32,8 +32,8 @@ final class CursorUsageMapperTests: XCTestCase {
         XCTAssertEqual(mapped.plan, "Pro Plan")
         XCTAssertEqual(try XCTUnwrap(dollarValue(mapped.lines, "Credits")), 17268.15, accuracy: 0.001)
         XCTAssertEqual(progress(mapped.lines, "Total usage")?.used, 20)
-        XCTAssertEqual(progress(mapped.lines, "Auto usage")?.used, 12.5)
-        XCTAssertEqual(progress(mapped.lines, "API usage")?.used, 7.5)
+        XCTAssertEqual(progress(mapped.lines, "Cursor models")?.used, 12.5)
+        XCTAssertEqual(progress(mapped.lines, "Other models")?.used, 7.5)
         XCTAssertEqual(progress(mapped.lines, "On-demand")?.used, 40)
     }
 
@@ -206,8 +206,8 @@ final class CursorProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.plan, "Pro Plan")
         XCTAssertEqual(dollarValue(snapshot.lines, "Credits") ?? -1, 500)
         XCTAssertEqual(progress(snapshot.lines, "Total usage")?.used, 20)
-        XCTAssertEqual(progress(snapshot.lines, "Auto usage")?.used, 12.5)
-        XCTAssertEqual(progress(snapshot.lines, "API usage")?.used, 7.5)
+        XCTAssertEqual(progress(snapshot.lines, "Cursor models")?.used, 12.5)
+        XCTAssertEqual(progress(snapshot.lines, "Other models")?.used, 7.5)
         XCTAssertEqual(progress(snapshot.lines, "On-demand")?.used, 40)
     }
 }

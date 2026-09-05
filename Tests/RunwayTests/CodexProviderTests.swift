@@ -307,6 +307,17 @@ final class CodexUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, CodexUsageMapper.sessionPeriodMs)
     }
 
+    func testFormatsBusinessPremiumEntitlement() throws {
+        let body = Data(#"{"plan_type":"self_serve_business_prolite","rate_limit":{"primary_window":{"used_percent":4,"limit_window_seconds":604800}}}"#.utf8)
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            HTTPResponse(statusCode: 200, headers: [:], body: body)
+        )
+
+        XCTAssertEqual(mapped.plan, "Business Premium")
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 4)
+        XCTAssertNil(progress(mapped.lines, "Session"))
+    }
+
     func testHeadersFillMissingWindows() throws {
         let body = Data("""
         {

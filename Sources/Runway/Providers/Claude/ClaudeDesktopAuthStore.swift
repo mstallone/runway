@@ -234,6 +234,18 @@ struct ClaudeDesktopAuthStore: Sendable {
         return Self.cookieRelativePaths.contains { files.exists(path($0)) }
     }
 
+    /// Desktop stamps the signed-in user on `lastKnownAccountUuid`. Account-prefixed cache keys
+    /// (`acct:<user>|<legacy key>`) only belong to that user.
+    func lastKnownAccountUUID() -> String? {
+        guard let text = try? files.readTextIfPresent(path(Self.configRelativePath)),
+              let data = text.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let user = root["lastKnownAccountUuid"] as? String,
+              UUID(uuidString: user) != nil
+        else { return nil }
+        return user.lowercased()
+    }
+
     func load(allowInteraction: Bool) -> ClaudeDesktopCredentialResult {
         guard hasCredentialMaterial() else {
             return ClaudeDesktopCredentialResult(oauth: nil, status: .notFound)
@@ -251,6 +263,7 @@ struct ClaudeDesktopAuthStore: Sendable {
 
             let selection = Self.selectCredential(
                 activeOrganization: activeOrg,
+                activeAccountUUID: lastKnownAccountUUID(),
                 v2: caches.v2,
                 v1: caches.v1,
                 now: now()
@@ -366,19 +379,21 @@ struct ClaudeDesktopAuthStore: Sendable {
 
     static func selectCredential(
         activeOrganization: String,
+        activeAccountUUID: String? = nil,
         v2: [String: Any]?,
         v1: [String: Any]?,
         now: Date
     ) -> Selection {
         let normalizedOrg = activeOrganization.lowercased()
-        let v2Candidates = candidates(in: v2, organization: normalizedOrg, now: now)
+        let v2Entries = normalizedCache(v2, activeAccountUUID: activeAccountUUID)
+        let v1Entries = normalizedCache(v1, activeAccountUUID: activeAccountUUID)
+        let v2Candidates = candidates(in: v2Entries, organization: normalizedOrg, now: now)
         if let best = v2Candidates.available.max(by: { $0.rank < $1.rank }) {
             return .available(best.oauth)
         }
 
-        let v2Keys = Set(v2?.keys ?? Dictionary<String, Any>().keys)
         let v1Candidates = candidates(
-            in: v1?.filter { !v2Keys.contains($0.key) },
+            in: v1Entries.filter { v2Entries[$0.key] == nil },
             organization: normalizedOrg,
             now: now
         )
@@ -420,17 +435,15 @@ struct ClaudeDesktopAuthStore: Sendable {
     }
 
     private static func candidates(
-        in cache: [String: Any]?,
+        in cache: [CacheKey: Any],
         organization: String,
         now: Date
     ) -> (available: [Candidate], sawStale: Bool, sawInvalid: Bool) {
-        guard let cache else { return ([], false, false) }
         var available: [Candidate] = []
         var sawStale = false
         var sawInvalid = false
-        for (cacheKey, rawEntry) in cache {
-            guard let parsedKey = parseCacheKey(cacheKey),
-                  parsedKey.organization == organization,
+        for (parsedKey, rawEntry) in cache {
+            guard parsedKey.organization == organization,
                   parsedKey.apiHost == apiHost,
                   parsedKey.scopes.contains(usageScope)
             else {
@@ -468,11 +481,40 @@ struct ClaudeDesktopAuthStore: Sendable {
         return (available, sawStale, sawInvalid)
     }
 
-    private struct CacheKey {
+    private struct CacheKey: Hashable {
         var clientID: String
         var organization: String
         var apiHost: String
         var scopes: [String]
+    }
+
+    /// Desktop migrates legacy keys to `acct:<user>|<legacy key>` on use. A scoped entry,
+    /// including a deletion marker, supersedes its legacy alias. Foreign accounts never
+    /// participate in selection or suppress the current account's V1 fallback.
+    private static func normalizedCache(
+        _ cache: [String: Any]?,
+        activeAccountUUID: String?
+    ) -> [CacheKey: Any] {
+        guard let cache else { return [:] }
+        var legacy: [CacheKey: Any] = [:]
+        var scoped: [CacheKey: Any] = [:]
+        for (rawKey, entry) in cache.sorted(by: { $0.key < $1.key }) {
+            let isScoped = rawKey.hasPrefix("acct:")
+            var key = rawKey
+            if isScoped {
+                let rest = rawKey.dropFirst(5)
+                guard let separator = rest.firstIndex(of: "|"),
+                      let owner = UUID(uuidString: String(rest[..<separator])),
+                      let activeAccountUUID,
+                      let active = UUID(uuidString: activeAccountUUID),
+                      owner == active
+                else { continue }
+                key = String(rest[rest.index(after: separator)...])
+            }
+            guard let parsed = parseCacheKey(key) else { continue }
+            if isScoped { scoped[parsed] = entry } else { legacy[parsed] = entry }
+        }
+        return legacy.merging(scoped) { _, scopedEntry in scopedEntry }
     }
 
     private static func parseCacheKey(_ value: String) -> CacheKey? {
@@ -480,7 +522,7 @@ struct ClaudeDesktopAuthStore: Sendable {
         guard let markerRange = value.range(of: marker) else { return nil }
         let prefix = value[..<markerRange.lowerBound]
         guard let firstColon = prefix.firstIndex(of: ":") else { return nil }
-        let clientID = String(prefix[..<firstColon])
+        let clientID = String(prefix[..<firstColon]).lowercased()
         let organization = String(prefix[prefix.index(after: firstColon)...]).lowercased()
         guard UUID(uuidString: clientID) != nil, UUID(uuidString: organization) != nil else {
             return nil

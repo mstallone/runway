@@ -51,6 +51,13 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "gemini-3.6-flash-high")?.inputPerMillion, 1.5)
         XCTAssertEqual(pricing.resolve(model: "gemini-3.7-flash-high")?.inputPerMillion, 0.75)
         XCTAssertEqual(pricing.resolve(model: "gemini-3.7-flash-high")?.outputPerMillion, 3.5)
+        XCTAssertEqual(pricing.resolve(model: "gemini-3.8-flash-high")?.inputPerMillion, 0.75)
+        XCTAssertEqual(pricing.resolve(model: "gemini-3.8-flash-high")?.outputPerMillion, 3.5)
+        XCTAssertEqual(pricing.resolve(model: "gpt-6-astra")?.inputPerMillion, 10)
+        XCTAssertEqual(pricing.resolve(model: "gpt-6-astra-fast")?.inputPerMillion, 20)
+        XCTAssertEqual(pricing.resolve(model: "claude-fable-5.1")?.cacheReadPerMillion, 0.25)
+        XCTAssertEqual(pricing.resolve(model: "glm-5.3")?.inputPerMillion, 1.4)
+        XCTAssertEqual(pricing.resolve(model: "grok-bot-default"), pricing.resolve(model: "grok-4.6"))
         XCTAssertEqual(pricing.resolve(model: "kimi-k3")?.inputPerMillion, 3)
         XCTAssertEqual(pricing.resolve(model: "grok-4-20-thinking")?.inputPerMillion, 2)
         XCTAssertEqual(pricing.resolve(model: "grok-4.5")?.inputPerMillion, 2)
@@ -345,7 +352,11 @@ final class PricingBundledResourceTests: XCTestCase {
             "Gemini 3.1 Pro (Auto)": "gemini-3.1-pro-preview",
             "Gemini 3.6 Flash (Auto)": "gemini-3.6-flash",
             "Gemini 3.7 Flash (Auto Balanced)": "gemini-3.7-flash",
+            "Gemini 3.8 Flash (Auto Balanced)": "gemini-3.8-flash",
             "GLM 5.2 (Auto Balanced)": "glm-5.2",
+            "GLM 5.3 (Auto Cost)": "glm-5.3",
+            "Fable 5.1 (Auto Balanced)": "claude-fable-5.1",
+            "GPT-6 Astra (Auto)": "gpt-6-astra",
             "Kimi K3 (Auto Cost)": "moonshot/kimi-k3"
         ]
         for (label, canonical) in expected {

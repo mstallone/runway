@@ -33,9 +33,9 @@ final class CursorProvider: ProviderRuntime {
         [
             .percent(id: "cursor.usage", provider: provider, title: "Total Usage", metricLabel: "Total usage")
                 .exportingLimit("totalUsage", unit: "percent"),
-            .percent(id: "cursor.auto", provider: provider, title: "Auto Usage", metricLabel: "Auto usage")
+            .percent(id: "cursor.auto", provider: provider, title: "Cursor Models", metricLabel: "Cursor models")
                 .exportingLimit("autoUsage", unit: "percent"),
-            .percent(id: "cursor.api", provider: provider, title: "API Usage", metricLabel: "API usage")
+            .percent(id: "cursor.api", provider: provider, title: "Other Models", metricLabel: "Other models")
                 .exportingLimit("apiUsage", unit: "percent"),
             .boundedDollars(id: "cursor.onDemand", provider: provider, title: "Extra Usage", metricLabel: "On-demand", limit: 100, valueWord: "spent")
                 .exportingLimit("onDemand", unit: "usd", source: .progressOrValue(kind: .dollars)),

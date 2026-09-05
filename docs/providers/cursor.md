@@ -9,8 +9,8 @@ Tracks your Cursor plan usage using the login from the Cursor app.
 | Credits | Credit balance left from grants and prepaid account balance |
 | Total Usage | Plan usage for the billing cycle (percent or dollars; included request count vs. cap on request-based Enterprise accounts) |
 | Requests | Optional copy of the included request count vs. cap for custom layouts |
-| Auto Usage | Auto-model usage percent |
-| API Usage | API usage percent |
+| Cursor Models | Cursor-native model usage percent (Grok, Composer) |
+| Other Models | Third-party model usage percent |
 | Extra Usage | On-demand spend; user-scoped when available, otherwise the team aggregate; shown as a meter when Cursor returns a limit |
 
 When Cursor reports your plan name, Runway shows it beside the provider name.
