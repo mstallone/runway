@@ -24,7 +24,7 @@ struct CopilotOrgBillingClient: Sendable {
         return components?.url
     }
 
-    static func enterpriseAICreditUsageURL(enterprise: String, organization: String) -> URL? {
+    static func enterpriseAICreditUsageURL(enterprise: String, organization: String? = nil) -> URL? {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-"))
         guard
             let encodedEnterprise = enterprise.addingPercentEncoding(withAllowedCharacters: allowed),
@@ -35,10 +35,11 @@ struct CopilotOrgBillingClient: Sendable {
         var components = URLComponents(
             string: "https://api.github.com/enterprises/\(encodedEnterprise)/settings/billing/ai_credit/usage"
         )
-        components?.queryItems = [
-            URLQueryItem(name: "organization", value: organization),
-            URLQueryItem(name: "product", value: "Copilot")
-        ]
+        var queryItems = [URLQueryItem(name: "product", value: "Copilot")]
+        if let organization {
+            queryItems.insert(URLQueryItem(name: "organization", value: organization), at: 0)
+        }
+        components?.queryItems = queryItems
         return components?.url
     }
 
@@ -62,6 +63,29 @@ struct CopilotOrgBillingClient: Sendable {
             throw CopilotUsageError.invalidResponse
         }
         return try await send(url: url, token: token)
+    }
+
+    /// One page of enterprises visible to the token's user. Used for enterprise-direct seats that
+    /// Copilot assigned with an empty organization list — there is no seat org to query against.
+    func fetchViewerEnterprises(after cursor: String?, token: String) async throws -> HTTPResponse {
+        let query = """
+        query RunwayCopilotBillingEnterpriseSlugs($enterpriseCursor: String) {
+          viewer {
+            enterprises(first: 100, after: $enterpriseCursor) {
+              nodes { slug }
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
+            }
+          }
+        }
+        """
+        var variables: [String: Any] = [:]
+        if let cursor {
+            variables["enterpriseCursor"] = cursor
+        }
+        return try await sendGraphQL(query: query, variables: variables, token: token)
     }
 
     /// One page of enterprises visible to the token's user, with each enterprise's organizations
@@ -142,6 +166,14 @@ struct CopilotOrgBillingClient: Sendable {
             enterprise: enterprise,
             organization: organization
         ) else {
+            throw CopilotUsageError.invalidResponse
+        }
+        return try await send(url: url, token: token)
+    }
+
+    /// Month-to-date Copilot AI-credit usage billed through an enterprise, with no organization filter.
+    func fetchAICreditUsage(enterprise: String, token: String) async throws -> HTTPResponse {
+        guard let url = Self.enterpriseAICreditUsageURL(enterprise: enterprise) else {
             throw CopilotUsageError.invalidResponse
         }
         return try await send(url: url, token: token)

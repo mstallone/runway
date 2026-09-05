@@ -43,6 +43,23 @@ enum CopilotOrgBillingMapper {
         }
     }
 
+    /// Enterprise slugs from a viewer-enterprises GraphQL page that does not filter by organization.
+    static func enterpriseSlugs(_ response: HTTPResponse) -> [String]? {
+        guard
+            let body = ProviderParse.jsonObject(response.body),
+            body["errors"] == nil,
+            let data = body["data"] as? [String: Any],
+            let viewer = data["viewer"] as? [String: Any],
+            let enterprises = viewer["enterprises"] as? [String: Any],
+            let nodes = enterprises["nodes"] as? [[String: Any]]
+        else {
+            return nil
+        }
+        return nodes.compactMap { node in
+            (node["slug"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        }
+    }
+
     /// Parses one page of the viewer's enterprises and the first matching-organization page nested
     /// under each enterprise. The returned cursors are advanced independently by the provider.
     static func enterpriseMembershipPage(
