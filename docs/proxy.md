@@ -1,11 +1,11 @@
 # Proxy
 
-Runway can route all provider requests through an optional proxy.
+Runway can route all provider requests through a proxy.
 
 - Supported: `socks5://`, `http://`, `https://`
 - Config file: `~/.runway/config.json`
 - Default: off
-- UI: none — file only
+- No UI. File only.
 
 ## Config file
 
@@ -18,7 +18,7 @@ Runway can route all provider requests through an optional proxy.
 }
 ```
 
-Authenticated proxies put credentials in the URL:
+For an authenticated proxy, put the credentials in the URL:
 
 ```json
 {
@@ -33,9 +33,9 @@ When the URL has no port, the scheme's default applies (socks5 → 1080, http �
 
 ## Behavior
 
-- Runway reads the config once at launch — **after you change the file, restart Runway**.
-- `localhost`, `127.0.0.1`, and `::1` always bypass the proxy (the [local HTTP API](local-http-api.md) is unaffected).
-- A missing, disabled, invalid, or unreadable config simply leaves proxying off.
+- Runway reads the config once at launch. Restart Runway after changing the file.
+- `localhost`, `127.0.0.1`, and `::1` always bypass the proxy, so the [local HTTP API](local-http-api.md) is unaffected.
+- A missing, disabled, invalid, or unreadable config leaves proxying off.
 
 ## Scope
 
