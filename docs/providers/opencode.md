@@ -22,7 +22,7 @@ Use OpenCode as usual. Runway reads the `opencode-go` API key from OpenCode's lo
 
 ## The meters and spend tiles
 
-Go meters are percents from `GET https://opencode.ai/zen/go/v1/usage`, OpenCode's own accounting. Each spend tile shows cost and tokens together (`$4.08 · 1.2M tokens`). Those dollars come from the per-message cost OpenCode records for its hosted gateways on this Mac, so they can be lower than account-wide Go usage. A period with no recorded local usage reads "No data". No log data leaves your Mac.
+Go meters are percents from `GET https://opencode.ai/zen/go/v1/usage`, OpenCode's own accounting. Each spend tile shows cost and tokens together (`$4.08 · 1.2M tokens`). Those dollars come from the per-message cost OpenCode records for its hosted gateways on this Mac, so they can be lower than account-wide Go usage. A period with no recorded local usage reads "No data". Codex usage that goes through OpenCode's ChatGPT OAuth login is attributed to the Codex card, not these spend tiles. No log data leaves your Mac.
 
 ## Troubleshooting
 

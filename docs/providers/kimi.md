@@ -15,9 +15,6 @@ Kimi Code membership quota is shared between the Kimi website, the CLI, and ever
 
 When Kimi reports your membership (Free, Adagio, Moderato, Allegretto, Allegro, Vivace), Runway shows it beside the provider name.
 
-When Kimi reports your membership (Free, Adagio, Moderato, Allegretto, Allegro, Vivace),
-Runway shows it beside the provider name.
-
 ## Where credentials come from
 
 Runway reads the OAuth login Kimi Code stores at:
@@ -49,8 +46,7 @@ An API key exported as `KIMI_API_KEY` is not used for this provider. Kimi Code's
 
 Runway mirrors the CLI's membership flow:
 
-- `GET https://api.kimi.com/coding/v1/usages` reads the quota windows, Extra Usage wallet, and
-  membership plan (`user.membership.level`).
+- `GET https://api.kimi.com/coding/v1/usages` reads the quota windows, Extra Usage wallet, and membership plan (`user.membership.level`).
 - `POST https://auth.kimi.com/api/oauth/token` refreshes an expiring OAuth login.
 
 The usage endpoint is used by Kimi Code's own `/usage` command but is not documented as a public API. Runway accepts the same response aliases as the CLI and reports malformed responses as errors instead of inventing zero usage.
