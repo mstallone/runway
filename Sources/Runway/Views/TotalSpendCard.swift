@@ -2,31 +2,41 @@ import AppKit
 import SwiftUI
 
 /// The dashboard's cross-provider Total Spend section: a native segmented period picker
-/// (Today / Yesterday / Last 30 Days) over a donut ring whose segments are each provider's share of
-/// the selected metric, with the total in the center and a ranked legend beside it. The title is a
-/// pull-down menu for Cost / Cost/MTok / Tokens. Data comes from `TotalSpendAggregator` over
-/// the same snapshots the provider cards render. Shown whenever any enabled provider tracks spend
-/// (`LayoutStore.hasSpendCapableProvider`) and the toggle at the top of Settings is on; a period
-/// (or metric) with nothing to show uses a quiet empty state instead of hiding the card.
+/// (Today / 7 Days / 30 Days) over a donut ring or stacked daily bars for the selected metric,
+/// with the total and a ranked legend. The title is a pull-down menu for Cost / Cost/MTok /
+/// Tokens. A pie/bar switcher sits next to the period capsules. Data comes from
+/// `TotalSpendAggregator` over the same snapshots the provider cards render. Shown whenever any
+/// enabled provider tracks spend (`LayoutStore.hasSpendCapableProvider`) and the toggle at the top
+/// of Settings is on; a period (or metric) with nothing to show uses a quiet empty state instead of
+/// hiding the card.
 struct TotalSpendCard: View {
     @Environment(LayoutStore.self) private var layout
     @Environment(WidgetDataStore.self) private var dataStore
     @Environment(AppContainer.self) private var container
     @Environment(\.colorScheme) private var colorScheme
     @Namespace private var pickerNamespace
+    @Namespace private var chartKindNamespace
 
     /// The selected period survives popover closes and relaunches, like the meter-style toggles.
     @AppStorage("runway.totalSpend.period") private var periodRawValue = TotalSpendPeriod.today.rawValue
     /// The selected metric (Cost / Cost/MTok / Tokens) survives the same way.
     @AppStorage("runway.totalSpend.metric") private var metricRawValue = TotalSpendMetric.cost.rawValue
+    /// Pie vs stacked-bar presentation. Independent of the period.
+    @AppStorage("runway.totalSpend.chart") private var chartKindRawValue = TotalSpendChartKind.pie.rawValue
     private let density = DensitySetting.compact
 
     private var period: TotalSpendPeriod {
-        TotalSpendPeriod(rawValue: periodRawValue) ?? .today
+        // Existing installs stored "Yesterday"; that window is now 7 Days.
+        if periodRawValue == "Yesterday" { return .last7 }
+        return TotalSpendPeriod(rawValue: periodRawValue) ?? .today
     }
 
     private var metric: TotalSpendMetric {
         TotalSpendMetric(rawValue: metricRawValue) ?? .cost
+    }
+
+    private var chartKind: TotalSpendChartKind {
+        TotalSpendChartKind(rawValue: chartKindRawValue) ?? .pie
     }
 
     /// The spend-tile providers the card may aggregate — capability-based (see
@@ -127,24 +137,37 @@ struct TotalSpendCard: View {
 
     private var shareButton: some View {
         CopyFeedbackButton(accessibilityLabel: "Copy \(metric.title) Screenshot") {
-            ShareCardRenderer.shareTotalSpend(
-                total: total,
-                metric: metric,
-                appearance: colorScheme,
-                layout: layout
-            )
+            share()
         }
+    }
+
+    @discardableResult
+    private func share() -> Bool {
+        ShareCardRenderer.shareTotalSpend(
+            total: total,
+            metric: metric,
+            chartKind: chartKind,
+            appearance: colorScheme,
+            layout: layout
+        )
     }
 
     // MARK: - Card
 
     private func card(projection: TotalSpendProjection) -> some View {
         VStack(spacing: 12) {
-            periodPicker
+            HStack(spacing: 8) {
+                periodPicker
+                chartKindPicker
+            }
             if projection.isEmpty {
                 emptyState
             } else {
-                TotalSpendRingContent(projection: projection)
+                TotalSpendChartBody(
+                    projection: projection,
+                    days: total.days,
+                    chartKind: chartKind
+                )
             }
         }
         .padding(.horizontal, 14)
@@ -153,14 +176,10 @@ struct TotalSpendCard: View {
         .cardSurface()
         .animation(Motion.spring, value: periodRawValue)
         .animation(Motion.spring, value: metricRawValue)
+        .animation(Motion.spring, value: chartKindRawValue)
         .contextMenu {
             Button("Share Screenshot") {
-                ShareCardRenderer.shareTotalSpend(
-                    total: total,
-                    metric: metric,
-                    appearance: colorScheme,
-                    layout: layout
-                )
+                share()
             }
         }
     }
@@ -188,7 +207,7 @@ struct TotalSpendCard: View {
             Text(candidate.shortLabel)
                 .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
                 .foregroundStyle(isSelected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 10)
                 .padding(.vertical, 4)
                 .frame(maxWidth: .infinity)
                 .contentShape(Capsule())
@@ -203,6 +222,44 @@ struct TotalSpendCard: View {
             }
         }
         .animation(Motion.spring, value: periodRawValue)
+    }
+
+    /// Compact pie/bar switcher in the same capsule language as the period picker.
+    private var chartKindPicker: some View {
+        HStack(spacing: 2) {
+            ForEach(TotalSpendChartKind.allCases) { kind in
+                chartKindSegment(kind)
+            }
+        }
+        .padding(3)
+        .background(.quinary, in: Capsule())
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Chart Type")
+    }
+
+    private func chartKindSegment(_ kind: TotalSpendChartKind) -> some View {
+        let isSelected = kind == chartKind
+        return Button {
+            chartKindRawValue = kind.rawValue
+        } label: {
+            Image(systemName: kind.systemImage)
+                .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
+                .foregroundStyle(isSelected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                .frame(width: 24, height: 20)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(kind.title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .background {
+            if isSelected {
+                Capsule()
+                    .fill(.background)
+                    .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
+                    .matchedGeometryEffect(id: "totalSpendChartKind", in: chartKindNamespace)
+            }
+        }
+        .animation(Motion.spring, value: chartKindRawValue)
     }
 
     /// A metric/period combination with nothing to show mirrors the spend tiles' "No data" rule —
@@ -230,8 +287,6 @@ struct TotalSpendCard: View {
 /// rounded sector corners — so nothing changes visually at rest.
 struct TotalSpendRingContent: View {
     let projection: TotalSpendProjection
-
-    private let density = DensitySetting.compact
 
     private static let ringDiameter: CGFloat = 104
 
@@ -266,7 +321,7 @@ struct TotalSpendRingContent: View {
     }
 
     private var accessibilityLabel: String {
-        let center = formatValue(projection.centerValue, style: .full)
+        let center = TotalSpendFormat.string(projection.centerValue, metric: projection.metric, style: .full)
         switch projection.metric {
         case .cost:
             return "Total cost \(center) across \(projection.slices.count) providers"
@@ -324,7 +379,7 @@ struct TotalSpendRingContent: View {
     }
 
     private var centerTooltip: String {
-        let exact = formatValue(projection.centerValue, style: .full)
+        let exact = TotalSpendFormat.string(projection.centerValue, metric: projection.metric, style: .full)
         if projection.isEstimated, projection.metric.usesDollarEstimateNote {
             return "\(exact) · \(WidgetData.localEstimateNote)"
         }
@@ -336,36 +391,7 @@ struct TotalSpendRingContent: View {
     /// Rows in the ring's ranked order (largest first), so scanning the ring clockwise from
     /// 12 o'clock matches reading the legend top-down.
     private var legend: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            ForEach(projection.slices) { slice in
-                TotalSpendLegendRow(
-                    title: slice.title,
-                    value: formatValue(slice.displayAmount, style: legendValueStyle),
-                    color: TotalSpendPalette.color(for: slice.provider.id),
-                    fontSize: density.supportingPointSize
-                )
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// Legend amounts: tokens always abbreviated; dollar modes keep exact cents like before.
-    private var legendValueStyle: MetricFormatter.Style {
-        switch projection.metric {
-        case .tokens: .row
-        case .cost, .costPerMtok: .full
-        }
-    }
-
-    private func formatValue(_ value: Double, style: MetricFormatter.Style) -> String {
-        switch projection.metric {
-        case .cost:
-            return MetricFormatter.number(value, kind: .dollars, style: style)
-        case .tokens:
-            return MetricFormatter.number(value, kind: .count, style: style)
-        case .costPerMtok:
-            return MetricFormatter.costPerMtok(value, style: style)
-        }
+        TotalSpendLegend(projection: projection)
     }
 }
 
@@ -400,6 +426,8 @@ enum TotalSpendPalette {
 
     static func color(for providerID: String) -> Color {
         if let brand = byProviderID[providerID] { return brand }
+        let family = ProviderAccountID.family(of: providerID)
+        if family != providerID, let brand = byProviderID[family] { return brand }
         let stableHash = providerID.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }
         return fallback[stableHash % fallback.count]
     }
