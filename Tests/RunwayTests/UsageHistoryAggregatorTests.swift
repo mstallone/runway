@@ -125,6 +125,7 @@ final class UsageHistoryAggregatorTests: XCTestCase {
         XCTAssertEqual(breakdown?.totalTokens, 350)
         XCTAssertEqual(breakdown?.models.map(\.model), ["Opus"])
         XCTAssertTrue(rendered.lines.contains { $0.label == "Usage Trend" })
+        XCTAssertEqual(rendered.usageHistory, combined)
     }
 
     private func history(

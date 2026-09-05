@@ -8,12 +8,17 @@ final class TotalSpendAggregatorTests: XCTestCase {
     private let codex = Provider(id: "codex", displayName: "Codex", icon: .providerMark("codex"))
     private let cursor = Provider(id: "cursor", displayName: "Cursor", icon: .providerMark("cursor"))
 
-    private func snapshot(_ provider: Provider, lines: [MetricLine]) -> ProviderSnapshot {
+    private func snapshot(
+        _ provider: Provider,
+        lines: [MetricLine] = [],
+        history: ProviderUsageHistory? = nil
+    ) -> ProviderSnapshot {
         ProviderSnapshot(
             providerID: provider.id,
             displayName: provider.displayName,
             lines: lines,
-            refreshedAt: Date(timeIntervalSince1970: 1_800_000_000)
+            refreshedAt: Date(timeIntervalSince1970: 1_800_000_000),
+            usageHistory: history
         )
     }
 
@@ -175,5 +180,101 @@ final class TotalSpendAggregatorTests: XCTestCase {
         XCTAssertTrue(total.projection(for: .cost).isEmpty)
         XCTAssertTrue(total.projection(for: .tokens).isEmpty)
         XCTAssertTrue(total.projection(for: .costPerMtok).isEmpty)
+    }
+
+    func testPeriodSwitcherLabelsAreToday7And30Days() {
+        XCTAssertEqual(TotalSpendPeriod.allCases.map(\.shortLabel), ["Today", "7 Days", "30 Days"])
+        XCTAssertEqual(TotalSpendPeriod.last7.dayCount, 7)
+        XCTAssertEqual(TotalSpendPeriod.last30.dayCount, UsageHistoryWindow.previousDays + 1)
+        XCTAssertEqual(TotalSpendPeriod.today.dayCount, 1)
+    }
+
+    func testLast7SumsHistoryInsideTheWindowAndSkipsOlderDays() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 9, day: 4, hour: 12))!
+        let snapshots = [
+            "claude": snapshot(
+                claude,
+                lines: [spendLine("Last 30 Days", dollars: 99, tokens: 9_000_000, estimated: true)],
+                history: history([
+                    ("2026-09-04", 10, 1),   // today
+                    ("2026-09-01", 20, 2),   // inside 7 days
+                    ("2026-08-28", 400, 40)  // 8 days back — outside 7, inside 30
+                ])
+            )
+        ]
+
+        let last7 = TotalSpendAggregator.total(
+            for: .last7, providers: [claude], snapshots: snapshots, now: now, calendar: calendar
+        )
+        XCTAssertEqual(try XCTUnwrap(last7.slices.first).amountUSD, 3, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(last7.slices.first).tokenCount, 30, accuracy: 0.0001)
+        XCTAssertEqual(last7.days.count, 7)
+        XCTAssertEqual(last7.days.first?.dayKey, "2026-08-29")
+        XCTAssertEqual(last7.days.last?.dayKey, "2026-09-04")
+        XCTAssertEqual(last7.days.map { $0.totalUSD }.reduce(0, +), 3, accuracy: 0.0001)
+
+        let last30 = TotalSpendAggregator.total(
+            for: .last30, providers: [claude], snapshots: snapshots, now: now, calendar: calendar
+        )
+        XCTAssertEqual(try XCTUnwrap(last30.slices.first).amountUSD, 43, accuracy: 0.0001)
+        XCTAssertEqual(last30.days.count, UsageHistoryWindow.previousDays + 1)
+    }
+
+    func testStackedDaysKeepIdleCalendarBars() {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 9, day: 4, hour: 12))!
+        let snapshots = [
+            "claude": snapshot(
+                claude,
+                history: history([("2026-09-04", 10, 1)])
+            ),
+            "cursor": snapshot(
+                cursor,
+                history: history([("2026-09-03", 50, 5)])
+            )
+        ]
+
+        let last7 = TotalSpendAggregator.total(
+            for: .last7, providers: [claude, cursor], snapshots: snapshots, now: now, calendar: calendar
+        )
+        XCTAssertEqual(last7.days.count, 7)
+        let byKey = Dictionary(uniqueKeysWithValues: last7.days.map { ($0.dayKey, $0) })
+        XCTAssertEqual(byKey["2026-09-04"]?.slices.map(\.providerID), ["claude"])
+        XCTAssertEqual(byKey["2026-09-03"]?.slices.map(\.providerID), ["cursor"])
+        XCTAssertEqual(byKey["2026-09-02"]?.slices.count, 0, "idle days stay in the series so each bar is a day")
+        XCTAssertEqual(last7.projection(for: .cost).slices.map(\.provider.id), ["cursor", "claude"])
+    }
+
+    func testLast7WithoutHistoryDoesNotInventATile() {
+        let snapshots = [
+            "claude": snapshot(claude, lines: [spendLine("Today", dollars: 2.50), spendLine("Last 30 Days", dollars: 10)])
+        ]
+        let total = TotalSpendAggregator.total(for: .last7, providers: [claude], snapshots: snapshots)
+        XCTAssertTrue(total.isEmpty)
+        XCTAssertEqual(total.days.count, 7)
+        XCTAssertTrue(total.days.allSatisfy(\.slices.isEmpty))
+    }
+
+    func testTodayTileFallbackFillsTheSingleBar() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 9, day: 4, hour: 12))!
+        let snapshots = [
+            "claude": snapshot(claude, lines: [spendLine("Today", dollars: 2.50, tokens: 100_000, estimated: true)])
+        ]
+        let total = TotalSpendAggregator.total(
+            for: .today, providers: [claude], snapshots: snapshots, now: now, calendar: calendar
+        )
+        XCTAssertEqual(total.days.count, 1)
+        XCTAssertEqual(try XCTUnwrap(total.days.first?.slices.first).amountUSD, 2.50, accuracy: 0.0001)
+        XCTAssertEqual(total.days.first?.dayKey, "2026-09-04")
+    }
+
+    private func history(_ days: [(String, Int, Double)]) -> ProviderUsageHistory {
+        ProviderUsageHistory(
+            series: DailyUsageSeries(daily: days.map {
+                DailyUsageEntry(date: $0.0, totalTokens: $0.1, costUSD: $0.2)
+            })
+        )
     }
 }
