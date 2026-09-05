@@ -27,7 +27,7 @@ You can also provide the key directly. Checked in this order, first match wins:
    { "apiKey": "sk-or-v1-..." }
    ```
 
-   A plain-text file containing just the key, or `~/.config/openrouter/key.json`, also work.
+   A plain-text file containing just the key, or `~/.config/openrouter/key.json`, also works.
 
 2. **Environment variable:** set `OPENROUTER_API_KEY` in your shell profile (`~/.zshrc` or `~/.zprofile`). On launch the app reads your login shell's environment, so a key exported there is picked up even when the app is started from Finder or the Dock. When a key is found here, the API Keys card shows it as read-only ("From environment") with a checkbox to override it with a saved key.
 

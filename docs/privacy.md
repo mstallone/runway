@@ -4,7 +4,7 @@ Runway collects no product analytics or usage statistics. It has no analytics or
 
 On the first launch after upgrading from a version that included analytics, Runway deletes the retired analytics identifier and counters that version stored locally.
 
-Provider usage stays on your Mac except for the network requests needed to read each provider's limits, and the optional services you turn on.
+Provider usage stays on your Mac except for the network requests needed to read each provider's limits, and the optional services described below, which you can turn off.
 
 ## Credentials stored on this Mac
 
