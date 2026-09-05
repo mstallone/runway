@@ -60,11 +60,6 @@ final class MuseProvider: ProviderRuntime {
     }
 
     func refresh() async -> ProviderSnapshot {
-        if let until = rateLimitedUntil, now() < until {
-            AppLog.info(LogTag.auth("muse"), "mint endpoint cooldown; skipping network")
-            return rateLimitedSnapshot(retryAfterSeconds: Int(ceil(until.timeIntervalSince(now()))))
-        }
-
         let allowInteraction = ProviderRefreshContext.isManual
         let load = await loadOffMainActor { [authStore] in
             authStore.loadCredentials(allowKeychainInteraction: allowInteraction)
@@ -72,6 +67,10 @@ final class MuseProvider: ProviderRuntime {
 
         switch load {
         case .token(let auth):
+            if let until = rateLimitedUntil, now() < until {
+                AppLog.info(LogTag.auth("muse"), "mint endpoint cooldown; skipping network")
+                return rateLimitedSnapshot(retryAfterSeconds: Int(ceil(until.timeIntervalSince(now()))))
+            }
             return await fetchSnapshot(auth: auth, allowInteraction: allowInteraction, allowRetry: true)
         case .connectRequired:
             return ProviderSnapshot.connectPrompt(provider: provider, error: MuseAuthError.keychainConnectRequired)
@@ -80,8 +79,12 @@ final class MuseProvider: ProviderRuntime {
         case .unreadable:
             return ProviderSnapshot.error(provider: provider, error: MuseAuthError.credentialStoreUnreadable)
         case .invalid:
+            lastGood = nil
+            rateLimitedUntil = nil
             return ProviderSnapshot.error(provider: provider, error: MuseAuthError.invalidCredentialData)
         case .none:
+            lastGood = nil
+            rateLimitedUntil = nil
             return ProviderSnapshot.error(provider: provider, error: MuseAuthError.notLoggedIn)
         }
     }

@@ -346,6 +346,30 @@ final class MuseProviderTests: XCTestCase {
         XCTAssertEqual(http.requests.count, 2, "cooldown must not mint again")
     }
 
+    func testRateLimitDoesNotServeLastGoodAfterLogout() async {
+        let probe = MuseRefreshProbe()
+        let keychain = museAccountKeychain()
+        let http = RoutingHTTPClient { _ in
+            if probe.remainingSuccesses > 0 {
+                probe.remainingSuccesses -= 1
+                return museJSONResponse(museKeyJSON())
+            }
+            return museJSONResponse(museGatewayJSON(status: 429))
+        }
+        let provider = makeMuseProvider(http: http, keychain: keychain, now: { probe.now })
+
+        _ = await provider.refresh()
+        probe.now = museNow.addingTimeInterval(1)
+        _ = await provider.refresh()
+
+        keychain.accountValues.removeAll()
+        probe.now = museNow.addingTimeInterval(2)
+        let loggedOut = await provider.refresh()
+
+        XCTAssertEqual(museErrorText(loggedOut), MuseAuthError.notLoggedIn.errorDescription)
+        XCTAssertEqual(http.requests.count, 2)
+    }
+
     func testInactivePlanBecomesNoSubscription() async {
         let http = RoutingHTTPClient { _ in museJSONResponse(museKeyJSON(isActive: false)) }
         let provider = makeMuseProvider(http: http)
