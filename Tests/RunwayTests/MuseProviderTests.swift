@@ -196,6 +196,21 @@ final class MuseUsageMapperTests: XCTestCase {
         }
     }
 
+    func testMissingSubscriptionFlagIsInvalidEvenWhenUsageIsPresent() {
+        let body = #"""
+        {
+          "subs_tier_name": "Muse Code Power Usage",
+          "subs_usage": {
+            "window": { "used_percent": 12, "window_duration_mins": 300, "resets_at": 1788585458 },
+            "weekly": { "used_percent": 34, "resets_at": 1788739200 }
+          }
+        }
+        """#
+        XCTAssertThrowsError(try MuseUsageMapper.map(Data(body.utf8))) { error in
+            XCTAssertEqual(error as? MuseUsageError, .invalidResponse)
+        }
+    }
+
     func testDisplayPlanStripsMuseCodePrefix() {
         XCTAssertEqual(MuseUsageMapper.displayPlan("Muse Code Power Usage"), "Power Usage")
         XCTAssertEqual(MuseUsageMapper.displayPlan("High Usage"), "High Usage")

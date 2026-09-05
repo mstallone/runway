@@ -13,8 +13,13 @@ enum MuseUsageMapper {
             throw MuseUsageError.invalidResponse
         }
 
-        if ProviderParse.bool(root["is_subs_active"]) == false {
+        switch ProviderParse.bool(root["is_subs_active"]) {
+        case false?:
             throw MuseUsageError.noSubscription
+        case true?:
+            break
+        case nil:
+            throw MuseUsageError.invalidResponse
         }
 
         guard let usage = root["subs_usage"] as? [String: Any] else {
