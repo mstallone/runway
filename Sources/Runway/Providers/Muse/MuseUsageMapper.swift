@@ -9,8 +9,12 @@ struct MuseMappedUsage: Equatable, Sendable {
 /// never reads that field. Percents and reset times come from `subs_usage` only.
 enum MuseUsageMapper {
     static func map(_ body: Data) throws -> MuseMappedUsage {
-        guard let root = ProviderParse.jsonObject(body) else {
+        guard let parsed = ProviderParse.jsonObject(body) else {
             throw MuseUsageError.invalidResponse
+        }
+        let root = unwrapPayload(parsed)
+        if let status = gatewayErrorStatus(in: root) {
+            throw MuseUsageError.requestFailed(status)
         }
 
         switch ProviderParse.bool(root["is_subs_active"]) {
@@ -19,10 +23,12 @@ enum MuseUsageMapper {
         case true?:
             break
         case nil:
+            logMissingFields(root, reason: "is_subs_active")
             throw MuseUsageError.invalidResponse
         }
 
         guard let usage = root["subs_usage"] as? [String: Any] else {
+            logMissingFields(root, reason: "subs_usage")
             throw MuseUsageError.invalidResponse
         }
 
@@ -48,10 +54,24 @@ enum MuseUsageMapper {
             lines.append(line)
         }
         guard !lines.isEmpty else {
+            logMissingFields(root, reason: "usage windows")
             throw MuseUsageError.invalidResponse
         }
 
         return MuseMappedUsage(plan: displayPlan(root["subs_tier_name"] as? String), lines: lines)
+    }
+
+    /// HTTP status to honor for a mint response. Meta's gateway sometimes returns HTTP 200 with
+    /// `{title, detail, status}` instead of the mint payload; treat that body's `status` as the
+    /// real outcome so a 401/429 envelope is not misread as a malformed usage document.
+    static func effectiveStatus(of response: HTTPResponse) -> Int {
+        guard (200..<300).contains(response.statusCode),
+              let root = ProviderParse.jsonObject(response.body),
+              let envelope = gatewayErrorStatus(in: unwrapPayload(root))
+        else {
+            return response.statusCode
+        }
+        return envelope
     }
 
     /// Card badge is `Muse · Power Usage`, not `Muse · Muse Code Power Usage`.
@@ -67,6 +87,37 @@ enum MuseUsageMapper {
             return String(trimmed.dropFirst(prefix.count)).nilIfEmpty ?? trimmed
         }
         return trimmed
+    }
+
+    /// A mint error envelope has `title`/`detail` plus a 4xx/5xx `status`, and no subscription meters.
+    static func gatewayErrorStatus(in root: [String: Any]) -> Int? {
+        if root["is_subs_active"] != nil || root["subs_usage"] != nil {
+            return nil
+        }
+        guard root["title"] != nil || root["detail"] != nil else { return nil }
+        guard let status = ProviderParse.number(root["status"]),
+              status >= 400,
+              status < 600
+        else {
+            return nil
+        }
+        return Int(status)
+    }
+
+    /// Muse Code sometimes wraps the mint document in `{ "data": { … } }`.
+    static func unwrapPayload(_ root: [String: Any]) -> [String: Any] {
+        if root["is_subs_active"] != nil || root["subs_usage"] != nil {
+            return root
+        }
+        if let nested = root["data"] as? [String: Any] {
+            return nested
+        }
+        return root
+    }
+
+    private static func logMissingFields(_ root: [String: Any], reason: String) {
+        let keys = root.keys.sorted().joined(separator: ",")
+        AppLog.warn(LogTag.auth("muse"), "usage payload missing \(reason); keys=\(keys)")
     }
 
     private static func progressLine(
