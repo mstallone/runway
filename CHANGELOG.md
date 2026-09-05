@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.8.12
+
+### New Features
+- Add Muse Code Subscription Meters ([#114](https://github.com/mstallone/runway/pull/114)) by @mstallone
+
+### Bug Fixes
+- Show Kimi Membership Plan Beside the Provider ([#116](https://github.com/mstallone/runway/pull/116)) by @mstallone
+- Show Cursor Grok Bot Weekly Allowance ([#115](https://github.com/mstallone/runway/pull/115)) by @mstallone
+- Port Upstream Accuracy and Pricing Fixes ([#113](https://github.com/mstallone/runway/pull/113)) by @mstallone
+- Show Grok Rate Limit Resets ([#112](https://github.com/mstallone/runway/pull/112)) by @mstallone
+- Keep Codex Auto-Review Visible and Price Grok Proxy Logs ([#111](https://github.com/mstallone/runway/pull/111)) by @mstallone
+- Fix Grok CLI token usage estimates ([#110](https://github.com/mstallone/runway/pull/110)) by @mstallone
+
+---
+
+### Changelog
+**Full Changelog**: [v0.8.11...v0.8.12](https://github.com/mstallone/runway/compare/v0.8.11...v0.8.12)
+
+- [c8b64cb](https://github.com/mstallone/runway/commit/c8b64cb86d4808c1d86f143202b4786a1ef0655d) Show Kimi Membership Plan Beside the Provider (#116) by @mstallone
+- [ded5224](https://github.com/mstallone/runway/commit/ded5224698f389361e52e52b6968dc74de654719) Show Cursor Grok Bot Weekly Allowance (#115) by @mstallone
+- [d05f615](https://github.com/mstallone/runway/commit/d05f61567d3a663209f4cdf0ea7950c56f9d115d) Port Upstream Accuracy and Pricing Fixes (#113) by @mstallone
+- [780a57b](https://github.com/mstallone/runway/commit/780a57b4002f5b363efa2f178baaabd33b1e135d) Add Muse Code Subscription Meters (#114) by @mstallone
+- [96cecf7](https://github.com/mstallone/runway/commit/96cecf7b73d5e0719555a2bb0d231ed9c67008a4) Show Grok Rate Limit Resets (#112) by @mstallone
+- [ed932bd](https://github.com/mstallone/runway/commit/ed932bd670f7a652995010daf191a427d728cdf5) Keep Codex Auto-Review Visible and Price Grok Proxy Logs (#111) by @mstallone
+- [23b1e19](https://github.com/mstallone/runway/commit/23b1e19ae0faced43cfdf83b7708c88b70182962) Fix Grok CLI token usage estimates (#110) by @mstallone
+
 ## v0.8.11
 
 ### Bug Fixes
