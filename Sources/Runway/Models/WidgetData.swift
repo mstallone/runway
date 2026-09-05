@@ -30,14 +30,16 @@ struct WidgetData: Hashable {
     /// always show the tick when a reset window exists; this toggle only adds it on blue.
     var alwaysShowPacing: Bool = false
     var resetsAt: Date?
-    /// Zero or more future expiry instants surfaced in the row's hover tooltip (Codex rate-limit-reset
-    /// credits — one entry per still-available credit). Empty for every other row. Kept as raw `Date`s so
-    /// the tooltip formats live and follows the global relative/absolute mode (see `expiryTooltip`).
+    /// Zero or more future expiry instants surfaced in the row's hover tooltip (Codex and Grok
+    /// rate-limit-reset credits — one entry per still-available credit). Empty for every other row.
+    /// Kept as raw `Date`s so the tooltip formats live and follows the global relative/absolute mode
+    /// (see `expiryTooltip`).
     var expiriesAt: [Date] = []
-    /// Descriptor opt-in marking this as the Codex rate-limit-reset-credits row. When set, the value
+    /// Descriptor opt-in marking this as a rate-limit-reset-credits row. When set, the value
     /// column reveals the resets popover on hover (a timeline of each credit's expiry, or an empty
     /// state when none are available) and lights up like the spend rows — so it stays reachable even
-    /// at "0 available", where `expiriesAt` is empty. Off for every other row.
+    /// at "0 available", where `expiriesAt` is empty. Off for every other row. Codex can claim from
+    /// that popover; Grok is list-only.
     var showsResetExpiries: Bool = false
     /// Names of models this period's spend used that the pricing sources can't price. Their usage is
     /// left out of the displayed total, so the period's figures can be understated.

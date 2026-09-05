@@ -8,6 +8,7 @@ Tracks Grok Build credit usage using the login from the Grok CLI.
 |---|---|
 | Weekly | The shared weekly pool's usage percent (the limit Grok's unified billing enforces), with the weekly reset countdown |
 | Extra Usage | Pay-as-you-go cap as a status (e.g. `2500 cap` or `Disabled`) |
+| Rate Limit Resets | Banked usage-limit reset tokens, shown as a count (e.g. `1 available`) with a colored dot for the soonest expiry; hover the value for a timeline of each token's expiry |
 | Today / Yesterday / Last 30 Days | Local cost and tokens estimated from Grok CLI session activity |
 
 When Grok reports your subscription tier, Runway shows it beside the provider name.
@@ -33,3 +34,5 @@ Each period is one tile showing cost and tokens together (`$4.08 · 1.2M tokens`
 ## Under the hood
 
 `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` for the weekly pool and pay-as-you-go cap — the exact call the Grok CLI itself makes — and `…/v1/settings` for the plan name; token refresh via `auth.x.ai`. A 401/403 triggers one token refresh and retry.
+
+The "Rate Limit Resets" row comes from a best-effort `POST https://grok.com/prod_mc_billing.ConsumerUiSvc/GetRemainingResets` (gRPC-web, same Grok CLI OAuth token). That is the Settings → Usage "Reset Available" card: each still-valid token has an id and a `validity_end`. Hover the value for a timeline of those expiries, soonest-first — the same popover Codex uses, but read-only. Runway never redeems a Grok reset. If that RPC fails, the row is omitted rather than shown as `0 available`; a successful empty list reads `0 available`.

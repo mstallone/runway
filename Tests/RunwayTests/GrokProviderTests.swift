@@ -158,6 +158,73 @@ final class GrokProviderTests: XCTestCase {
         XCTAssertNil(snapshot.warning)
     }
 
+    func testRateLimitResetsRowComesFromDedicatedFetch() async {
+        let now = RunwayISO8601.date(from: "2026-06-18T12:00:00.000Z")!
+        let expiry = now.addingTimeInterval(5 * 24 * 3600)
+        let httpClient = RecordingHTTPClient { request in
+            if request.url == GrokUsageClient.remainingResetsURL {
+                XCTAssertEqual(request.method, "POST")
+                XCTAssertEqual(request.body, GrokRemainingResetsDecoder.emptyRequest)
+                XCTAssertEqual(request.headers["Authorization"], "Bearer token")
+                XCTAssertEqual(request.headers["Content-Type"], "application/grpc-web+proto")
+                XCTAssertEqual(request.headers["x-grpc-web"], "1")
+                XCTAssertEqual(request.headers["Origin"], "https://grok.com")
+                return GrokRemainingResetsFixtures.http(
+                    GrokRemainingResetsFixtures.tokens([
+                        (id: "restok_example", grantedAt: now, expiresAt: expiry)
+                    ])
+                )
+            }
+            return Self.defaultRoutes(request)
+        }
+        let provider = makeProvider(httpClient: httpClient, now: now)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(remainingResets(snapshot.lines)?.count, 1)
+        XCTAssertEqual(remainingResets(snapshot.lines)?.expiries, [expiry])
+        XCTAssertEqual(progress(snapshot.lines, "Weekly limit")?.used, 99)
+    }
+
+    func testRemainingResetsFetchFailureDoesNotFailTheProvider() async {
+        let httpClient = RecordingHTTPClient { request in
+            if request.url == GrokUsageClient.remainingResetsURL {
+                return HTTPResponse(statusCode: 503, headers: [:], body: Data())
+            }
+            return Self.defaultRoutes(request)
+        }
+        let provider = makeProvider(httpClient: httpClient)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(progress(snapshot.lines, "Weekly limit")?.used, 99)
+        XCTAssertNil(remainingResets(snapshot.lines))
+        XCTAssertNil(snapshot.warning)
+        XCTAssertFalse(snapshot.lines.contains { $0.isError })
+    }
+
+    func testKnownZeroRemainingResetsShowsZeroAvailable() async {
+        let httpClient = RecordingHTTPClient { request in
+            if request.url == GrokUsageClient.remainingResetsURL {
+                return GrokRemainingResetsFixtures.http(GrokRemainingResetsFixtures.emptySuccess())
+            }
+            return Self.defaultRoutes(request)
+        }
+        let provider = makeProvider(httpClient: httpClient)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(remainingResets(snapshot.lines)?.count, 0)
+        XCTAssertEqual(remainingResets(snapshot.lines)?.expiries, [])
+    }
+
+    func testRateLimitResetsDescriptorOptsIntoTheExpiryPopover() {
+        let descriptor = GrokProvider().widgetDescriptors.first { $0.id == "grok.rateLimitResets" }
+        XCTAssertEqual(descriptor?.sample.showsResetExpiries, true)
+        XCTAssertEqual(descriptor?.sample.isUsagePeriod, false)
+        XCTAssertEqual(descriptor?.sample.traySuffix, "resets")
+    }
+
     func testCreditsFetchFailureFailsTheProvider() async {
         // The credits config is the provider's only remote meter now — its failure is a provider
         // error, not a partial degrade.
@@ -333,6 +400,12 @@ final class GrokProviderTests: XCTestCase {
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
         guard case .values(_, let values, _, _, _, _) = lines.first(where: { $0.label == label }) else { return nil }
         return values
+    }
+
+    private func remainingResets(_ lines: [MetricLine]) -> (count: Int, expiries: [Date])? {
+        guard case .values(_, let values, _, let expiries, _, _) =
+                lines.first(where: { $0.label == "Rate Limit Resets" }) else { return nil }
+        return (Int(values.first?.number ?? -1), expiries)
     }
 }
 

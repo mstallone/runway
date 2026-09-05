@@ -11,7 +11,7 @@ The code is grouped by role:
 
 - `App/` — startup and the AppKit bridge (status item, panel, the app entry point).
 - `Models/` — the small value types the rest of the app speaks in (`MetricLine`, `WidgetData`, descriptors).
-- `Providers/` — one folder per provider (Claude, Codex, Cursor, Devin, Grok, OpenCode, …).
+- `Providers/` — one folder per provider (Claude, Codex, Cursor, Devin, Grok, Muse, OpenCode, …).
 - `Stores/` — the mutable state the UI observes.
 - `Services/` — shared infrastructure (HTTP, the local API, process running).
 - `Support/` — small shared helpers (formatting, parsing, animations).
@@ -55,7 +55,7 @@ Application Support through `RunwayOwnedFileStore`, so it needs no Keychain writ
 Kimi remain the exception on the file side: Runway still refreshes those logins and saves them back
 to their CLIs' own credential files.
 
-For Claude, Codex, Cursor, and Copilot, Runway never calls their OAuth token endpoints either,
+For Claude, Codex, Cursor, Copilot, and Muse, Runway never calls their OAuth token endpoints either,
 because two apps rotating the same login can trip the server's token-reuse protection and sign the
 user out. When one of those tokens lapses, the card shows a renewal notice naming the owning app;
 Runway never renews it. Antigravity is the one endpoint-side exception: Runway refreshes its access

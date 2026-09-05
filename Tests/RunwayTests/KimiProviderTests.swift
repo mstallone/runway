@@ -331,7 +331,9 @@ final class KimiProviderTests: XCTestCase {
         let kimi = ids.firstIndex(of: "kimi")
         let openCode = ids.firstIndex(of: "opencode")
         XCTAssertEqual(kimi, grok.map { $0 + 1 })
-        XCTAssertEqual(openCode, kimi.map { $0 + 1 })
+        let muse = ids.firstIndex(of: "muse")
+        XCTAssertEqual(muse, kimi.map { $0 + 1 })
+        XCTAssertEqual(openCode, muse.map { $0 + 1 })
     }
 }
 

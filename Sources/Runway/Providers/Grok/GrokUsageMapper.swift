@@ -9,7 +9,15 @@ enum GrokUsageMapper {
     /// plus the pay-as-you-go badge. The Weekly line is omitted (the tile reads "No data") when the
     /// account's current period isn't weekly — an account still on the old monthly-only billing has
     /// no weekly pool, and mislabeling its monthly percent would be worse than an honest blank.
-    static func mapCreditsConfig(_ response: HTTPResponse) throws -> GrokMappedUsage {
+    ///
+    /// `remainingResets` is the dedicated `GetRemainingResets` payload (count + expiries). A
+    /// usable decode appends the Rate Limit Resets row after Extra Usage, matching Codex; a
+    /// missing or unusable payload omits the row rather than inventing a zero.
+    static func mapCreditsConfig(
+        _ response: HTTPResponse,
+        remainingResets: HTTPResponse? = nil,
+        now: Date = Date()
+    ) throws -> GrokMappedUsage {
         try ProviderAuthRetry.requireSuccess(
             response,
             authExpired: GrokAuthError.expired,
@@ -35,6 +43,13 @@ enum GrokUsageMapper {
             text: config.onDemandCap > 0 ? "\(formatUnits(config.onDemandCap)) cap" : "Disabled",
             colorHex: config.onDemandCap > 0 ? "#22c55e" : "#a3a3a3"
         ))
+        if let remainingResets, let resets = GrokRemainingResetsDecoder.decode(remainingResets, now: now) {
+            lines.append(.values(
+                label: "Rate Limit Resets",
+                values: [MetricValue(number: Double(resets.count), kind: .count, label: "available")],
+                expiriesAt: resets.expiries
+            ))
+        }
         return GrokMappedUsage(lines: lines)
     }
 

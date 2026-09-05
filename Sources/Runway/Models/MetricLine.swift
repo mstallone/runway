@@ -85,7 +85,7 @@ enum MetricLine: Hashable, Sendable, Codable {
     /// genuinely string-valued provider notices exposed through the local API; widgets do not parse it.
     ///
     /// `expiriesAt` carries zero or more future expiry instants the row surfaces in its hover tooltip —
-    /// used for the Codex rate-limit-reset-credits row ("2 available", with each credit's expiry listed
+    /// used for Codex and Grok rate-limit-reset rows ("2 available", with each credit's expiry listed
     /// on hover). Carried as raw `Date`s (not baked strings) so they count down on the popover's clock
     /// tick and honor the global relative/absolute reset mode, like a bounded row's reset countdown.
     ///

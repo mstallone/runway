@@ -34,6 +34,12 @@ final class WidgetUsagePeriodTests: XCTestCase {
         XCTAssertEqual(descriptors.first { $0.id == "codex.today" }?.sample.isUsagePeriod, true)
     }
 
+    func testGrokRateLimitResetsIsNotAUsagePeriod() {
+        let descriptors = GrokProvider().widgetDescriptors
+        XCTAssertEqual(descriptors.first { $0.id == "grok.rateLimitResets" }?.sample.isUsagePeriod, false)
+        XCTAssertEqual(descriptors.first { $0.id == "grok.rateLimitResets" }?.sample.showsResetExpiries, true)
+    }
+
     /// A depleted balance (every value zero, not a usage period): `isZeroUsage` is still true, but the
     /// note gate `isZeroUsage && isUsagePeriod` is false, so no "No usage in this period" note shows.
     func testZeroBalanceRowIsGatedOutOfTheNote() {

@@ -23,10 +23,12 @@ enum DefaultLayout {
 
         "devin.daily", "devin.weekly", "devin.extra",
 
-        "grok.weekly", "grok.trend",
+        "grok.weekly", "grok.rateLimitResets", "grok.trend",
         "grok.today", "grok.yesterday", "grok.last30",
 
         "kimi.session", "kimi.weekly", "kimi.extraBalance", "kimi.extraMonthly",
+
+        "muse.session", "muse.weekly",
 
         "opencode.session", "opencode.weekly", "opencode.monthly", "opencode.trend",
         "opencode.today", "opencode.yesterday", "opencode.last30",
@@ -111,11 +113,13 @@ enum DefaultLayout {
         // credits/spend stay above the fold; free-tier Chat + Completions sit below the caret.
         "copilot.chat", "copilot.completions",
         "devin.extra",
-        // Grok: Weekly stays above the fold; local history sits below the caret.
-        "grok.trend", "grok.today", "grok.yesterday", "grok.last30",
+        // Grok: Weekly stays above the fold; reset details and local history sit below the caret.
+        "grok.rateLimitResets", "grok.trend", "grok.today", "grok.yesterday", "grok.last30",
         // Kimi: Five-Hour Usage stays above the fold; Weekly Usage and the two Extra Usage
         // account/billing rows sit below the caret.
         "kimi.weekly", "kimi.extraBalance", "kimi.extraMonthly",
+        // Muse: Five-Hour Usage stays above the fold; Weekly Usage sits below the caret.
+        "muse.weekly",
         // OpenCode: the three Go caps (Session/Weekly/Monthly) and Usage Trend stay above the fold —
         // matching every other provider — with the spend tiles (Today/Yesterday/Last 30 Days) below.
         "opencode.today", "opencode.yesterday", "opencode.last30",
