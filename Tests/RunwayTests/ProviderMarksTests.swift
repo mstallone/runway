@@ -3,6 +3,17 @@ import XCTest
 
 @MainActor
 final class ProviderMarksTests: XCTestCase {
+    func testMuseUsesMetaInfinityMark() throws {
+        let mark = try XCTUnwrap(ProviderMarks.mark(for: "muse"))
+        XCTAssertTrue(
+            mark.pathData.hasPrefix("M6.915"),
+            "Muse must use the Meta infinity-M path, not the old sparkle star"
+        )
+        XCTAssertGreaterThan(mark.bounds.width, 20)
+        XCTAssertGreaterThan(mark.bounds.height, 14)
+        XCTAssertFalse(mark.path.isEmpty)
+    }
+
     func testGrokResolvesToVectorMarkNotBoltFallback() {
         let mark = ProviderMarks.mark(for: "grok")
         XCTAssertNotNil(mark, "Grok must load a real vector mark instead of the bolt.fill fallback")
