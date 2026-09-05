@@ -232,16 +232,16 @@ enum LayoutOrdering {
     ) -> [String: [String]] {
         // Start with every saved provider so a temporarily absent account card keeps its ordering
         // entry. For providers present now, deduplicate the saved sequence (including unknown metric
-        // tombstones) and append newly introduced live metrics; `LayoutStore` filters this persisted
+        // tombstones) and insert newly introduced live metrics at their declaration-order slot, so a
+        // new row does not fall to the bottom of Customize. `LayoutStore` filters this persisted
         // superset through the live registry before rendering.
         var fallback = saved
         for provider in registry.providers {
             let valid = registry.descriptors(for: provider.id).map(\.id)
             if let savedIDs = saved[provider.id] {
                 var seen = Set<String>()
-                var retained = savedIDs.filter { seen.insert($0).inserted }
-                retained.append(contentsOf: valid.filter { seen.insert($0).inserted })
-                fallback[provider.id] = retained
+                let retained = savedIDs.filter { seen.insert($0).inserted }
+                fallback[provider.id] = inserting(valid.filter { !seen.contains($0) }, into: retained, canonical: valid)
             } else {
                 fallback[provider.id] = valid
             }
@@ -252,12 +252,42 @@ enum LayoutOrdering {
     static func normalizedMetricIDs(_ saved: [String], validIDs: [String]) -> [String] {
         let validSet = Set(validIDs)
         var seen = Set<String>()
-        var ordered = saved.filter { id in
+        let ordered = saved.filter { id in
             guard validSet.contains(id), !seen.contains(id) else { return false }
             seen.insert(id)
             return true
         }
-        ordered.append(contentsOf: validIDs.filter { !seen.contains($0) })
-        return ordered
+        return inserting(validIDs.filter { !seen.contains($0) }, into: ordered, canonical: validIDs)
+    }
+
+    /// Drop `ids` from `saved` (if present) and put them back at their `canonical` slots. Used to
+    /// correct a row that was appended at the end when it first shipped.
+    static func relocating(_ ids: [String], in saved: [String], canonical: [String]) -> [String] {
+        let present = ids.filter { saved.contains($0) }
+        guard !present.isEmpty else { return saved }
+        let stripped = saved.filter { !present.contains($0) }
+        return inserting(present, into: stripped, canonical: canonical)
+    }
+
+    /// Insert `newIDs` into `saved` at each id's declaration slot in `canonical`, keeping the relative
+    /// order of ids already in `saved`. Saved ids that `canonical` does not know (tombstones) stay put.
+    static func inserting(_ newIDs: [String], into saved: [String], canonical: [String]) -> [String] {
+        let indexByID = Dictionary(uniqueKeysWithValues: canonical.enumerated().map { ($1, $0) })
+        var seen = Set(saved)
+        var result = saved
+        for id in newIDs where seen.insert(id).inserted {
+            let insertAt = indexByID[id].flatMap { mine in
+                result.firstIndex { other in
+                    guard let idx = indexByID[other] else { return false }
+                    return idx > mine
+                }
+            }
+            if let insertAt {
+                result.insert(id, at: insertAt)
+            } else {
+                result.append(id)
+            }
+        }
+        return result
     }
 }
