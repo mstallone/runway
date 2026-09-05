@@ -104,7 +104,9 @@ final class KimiAuthStoreTests: XCTestCase {
 
 final class KimiUsageMapperTests: XCTestCase {
     func testMapsQuotaWindowsResetsAndCNYExtraUsage() throws {
-        let lines = try KimiUsageMapper.map(Data(kimiUsageJSON.utf8), now: kimiNow)
+        let mapped = try KimiUsageMapper.map(Data(kimiUsageJSON.utf8), now: kimiNow)
+        XCTAssertEqual(mapped.plan, "Allegretto")
+        let lines = mapped.lines
 
         let session = try XCTUnwrap(kimiProgress(lines, "Five-Hour Usage"))
         XCTAssertEqual(session.used, 25)
@@ -147,7 +149,7 @@ final class KimiUsageMapperTests: XCTestCase {
         }
         """#
 
-        let lines = try KimiUsageMapper.map(Data(body.utf8), now: kimiNow)
+        let lines = try KimiUsageMapper.map(Data(body.utf8), now: kimiNow).lines
 
         let balance = try XCTUnwrap(kimiValues(lines, "Extra Usage Balance").first)
         XCTAssertEqual(balance.number, 0.01)
@@ -167,7 +169,7 @@ final class KimiUsageMapperTests: XCTestCase {
         }
         """#
 
-        let lines = try KimiUsageMapper.map(Data(body.utf8), now: kimiNow)
+        let lines = try KimiUsageMapper.map(Data(body.utf8), now: kimiNow).lines
 
         XCTAssertEqual(try XCTUnwrap(kimiProgress(lines, "Five-Hour Usage")).used, 10)
         XCTAssertEqual(try XCTUnwrap(kimiProgress(lines, "Weekly Usage")).used, 25)
@@ -181,20 +183,33 @@ final class KimiUsageMapperTests: XCTestCase {
         }
         """#
 
-        let lines = try KimiUsageMapper.map(Data(body.utf8), now: kimiNow)
+        let lines = try KimiUsageMapper.map(Data(body.utf8), now: kimiNow).lines
 
         XCTAssertEqual(try XCTUnwrap(kimiProgress(lines, "Five-Hour Usage")).used, 100)
         XCTAssertNil(kimiProgress(lines, "Weekly Usage"), "negative remaining is rejected")
     }
 
     func testEmptyPayloadGetsNoDataAndMalformedJSONThrows() throws {
-        XCTAssertEqual(
-            try KimiUsageMapper.map(Data(#"{"limits":[]}"#.utf8), now: kimiNow),
-            [.noUsageData]
-        )
+        let empty = try KimiUsageMapper.map(Data(#"{"limits":[]}"#.utf8), now: kimiNow)
+        XCTAssertNil(empty.plan)
+        XCTAssertEqual(empty.lines, [.noUsageData])
         XCTAssertThrowsError(try KimiUsageMapper.map(Data("not-json".utf8), now: kimiNow)) {
             XCTAssertEqual($0 as? KimiUsageError, .invalidResponse)
         }
+    }
+
+    func testPlanNameMapsPublishedMembershipLevels() {
+        XCTAssertEqual(KimiUsageMapper.planName(from: "LEVEL_FREE"), "Free")
+        XCTAssertEqual(KimiUsageMapper.planName(from: "LEVEL_BASIC"), "Adagio")
+        XCTAssertEqual(KimiUsageMapper.planName(from: "LEVEL_STANDARD"), "Moderato")
+        XCTAssertEqual(KimiUsageMapper.planName(from: "LEVEL_INTERMEDIATE"), "Allegretto")
+        XCTAssertEqual(KimiUsageMapper.planName(from: "LEVEL_ADVANCED"), "Allegro")
+        XCTAssertEqual(KimiUsageMapper.planName(from: "LEVEL_PREMIUM"), "Vivace")
+        XCTAssertEqual(KimiUsageMapper.planName(from: "intermediate"), "Allegretto")
+        XCTAssertEqual(KimiUsageMapper.planName(from: "LEVEL-INTERMEDIATE"), "Allegretto")
+        XCTAssertEqual(KimiUsageMapper.planName(from: "LEVEL_ANDANTE"), "Andante")
+        XCTAssertEqual(KimiUsageMapper.planName(from: "Allegretto"), "Allegretto")
+        XCTAssertNil(KimiUsageMapper.planName(from: "  "))
     }
 }
 
@@ -237,6 +252,7 @@ final class KimiProviderTests: XCTestCase {
 
         let snapshot = await provider.refresh()
 
+        XCTAssertEqual(snapshot.plan, "Allegretto")
         XCTAssertNotNil(snapshot.line(label: "Five-Hour Usage"))
         XCTAssertNotNil(snapshot.line(label: "Weekly Usage"))
         XCTAssertEqual(http.requests.count, 1)
@@ -438,6 +454,9 @@ private let kimiUsageJSON = #"""
       "detail": {"limit": 200, "remaining": 150, "reset_in": 3600}
     }
   ],
+  "user": {
+    "membership": {"level": "LEVEL_INTERMEDIATE"}
+  },
   "boosterWallet": {
     "balance": {"type":"BOOSTER","amount":5000000000,"amountLeft":2340000000},
     "monthlyChargeLimitEnabled": true,

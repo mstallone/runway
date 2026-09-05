@@ -1,14 +1,20 @@
 import Foundation
 
+struct KimiMappedUsage: Equatable, Sendable {
+    var plan: String?
+    var lines: [MetricLine]
+}
+
 /// Normalizes the managed Kimi Code `/usages` response used by the official CLI's `/usage` command.
 /// The API is not a public contract, so the boundary parser intentionally accepts the field aliases
 /// and numeric strings the CLI accepts while emitting a small, stable set of Runway labels.
+/// Plan comes from the same payload (`user.membership`), not a second request.
 enum KimiUsageMapper {
     static let sessionPeriodMs = 5 * 60 * 60 * 1000
     static let weeklyPeriodMs = 7 * 24 * 60 * 60 * 1000
     static let monthlyPeriodMs = 30 * 24 * 60 * 60 * 1000
 
-    static func map(_ body: Data, now: Date = Date()) throws -> [MetricLine] {
+    static func map(_ body: Data, now: Date = Date()) throws -> KimiMappedUsage {
         guard let root = ProviderParse.jsonObject(body) else {
             throw KimiUsageError.invalidResponse
         }
@@ -59,7 +65,35 @@ enum KimiUsageMapper {
         }
         lines += extraUsageLines(root["boosterWallet"])
         MetricLine.appendNoDataIfNeeded(&lines)
-        return lines
+        return KimiMappedUsage(plan: planName(from: root), lines: lines)
+    }
+
+    /// Membership badge next to the provider name. Known `LEVEL_*` values use Kimi's published
+    /// plan names; anything else title-cases after stripping a `LEVEL_` prefix so a new tier still
+    /// shows rather than going blank.
+    static func planName(from raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty else {
+            return nil
+        }
+        let token = trimmed.replacingOccurrences(of: "-", with: "_").uppercased()
+        let level = token.hasPrefix("LEVEL_") ? token : "LEVEL_\(token)"
+        switch level {
+        case "LEVEL_FREE": return "Free"
+        case "LEVEL_BASIC": return "Adagio"
+        case "LEVEL_STANDARD": return "Moderato"
+        case "LEVEL_INTERMEDIATE": return "Allegretto"
+        case "LEVEL_ADVANCED": return "Allegro"
+        case "LEVEL_PREMIUM": return "Vivace"
+        default:
+            let stripped = String(level.dropFirst("LEVEL_".count))
+            guard !stripped.isEmpty else { return nil }
+            return stripped.titleCased(separator: { $0 == "_" }, lowercasingTail: true)
+        }
+    }
+
+    private static func planName(from root: [String: Any]) -> String? {
+        let membership = (root["user"] as? [String: Any])?["membership"] as? [String: Any]
+        return planName(from: membership?["level"] as? String)
     }
 
     private enum WindowKind {

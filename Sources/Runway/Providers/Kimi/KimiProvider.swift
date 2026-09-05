@@ -98,11 +98,11 @@ final class KimiProvider: ProviderRuntime {
 
             switch response.statusCode {
             case 200..<300:
-                let lines = try KimiUsageMapper.map(response.body, now: now())
+                let mapped = try KimiUsageMapper.map(response.body, now: now())
                 return ProviderSnapshot.make(
                     provider: provider,
-                    plan: nil,
-                    lines: lines,
+                    plan: mapped.plan,
+                    lines: mapped.lines,
                     refreshedAt: now()
                 )
             case 401:
