@@ -206,6 +206,7 @@ final class KimiUsageMapperTests: XCTestCase {
         XCTAssertEqual(KimiUsageMapper.planName(from: "LEVEL_ADVANCED"), "Allegro")
         XCTAssertEqual(KimiUsageMapper.planName(from: "LEVEL_PREMIUM"), "Vivace")
         XCTAssertEqual(KimiUsageMapper.planName(from: "intermediate"), "Allegretto")
+        XCTAssertEqual(KimiUsageMapper.planName(from: "LEVEL-INTERMEDIATE"), "Allegretto")
         XCTAssertEqual(KimiUsageMapper.planName(from: "LEVEL_ANDANTE"), "Andante")
         XCTAssertEqual(KimiUsageMapper.planName(from: "Allegretto"), "Allegretto")
         XCTAssertNil(KimiUsageMapper.planName(from: "  "))

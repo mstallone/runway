@@ -16,7 +16,7 @@ the same account. The values in Runway therefore describe the account-wide pool,
 Extra Usage rows only appear when Kimi reports a Booster wallet for the account. Runway displays
 the currency Kimi returns, including CNY and USD.
 
-When Kimi reports your membership (Adagio, Moderato, Allegretto, Allegro, Vivace),
+When Kimi reports your membership (Free, Adagio, Moderato, Allegretto, Allegro, Vivace),
 Runway shows it beside the provider name.
 
 ## Where credentials come from

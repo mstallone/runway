@@ -85,12 +85,9 @@ enum KimiUsageMapper {
         case "LEVEL_ADVANCED": return "Allegro"
         case "LEVEL_PREMIUM": return "Vivace"
         default:
-            if !trimmed.uppercased().hasPrefix("LEVEL_"), !trimmed.contains("_") {
-                return trimmed
-            }
-            let stripped = level.dropFirst("LEVEL_".count)
+            let stripped = String(level.dropFirst("LEVEL_".count))
             guard !stripped.isEmpty else { return nil }
-            return String(stripped).titleCased(separator: { $0 == "_" }, lowercasingTail: true)
+            return stripped.titleCased(separator: { $0 == "_" }, lowercasingTail: true)
         }
     }
 
