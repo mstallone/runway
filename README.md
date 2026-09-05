@@ -37,7 +37,7 @@ the details and methodology in [docs/performance.md](docs/performance.md).
 - **[Claude](docs/providers/claude.md)** — session, weekly, model-specific limits, extra usage, local daily spend
 - **[Codex](docs/providers/codex.md)** — session, weekly, credits, local daily spend
 - **[Copilot](docs/providers/copilot.md)** — AI credits, extra usage, organization billing, chat and completions
-- **[Cursor](docs/providers/cursor.md)** — credits, total/cursor/other model usage, requests, on-demand, per-day spend
+- **[Cursor](docs/providers/cursor.md)** — credits, total usage, Grok Bot, Cursor Models, Other Models, requests, on-demand, per-day spend
 - **[Devin](docs/providers/devin.md)** — weekly and daily quota, extra usage balance
 - **[Grok](docs/providers/grok.md)** — weekly shared pool, pay-as-you-go, local daily spend
 - **[Kimi](docs/providers/kimi.md)** — five-hour and weekly Kimi Code quota, Extra Usage balance and monthly spend

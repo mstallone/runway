@@ -15,7 +15,7 @@ enum DefaultLayout {
         "codex.weekly", "codex.rateLimitResets", "codex.trend",
         "codex.today", "codex.yesterday", "codex.last30",
 
-        "cursor.usage", "cursor.auto", "cursor.api", "cursor.trend",
+        "cursor.usage", "cursor.auto", "cursor.api", "cursor.grokBot", "cursor.trend",
         "cursor.onDemand", "cursor.today", "cursor.yesterday", "cursor.last30",
 
         "copilot.premium", "copilot.extra", "copilot.orgCredits", "copilot.orgSpend", "copilot.orgManaged",
@@ -107,7 +107,7 @@ enum DefaultLayout {
         "claude.trend", "claude.today", "claude.yesterday", "claude.last30",
         // Codex: Weekly stays above the fold; reset details and local history sit below the caret.
         "codex.rateLimitResets", "codex.trend", "codex.today", "codex.yesterday", "codex.last30",
-        "cursor.onDemand", "cursor.requests", "cursor.credits",
+        "cursor.grokBot", "cursor.onDemand", "cursor.requests", "cursor.credits",
         "cursor.today", "cursor.yesterday", "cursor.last30",
         // Copilot adapts its visible rows to the account: personal Credits/Extra Usage or org-wide
         // credits/spend stay above the fold; free-tier Chat + Completions sit below the caret.
