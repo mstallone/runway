@@ -85,9 +85,11 @@ enum GrokRemainingResetsDecoder {
                 continue
             }
         }
-        guard let tokenID, !tokenID.isEmpty, let validityEnd, validityEnd > now else {
-            return .some(nil)
-        }
+        // No id: skip, matching grok.com. Id without a parseable validity_end: unknown reading
+        // (omit the row) so a schema change cannot surface as a trusted "0 available".
+        guard let tokenID, !tokenID.isEmpty else { return .some(nil) }
+        guard let validityEnd else { return nil }
+        guard validityEnd > now else { return .some(nil) }
         return validityEnd
     }
 
@@ -101,10 +103,10 @@ enum GrokRemainingResetsDecoder {
     }
 
     private static func grpcStatus(inHTTPHeaders headers: [String: String]) -> Int? {
-        if let raw = headers["grpc-status"] ?? headers["Grpc-Status"] {
-            return Int(raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard let raw = headers.first(where: { $0.key.lowercased() == "grpc-status" })?.value else {
+            return nil
         }
-        return nil
+        return Int(raw.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     private static func grpcStatus(inTrailers trailers: [Data]) -> Int? {

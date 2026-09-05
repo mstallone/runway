@@ -68,6 +68,23 @@ final class GrokRemainingResetsDecoderTests: XCTestCase {
         XCTAssertEqual(decoded?.expiries, [end])
     }
 
+    func testIdentifiedTokenMissingValidityEndIsUnknown() {
+        var token = Data()
+        token.append(0x52) // field 10, wire 2 (token_id)
+        let id = Data("restok_example".utf8)
+        writeVarint(&token, UInt64(id.count))
+        token.append(id)
+        var payload = Data()
+        payload.append(0x52) // field 10, wire 2 (tokens)
+        writeVarint(&payload, UInt64(token.count))
+        payload.append(token)
+        XCTAssertNil(GrokRemainingResetsDecoder.decodeBody(
+            GrokRemainingResetsFixtures.grpcFrame(payload: payload)
+                + GrokRemainingResetsFixtures.grpcTrailer(0),
+            now: now
+        ))
+    }
+
     func testTokenMissingIDIsSkippedNotCounted() {
         let end = now.addingTimeInterval(24 * 3600)
         var token = Data()
@@ -99,6 +116,13 @@ final class GrokRemainingResetsDecoderTests: XCTestCase {
             GrokRemainingResetsFixtures.http(
                 GrokRemainingResetsFixtures.emptySuccess(),
                 headers: ["grpc-status": "16"]
+            ),
+            now: now
+        ))
+        XCTAssertNil(GrokRemainingResetsDecoder.decode(
+            GrokRemainingResetsFixtures.http(
+                GrokRemainingResetsFixtures.emptySuccess(),
+                headers: ["GRPC-Status": "12"]
             ),
             now: now
         ))
