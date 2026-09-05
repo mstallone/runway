@@ -159,7 +159,9 @@ final class CodexAccountIsolationTests: XCTestCase {
             ),
             usageClient: CodexUsageClient(http: http),
             logUsageScanner: CodexLogFixture.scanner(home: nil),
-            pricing: { TestPricing.bundled }
+            openCodeUsageScanner: CodexLogFixture.inactiveOpenCodeScanner(),
+            pricing: { TestPricing.bundled },
+            piUsageCardID: id == "codex" ? "codex" : nil
         )
     }
 

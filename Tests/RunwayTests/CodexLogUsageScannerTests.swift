@@ -696,7 +696,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(
             CodexLogUsageScanner.cost(
                 rates: legacyRates, event: event, model: event.model,
-                fastTier: false, fastMultiplier: 1
+                fastTier: false
             ),
             0.03,
             accuracy: 0.000_001
@@ -720,14 +720,15 @@ final class CodexLogUsageScannerTests: XCTestCase {
             ("gpt-5.5-pro-20260423", 20.7),
             ("gpt-5.6-sol", 2.55),
             ("gpt-5.6-terra", 1.02),
-            ("gpt-5.6-luna", 0.102)
+            ("gpt-5.6-luna", 0.102),
+            ("gpt-6-astra", 4.95)
         ]
 
         for (model, expected) in expectedCosts {
             XCTAssertEqual(
                 CodexLogUsageScanner.cost(
                     rates: rates, event: event, model: model,
-                    fastTier: false, fastMultiplier: 1
+                    fastTier: false
                 ),
                 expected,
                 accuracy: 0.000_001,
@@ -751,7 +752,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(
             CodexLogUsageScanner.cost(
                 rates: rates, event: event, model: "gpt-5.5",
-                fastTier: false, fastMultiplier: 1
+                fastTier: false
             ),
             1.066,
             accuracy: 0.000_001

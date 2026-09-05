@@ -21,10 +21,11 @@ final class CodexProvider: ProviderRuntime {
     let authStore: CodexAuthStore
     let usageClient: CodexUsageClient
     let logUsageScanner: CodexLogUsageScanner
+    let openCodeUsageScanner: OpenCodeCodexUsageScanner
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
-    /// Pi names only the provider family in its logs. `nil` keeps those account-ambiguous entries
-    /// off this card; the current default-source holder receives the family slice under `codex`.
+    /// Pi and OpenCode name only the provider family. `nil` keeps those account-ambiguous entries
+    /// off this card; the current default-source holder receives both slices under `codex`.
     let piUsageCardID: String?
 
     init(
@@ -32,6 +33,7 @@ final class CodexProvider: ProviderRuntime {
         authStore: CodexAuthStore = CodexAuthStore(),
         usageClient: CodexUsageClient = CodexUsageClient(),
         logUsageScanner: CodexLogUsageScanner = CodexLogUsageScanner(),
+        openCodeUsageScanner: OpenCodeCodexUsageScanner = OpenCodeCodexUsageScanner(),
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = ModelPricingStore.livePricing,
         piUsageCardID: String? = "codex"
@@ -40,6 +42,7 @@ final class CodexProvider: ProviderRuntime {
         self.authStore = authStore
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner
+        self.openCodeUsageScanner = openCodeUsageScanner
         self.now = now
         self.pricing = pricing
         self.piUsageCardID = piUsageCardID
@@ -217,7 +220,8 @@ final class CodexProvider: ProviderRuntime {
     }
 
     /// Assembles the published snapshot from whatever live usage is available plus the always-local
-    /// spend tiles and trend (scanned from the Codex CLI's session rollouts and pi's logs).
+    /// spend tiles and trend (scanned from the Codex CLI's session rollouts, pi's logs, and OpenCode
+    /// ChatGPT OAuth rows).
     private func localUsageSnapshot(
         mapped initialMapped: CodexMappedUsage,
         warning: String?,
@@ -225,24 +229,15 @@ final class CodexProvider: ProviderRuntime {
     ) async -> ProviderSnapshot {
         var mapped = initialMapped
         let pricing = await pricing()
-        let nativeScan = await logUsageScanner.scan(now: now(), pricing: pricing)
-        let piScan: LogUsageScan?
-        if let piUsageCardID {
-            piScan = await PiUsageScanner.shared.scan(
-                cardID: piUsageCardID,
-                now: now(),
-                pricing: pricing
-            )
-        } else {
-            piScan = nil
-        }
+        async let native = logUsageScanner.scan(now: now(), pricing: pricing)
+        async let pi = piUsageScan(pricing: pricing)
+        async let openCode = openCodeUsageScan(pricing: pricing)
+        let (nativeScan, piScan, openCodeScan) = await (native, pi, openCode)
         var usageHistory: ProviderUsageHistory?
-        // Cancellation can land between the native and pi scans. Treat the pair as one unit so a
+        // Cancellation can land between the local scans. Treat them as one unit so a
         // partial result cannot replace the last-good combined history in WidgetDataStore.
-        if !Task.isCancelled, let scan = DailyUsageAccumulator.merged([nativeScan, piScan]) {
-            let note = piScan == nil
-                ? "From your Codex logs (estimated)"
-                : "From your Codex logs and pi (estimated)"
+        if !Task.isCancelled, let scan = DailyUsageAccumulator.merged([nativeScan, piScan, openCodeScan]) {
+            let note = Self.localUsageSourceNote(hasPi: piScan != nil, hasOpenCode: openCodeScan != nil)
             usageHistory = ProviderUsageHistory(
                 series: scan.series,
                 modelUsage: scan.modelUsage,
@@ -267,6 +262,32 @@ final class CodexProvider: ProviderRuntime {
             warning: warning,
             warningIsConnectPrompt: warningIsConnectPrompt
         )
+    }
+
+    /// Pi and OpenCode identify only the Codex family. Extra account cards leave those slices off.
+    private func piUsageScan(pricing: ModelPricing) async -> LogUsageScan? {
+        guard let piUsageCardID else { return nil }
+        return await PiUsageScanner.shared.scan(
+            cardID: piUsageCardID,
+            now: now(),
+            pricing: pricing,
+            estimateCost: { CodexUsagePricing.estimatedCost(pricing: pricing, model: $0, tokens: $1) }
+        )
+    }
+
+    private func openCodeUsageScan(pricing: ModelPricing) async -> LogUsageScan? {
+        guard piUsageCardID != nil else { return nil }
+        return await openCodeUsageScanner.scan(now: now(), pricing: pricing)
+    }
+
+    static func localUsageSourceNote(hasPi: Bool, hasOpenCode: Bool) -> String {
+        var sources = ["Codex logs"]
+        if hasPi { sources.append("pi") }
+        if hasOpenCode { sources.append("OpenCode") }
+        let joined = sources.count > 2
+            ? sources.dropLast().joined(separator: ", ") + ", and " + sources[sources.count - 1]
+            : sources.joined(separator: " and ")
+        return "From your \(joined) (estimated)"
     }
 
     /// Fetches the on-demand reset-credit balance (and per-credit expiry) without ever failing the
