@@ -43,17 +43,28 @@ While Settings is open, Runway briefly appears in the Dock, the same as during a
 
 ## Notifications
 
-Runway can send a macOS notification when a metric runs low or its pace gets worse. Alerts work while the app runs in the menu bar, even with the popover closed.
+Runway can send a macOS notification when a metric runs low, its pace gets worse, or an unused reset credit is about to expire. Alerts work while the app runs in the menu bar, even with the popover closed.
 
 | Setting | Options | What it does |
 |---|---|---|
 | Almost Out | On / Off | Alerts when a metric crosses under 10% remaining, including balances without a reset window. |
 | Cutting It Close | On / Off | Alerts when a metric is projected to finish the period close to its limit. |
 | Will Run Out | On / Off | Alerts when a metric is projected to run out before it resets. |
+| Reset Expiry Reminders | On / Off | Reminds you before unused Codex and Grok reset credits expire: 48 hours, 24 hours, 2 hours, 1 hour, and 15 minutes. |
 
-Alerts fire on a new crossing or when pace worsens, then stay quiet while that condition is unchanged. A quota already in a bad state when Runway launches sets the baseline without alerting. If it recovers and later worsens again, the alert fires again. A new reset period also clears the reset-based history. **Almost Out** uses only the remaining share, so it also works for balances without a reset window. **Cutting It Close** and **Will Run Out** need a reset window. Metrics whose data cannot be read never alert. Turn all three off to silence everything. Several alerts at once stack into one grouped banner.
+Pace alerts fire on a new crossing or when pace worsens, then stay quiet while that condition is unchanged. A quota already in a bad state when Runway launches sets the baseline without alerting. If it recovers and later worsens again, the alert fires again. A new reset period also clears the reset-based history. **Almost Out** uses only the remaining share, so it also works for balances without a reset window. **Cutting It Close** and **Will Run Out** need a reset window. Metrics whose data cannot be read never alert. Turn all four settings off to silence everything. Several alerts at once stack into one grouped banner.
 
-All three default off. The first time you turn one on, Runway asks for notification permission. If you decline, or later turn notifications off for Runway in System Settings, a warning mark appears on the Notifications header and an "Open System Settings" button shows under the toggles. A notification's title is the alert name, its subtitle names the provider and metric, and its body is the plain-language verdict. Tapping an alert opens the popover.
+All four default off. The first time you turn one on, Runway asks for notification permission. If you decline, or later turn notifications off for Runway in System Settings, a warning mark appears on the Notifications header and an "Open System Settings" button shows under the toggles. Permission is checked for each delivery; re-enabling notifications does not require restarting Runway. A notification's title is the alert name, its subtitle names the provider and metric, and its body is the plain-language verdict. Tapping an alert opens the popover.
+
+### Reset Expiry Reminders
+
+These reminders cover unused reset credits on enabled providers, even if the Rate Limit Resets row is hidden in Customize. They do not remind about the normal session or weekly quota reset. Each provider card and expiry has its own reminder; credits expiring in the same second share a reminder showing their count. Expiry times must be known.
+
+Runway schedules the next reminder or expiry directly and reschedules when data or settings change. It also rechecks after Mac wake or a clock change. No timer runs when reminders are off or there are no known expiries. After launch, new reminders wait for that provider's first successful refresh; cached data alone cannot trigger an alert. Each milestone replaces the previous notification for that reset. Dismissing it keeps it dismissed until the next milestone, including across app restarts. If you launch or wake after missing several milestones, only the most urgent one still relevant appears. No reminders are sent while Runway is quit or the Mac is asleep.
+
+The current reminder is removed when the credit expires, a refresh no longer lists it, or you disable its provider or Reset Expiry Reminders. If a group's count changes, its outdated reminder is removed; the next milestone uses the new count. Temporarily missing expiry data also withdraws it without forgetting which milestones already fired. A reminder that becomes obsolete while awaiting permission is skipped. The notification includes the exact expiry date and time; its countdown text updates only at the next milestone. Failed deliveries retry after five minutes, at an earlier milestone, or when data changes, and show a message in Notifications settings. If a replacement fails, the previous alert stays in place.
+
+For notifications that stay onscreen until dismissed, choose **Alerts** for Runway in **System Settings → Notifications**. Runway requests that style by default, but macOS and your saved choice control it; the app cannot force persistent alerts. The shortcut under Reset Expiry Reminders opens those settings.
 
 ## Advanced
 

@@ -19,8 +19,7 @@ final class AppContainer {
     /// `APIKeyManaging`. Each matching Customize provider detail shows an API Key section and writes
     /// changes through the capability. Empty when no installed provider needs a user key.
     let apiKeyProviders: [any APIKeyManaging]
-    /// Quota pace notification preferences (three independent triggers). Drives the Settings section
-    /// and is read by `WidgetDataStore.evaluateNotifications`.
+    /// Preferences shared by the pace and reset-credit notification evaluators and Settings.
     let notificationSettings: NotificationSettingsStore
     /// Source of truth for the popover's transparency: the persisted Increase Transparency toggle, the
     /// ephemeral secret-code easter-egg state, and the system accessibility flags it yields to. Read by both
@@ -50,6 +49,7 @@ final class AppContainer {
     private let localAPI: LocalUsageServer
     // A `let` of a `Sendable` `Task` is implicitly nonisolated, so the nonisolated `deinit` can cancel it.
     private let refreshTask: Task<Void, Never>
+    private let resetNotificationTask: Task<Void, Never>
     /// The fresh-install credential-detection pass (see `FirstRunSeeder`); `nil` on every later launch.
     private let seedTask: Task<Void, Never>?
     /// The new-provider credential-detection pass (see `NewProviderSeeder`); `nil` unless this launch is
@@ -210,6 +210,9 @@ final class AppContainer {
             .resolvingDisplayNames(accounts.resolvedDisplayNamesByCardID)
         })
         self.refreshTask = Self.startPeriodicRefresh(dataStore: dataStore)
+        self.resetNotificationTask = ResetExpiryNotificationMonitor(
+            settings: notificationSettings, dataStore: dataStore
+        ).start()
         localAPI.start()
         // Become the notification-center delegate so banners show while frontmost — a menu-bar accessory
         // effectively always is. Notification authorization is requested the first time a trigger is
@@ -219,6 +222,7 @@ final class AppContainer {
 
     deinit {
         refreshTask.cancel()
+        resetNotificationTask.cancel()
         seedTask?.cancel()
         newProviderTask?.cancel()
         shellEnvironmentSnapshotTask.cancel()

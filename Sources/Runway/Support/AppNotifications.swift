@@ -6,23 +6,27 @@ import UserNotifications
 /// authorization is requested when the user first enables a trigger (all default off), while `post`
 /// also checks authorization before delivery.
 ///
-/// Authorization is memoized in one `Task<Bool, Never>`: the first caller reads the current settings,
-/// short-circuits an already-authorized or already-denied state, and otherwise requests it; every later
-/// caller awaits the same task rather than re-prompting. The class is the notification-center delegate so
+/// Concurrent authorization checks share one task. Later deliveries read live settings, so a
+/// permission change never consumes an undelivered milestone. The class is the delegate so
 /// banners still show while the app is frontmost (a menu-bar accessory usually is).
 @MainActor
 final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
     static let shared = AppNotifications()
 
-    /// Injectable so tests can supply a fake center and assert what got scheduled. Production returns
-    /// the system `current()` center.
     private let centerProvider: @Sendable () -> UNUserNotificationCenter
+    private let client: any NotificationDeliveryClient
+    private let hasInjectedClient: Bool
 
-    /// Memoized authorization request — created on first use, awaited by everyone after.
+    /// Only the in-flight check is shared; its result is never cached across deliveries.
     private var authorizationTask: Task<Bool, Never>?
 
-    init(centerProvider: @escaping @Sendable () -> UNUserNotificationCenter = { UNUserNotificationCenter.current() }) {
+    init(
+        centerProvider: @escaping @Sendable () -> UNUserNotificationCenter = { UNUserNotificationCenter.current() },
+        client: (any NotificationDeliveryClient)? = nil
+    ) {
         self.centerProvider = centerProvider
+        self.client = client ?? SystemNotificationDeliveryClient(centerProvider: centerProvider)
+        self.hasInjectedClient = client != nil
         super.init()
     }
 
@@ -41,11 +45,11 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
     }
 
     /// Request notification authorization. Called when the first trigger is enabled and from the
-    /// Settings "Allow Notifications" button when permission is still not determined. Memoized, so
-    /// repeated calls don't re-prompt — macOS won't re-show the banner once the user has answered anyway.
+    /// Settings "Allow Notifications" button when permission is still not determined.
     @discardableResult
     func requestAuthorization() -> Task<Bool, Never> {
-        ensureAuthorization()
+        guard !Self.isRunningUnderTests || hasInjectedClient else { return Task { false } }
+        return ensureAuthorization()
     }
 
     /// Open System Settings → Notifications so the user can re-enable alerts for Runway after a
@@ -59,42 +63,39 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
     }
 
     /// Post one immediate notification. `idPrefix` names the source (e.g. a metric key) for the log line;
-    /// the actual identifier is made unique so repeated alerts on the same metric don't coalesce. `title`
+    /// the actual identifier is made unique unless `replacingIdentifier` supplies a reset credit's
+    /// stable identifier, which lets macOS replace its previous delivered alert. `title`
     /// is the alert headline, `subtitle` carries provider + metric, and `body` is the verdict. Returns
     /// whether it was actually delivered — false under tests, when not authorized, or when scheduling
-    /// errors, so the caller can leave the milestone un-marked and retry. A cached denial is re-checked
-    /// live so a user re-enabling notifications in System Settings doesn't have to restart the app to
-    /// receive alerts.
-    func post(idPrefix: String, title: String, subtitle: String, body: String, soundEnabled: Bool = true) async -> Bool {
-        guard !Self.isRunningUnderTests else { return false }
-        var authorized = await ensureAuthorization().value
-        if !authorized {
-            // A cached denial may be stale — the user can re-enable notifications in System Settings
-            // at any time. Re-read the live status; if it's now authorized, refresh the cache and
-            // proceed instead of skipping delivery until an app restart.
-            let status = await centerProvider().notificationSettings().authorizationStatus
-            switch status {
-            case .authorized, .provisional, .ephemeral:
-                authorized = true
-                authorizationTask = Task<Bool, Never> { true }
-            default:
-                AppLog.debug(.notifications, "skip \(idPrefix): not authorized")
-                return false
-            }
+    /// errors, so the caller can retry. Content and eligibility are evaluated after authorization,
+    /// which may suspend while the user answers a permission prompt.
+    func post(
+        idPrefix: String, title: String, subtitle: String, body: @autoclosure @MainActor () -> String,
+        soundEnabled: Bool = true, replacingIdentifier: String? = nil,
+        shouldPost: @MainActor () -> Bool = { true }
+    ) async -> Bool {
+        guard !Self.isRunningUnderTests || hasInjectedClient else { return false }
+        guard !Task.isCancelled, shouldPost() else { return false }
+        guard await ensureAuthorization().value else {
+            AppLog.debug(.notifications, "skip \(idPrefix): not authorized")
+            return false
         }
+        guard !Task.isCancelled, shouldPost() else { return false }
         let content = UNMutableNotificationContent()
         content.title = title
         content.subtitle = subtitle
-        content.body = body
+        content.body = body()
         // Group all Runway alerts into one stacked thread so simultaneous alerts (e.g. a metric
         // that fires two milestones at once) collapse into a single banner with a "N more" summary
         // instead of separate banners.
         content.threadIdentifier = "runway"
         if soundEnabled { content.sound = .default }
-        let id = "runway-\(idPrefix)-\(UUID().uuidString)"
+        let id = replacingIdentifier ?? "runway-\(idPrefix)-\(UUID().uuidString)"
         let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
         do {
-            try await centerProvider().add(request)
+            // macOS replaces both delivered and pending notifications with this identifier.
+            // Removing the old alert first would lose it if adding the replacement failed.
+            try await client.add(request)
             AppLog.info(.notifications, "posted \(idPrefix)")
             return true
         } catch {
@@ -103,16 +104,40 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    func remove(identifiers: [String]) {
+        guard (!Self.isRunningUnderTests || hasInjectedClient), !identifiers.isEmpty else { return }
+        client.removePending(identifiers: identifiers)
+        client.removeDelivered(identifiers: identifiers)
+    }
+
+    #if DEBUG
+    /// Explicit development preview through the same delivery path as real reset reminders.
+    /// Its identifier is separate from real credits and it never changes reminder preferences/history.
+    func previewResetExpiryNotification() async {
+        guard !Self.isRunningUnderTests else { return }
+        let expiry = Date().addingTimeInterval(15 * 60)
+            .formatted(date: .abbreviated, time: .shortened)
+        let sent = await post(
+            idPrefix: "reset-expiry-preview", title: "Reset Expiring Soon",
+            subtitle: "Codex · Rate Limit Resets",
+            body: "Sample: An unused reset expires in 15 minutes (\(expiry)). Use before expiry.",
+            replacingIdentifier: "runway-reset-expiry-preview"
+        )
+        let settings = await centerProvider().notificationSettings()
+        AppLog.info(.notifications, "reset preview: sent=\(sent), authorization=\(settings.authorizationStatus.rawValue), alertStyle=\(settings.alertStyle.rawValue)")
+        if !sent { openSystemNotificationsSettings() }
+    }
+    #endif
+
     // MARK: - Authorization
 
-    /// The shared authorization task, created on first call. Reads current settings, short-circuits a
+    /// The shared in-flight authorization task. Reads current settings, short-circuits a
     /// resolved (authorized/denied) state, and otherwise requests alert + sound permission.
     private func ensureAuthorization() -> Task<Bool, Never> {
         if let authorizationTask { return authorizationTask }
-        let center = centerProvider()
         let task = Task<Bool, Never> {
-            let settings = await center.notificationSettings()
-            switch settings.authorizationStatus {
+            defer { authorizationTask = nil }
+            switch await client.authorizationStatus() {
             case .authorized, .provisional, .ephemeral:
                 return true
             case .denied:
@@ -120,7 +145,7 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
                 return false
             case .notDetermined:
                 do {
-                    let granted = try await center.requestAuthorization(options: [.alert, .sound])
+                    let granted = try await client.requestAuthorization()
                     AppLog.info(.notifications, "authorization \(granted ? "granted" : "refused")")
                     return granted
                 } catch {
@@ -138,8 +163,8 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
     /// Current authorization status, for the Settings screen's denied-permission notice. Returns
     /// `.notDetermined` under tests.
     func authorizationStatus() async -> UNAuthorizationStatus {
-        guard !Self.isRunningUnderTests else { return .notDetermined }
-        return await centerProvider().notificationSettings().authorizationStatus
+        guard !Self.isRunningUnderTests || hasInjectedClient else { return .notDetermined }
+        return await client.authorizationStatus()
     }
 
     // MARK: - UNUserNotificationCenterDelegate
@@ -151,10 +176,10 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([.banner, .sound])
+        completionHandler([.banner, .list, .sound])
     }
 
-    /// Tapping a pace alert opens the menu-bar popover so the user lands on the dashboard.
+    /// Tapping an alert opens the menu-bar popover so the user lands on the dashboard.
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,

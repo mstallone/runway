@@ -2,9 +2,8 @@ import AppKit
 import SwiftUI
 import UserNotifications
 
-/// The Settings window's Notifications pane. Quota pace notifications: three per-trigger toggles (no
-/// master switch — turn all three off to silence), each with an (i) tooltip. A warning glyph on the
-/// section header and an action row under the toggles appear when macOS permission isn't authorized
+/// The Settings window's Notifications pane. Pace triggers and reset-credit expiry reminders.
+/// A warning glyph and action row appear when macOS permission isn't authorized
 /// and at least one trigger is on. Defaults are all off; the app requests authorization the first
 /// time a trigger is turned on.
 struct NotificationsSettingsPane: View {
@@ -39,7 +38,30 @@ struct NotificationsSettingsPane: View {
                 toggleRow(.underTenPercent, isOn: $notifications.underTenPercent)
                 toggleRow(.healthyToClose, isOn: $notifications.healthyToClose)
                 toggleRow(.closeToRunningOut, isOn: $notifications.closeToRunningOut)
-                SettingsCaption("Alerts work while Runway runs in the menu bar, even with the popover closed.")
+                Divider()
+                HStack {
+                    Text("Reset Expiry Reminders")
+                    Spacer(minLength: 8)
+                    Toggle("Reset Expiry Reminders", isOn: $notifications.resetExpiryReminders)
+                        .labelsHidden()
+                        .settingsSwitchStyle()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, density.controlRowPadding)
+                SettingsCaption("Remind me before unused Codex and Grok resets expire: 48 hours, 24 hours, 2 hours, 1 hour, and 15 minutes. Each reminder replaces the previous one for that reset.")
+                if notifications.resetExpiryReminders {
+                    SettingsCaption("To keep notifications onscreen until dismissed, choose Alerts for Runway in System Settings → Notifications.")
+                    if let error = notifications.resetReminderError {
+                        SettingsInlineNotice(error)
+                    }
+                    if !needsAttention {
+                        Button("Open System Settings") {
+                            AppNotifications.shared.openSystemNotificationsSettings()
+                        }
+                        .buttonStyle(.bordered)
+                        .padding(12)
+                    }
+                }
                 if needsAttention {
                     actionRow
                 }
@@ -48,11 +70,7 @@ struct NotificationsSettingsPane: View {
         }
         .onChange(of: anyToggleOn) { _, on in
             if on {
-                // The first time a trigger is turned on, ask macOS for permission (memoized — it only
-                // prompts while authorization is still not determined). Then refresh so the
-                // warning/action row reflects the new status.
-                AppNotifications.shared.requestAuthorization()
-                Task { await refreshAuth() }
+                authorizeAndRefresh()
             }
         }
         .task { await refreshAuth() }
@@ -87,8 +105,7 @@ struct NotificationsSettingsPane: View {
                 if auth == .denied {
                     AppNotifications.shared.openSystemNotificationsSettings()
                 } else {
-                    AppNotifications.shared.requestAuthorization()
-                    Task { await refreshAuth() }
+                    authorizeAndRefresh()
                 }
             } label: {
                 Text(auth == .denied ? "Open System Settings" : "Allow Notifications")
@@ -104,6 +121,13 @@ struct NotificationsSettingsPane: View {
     /// Delegates to the store's `anyEnabled` so the disjunction lives in one place.
     private var anyToggleOn: Bool {
         container.notificationSettings.anyEnabled
+    }
+
+    private func authorizeAndRefresh() {
+        Task {
+            await AppNotifications.shared.requestAuthorization().value
+            await refreshAuth()
+        }
     }
 
     /// Read the live macOS authorization status into `auth`, but only when at least one trigger is

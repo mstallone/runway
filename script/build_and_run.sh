@@ -152,6 +152,8 @@ cat >"$INFO_PLIST" <<PLIST
   <string>AppIcon</string>
   <key>LSUIElement</key>
   <true/>
+  <key>NSUserNotificationAlertStyle</key>
+  <string>alert</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
   <key>NSHighResolutionCapable</key>

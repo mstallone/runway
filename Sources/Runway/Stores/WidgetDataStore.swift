@@ -49,7 +49,7 @@ final class WidgetDataStore {
     /// error card already tells the user the provider is stuck, and a straggler that never exits
     /// means retrying couldn't succeed anyway.
     private var hungRefreshProviderIDs: Set<String> = []
-    /// Quota-notification preferences (three independent triggers). Injected; `nil` disables
+    /// Quota-notification preferences. Injected; `nil` disables
     /// notifications entirely (tests and previews that don't wire it).
     private let notificationSettings: (@MainActor () -> NotificationSettingsStore)?
     /// Card id → the account identity currently signed in there, resolved once at launch by
@@ -89,6 +89,8 @@ final class WidgetDataStore {
     /// Last-good snapshots produced on this Mac. These alone are cached and exported to iCloud, so a
     /// peer contribution can never echo back out and multiply on the next device.
     private(set) var localSnapshots: [String: ProviderSnapshot] = [:]
+    /// Cached credits remain visible at launch, but cannot trigger new alerts until revalidated.
+    private var providersRefreshedThisLaunch: Set<String> = []
     var refreshingProviderIDs: Set<String> = []
     /// Wall-clock time the most recent full refresh pass finished. Together with the chosen refresh
     /// cadence it drives the dashboard footer's live "Next update in …" countdown, so the footer reflects
@@ -370,6 +372,28 @@ final class WidgetDataStore {
         }
     }
 
+    /// Reset-credit reminders cover enabled providers even when the row is hidden in Customize.
+    /// Read only local snapshots; peer history and sample values cannot create expiry reminders.
+    func resetExpiryNotificationMetrics() -> [ResetExpiryNotificationEvaluator.Metric] {
+        registry.descriptors.compactMap { descriptor in
+            guard descriptor.sample.showsResetExpiries,
+                  isProviderEnabled(descriptor.providerID),
+                  !loginRequired(for: descriptor.providerID),
+                  let snapshot = localSnapshots[descriptor.providerID],
+                  let line = snapshot.line(label: descriptor.metricLabel),
+                  case .values(_, let values, _, let expiries, _, _) = line
+            else { return nil }
+            let identity = providerIdentityKeys[descriptor.providerID] ?? descriptor.providerID
+            return ResetExpiryNotificationEvaluator.Metric(
+                key: "\(descriptor.id):\(identity)",
+                providerName: resolveDisplayName?(descriptor.providerID)
+                    ?? providersByID[descriptor.providerID]?.provider.displayName ?? descriptor.providerID,
+                expiries: values.contains(where: { $0.number > 0 }) ? expiries : [],
+                canNotify: providersRefreshedThisLaunch.contains(descriptor.providerID)
+            )
+        }
+    }
+
     /// Evaluate every visible, enabled metric for a quota pace milestone and post a notification for any
     /// that just crossed one. Driven from the periodic loop *after* `refreshAll`, so it catches pace
     /// worsening from time passing (not only from a fresh fetch). Deduped per metric per reset window by
@@ -598,6 +622,7 @@ final class WidgetDataStore {
             AppLog.debug(.refresh, "preserved last-good history for \(providerID) after scan miss")
         }
         localSnapshots[providerID] = snapshot
+        providersRefreshedThisLaunch.insert(providerID)
         // Stamp the write with the card's launch-resolved account identity; nil (no stamp) for
         // non-account providers and for cards whose identity didn't resolve this launch.
         cache.store(
