@@ -38,9 +38,12 @@ enum SakanaAuthError: Error, LocalizedError, Equatable {
 }
 
 struct SakanaBrowserCookieSource: Hashable, Sendable {
+    enum Format: Hashable, Sendable { case chromium, firefox }
+
     var browserName: String
     var databasePath: String
     var safeStorageService: String
+    var format: Format = .chromium
 }
 
 protocol SakanaSafeStorageKeyReading: Sendable {
@@ -198,7 +201,7 @@ enum SakanaBrowserCredentialError: Error, Sendable {
     case decryptionFailed(Int32)
 }
 
-/// Reads a scoped session cookie from a signed-in Chromium browser (Sakana by default). The database is
+/// Reads a scoped session cookie from a signed-in browser (Sakana/Chromium by default). The database is
 /// read-only, the decrypted token exists only in memory, and Runway never refreshes or mutates it.
 struct SakanaAuthStore: Sendable {
     static let cookieHost = "console.sakana.ai"
@@ -331,7 +334,15 @@ struct SakanaAuthStore: Sendable {
         for source in sources() {
             guard files.exists(source.databasePath) else { continue }
             do {
-                if let candidate = try candidate(from: source) {
+                if source.format == .firefox {
+                    let rows = try FirefoxBrowserCookies.encodedRows(
+                        sqlite: sqlite, path: source.databasePath,
+                        name: sessionCookieName, hosts: sessionCookieHosts
+                    )
+                    for row in rows {
+                        scan.candidates.append(try candidate(encoded: row, source: source))
+                    }
+                } else if let candidate = try candidate(from: source) {
                     scan.candidates.append(candidate)
                 }
             } catch is SakanaBrowserCredentialError {
@@ -364,6 +375,10 @@ struct SakanaAuthStore: Sendable {
         guard let encoded = try sqlite.queryValue(path: source.databasePath, sql: sql) else {
             return nil
         }
+        return try candidate(encoded: encoded, source: source)
+    }
+
+    private func candidate(encoded: String, source: SakanaBrowserCookieSource) throws -> Candidate {
         let fields = encoded.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false)
         guard fields.count == 3,
               let hostData = Self.data(hex: String(fields[0])),

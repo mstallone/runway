@@ -19,9 +19,11 @@ The five-hour and weekly meters are account-wide subscription pools, calculated 
 
 ## Where credentials come from
 
-Runway reads the existing `llama_dev_sess` browser cookie for `dev.meta.ai` / `meta.ai` from Chrome, Arc, Brave, or Edge. It reuses the same browser-cookie and Safe Storage reader as Sakana Fugu. Runway tries matching cookies in newest-first order and uses the first it can decrypt. One signed-in profile is sufficient; other profiles do not need a login. If Meta rejects a session, Runway tries another profile and remembers the rejected cookie for this app launch. Signing in again supplies a new cookie. With several valid Meta accounts, the newest readable session wins, which may not be the account you intended. Firefox, Safari, custom browser-data locations, and explicit profile selection are not supported.
+Runway reads the existing `llama_dev_sess` browser cookie for `dev.meta.ai` / `meta.ai` from Chrome, Arc, Brave, Edge, or Firefox. It reuses the browser-cookie reader shared with Sakana Fugu, with a Firefox reader for Muse. Runway tries matching cookies in newest-first order and uses the first readable session. One signed-in profile is sufficient; other profiles do not need a login. If Meta rejects a session, Runway tries another profile and remembers the rejected cookie for this app launch. Signing in again supplies a new cookie. With several valid Meta accounts, the newest readable session wins, which may not be the account you intended. Safari, custom Chromium data locations, and explicit profile selection are not supported.
 
-Automatic reads use Runway's coordinated, prompt-free Keychain path. If the browser's Safe Storage key needs approval, the card offers **Connect**. A manual connection can request that approval. Cookies and decryption keys stay in memory; Runway does not save them or change the browser's login.
+Firefox profiles are discovered from `~/Library/Application Support/Firefox/profiles.ini` (including registered absolute paths) and the standard `Profiles/` folder. Runway reads unexpired matching cookies from each profile’s `cookies.sqlite`, including container sessions. It compares Firefox’s last-access time with Chromium’s cookie-update time to choose a session across browsers. Private-window sessions are not saved in this database and cannot be used.
+
+Firefox stores these cookies without encryption, so reading a Firefox session needs no Keychain approval. Chromium reads use Runway's coordinated, prompt-free Keychain path. If the browser's Safe Storage key needs approval, the card offers **Connect**. A manual connection can request that approval. Cookies and decryption keys stay in memory; Runway does not save them or change the browser's login.
 
 Runway never reads Muse CLI credentials, mints an API key, refreshes the OAuth login, or sends an inference request to measure quota. Signing in to the CLI alone is sufficient for local token history, but dashboard meters need a browser login.
 
@@ -35,7 +37,7 @@ The spend tiles still load when the live meters cannot (a Connect prompt, an exp
 
 ## Setup
 
-1. Sign in to [Meta's usage dashboard](https://dev.meta.ai/usage/) in Chrome, Arc, Brave, or Edge and check that it shows your Muse Code subscription.
+1. Sign in to [Meta's usage dashboard](https://dev.meta.ai/usage/) in Chrome, Arc, Brave, Edge, or Firefox and check that it shows your Muse Code subscription.
 2. Refresh Runway. If it offers **Connect**, allow access to your browser's Safe Storage key when macOS asks.
 3. Use Muse Code as usual for local token history. Muse is detected from either the browser session or existing session logs.
 

@@ -15,7 +15,7 @@ Runway reads credentials that provider tools already keep on your Mac.
 - **Claude Desktop:** read-only. Runway can ask macOS for permission to use the `Claude Safe Storage` Keychain item so it can decrypt Desktop's current access token. It never uses Desktop's refresh token and never modifies Desktop's config, cookies, or Keychain data.
 - **Grok and Kimi:** Runway refreshes these tokens and saves them back to the same credential files their CLIs use, replacing each file atomically and restricting it to your macOS account (owner read and write only).
 - **Antigravity:** the access token is refreshed through Google OAuth (Google refresh tokens do not rotate) and cached in Runway's own file, never written back to Antigravity's Keychain item. The cache is tied to the current Keychain login by a one-way fingerprint and is never used after logout, an account change, or while Keychain access is unavailable.
-- **Muse Code:** Runway reads the Meta developer dashboard’s teams and subscription-quota JSON APIs with its existing browser session cookie. Browser cookies stay in memory and are sent only to HTTPS `dev.meta.ai`; the Muse CLI login is not read, and no API keys are minted or model calls made.
+- **Muse Code:** Runway reads the Meta developer dashboard’s teams and subscription-quota JSON APIs with its existing browser session cookie from Chrome, Arc, Brave, Edge, or Firefox. Firefox cookie databases are read-only and require no Keychain access. Browser cookies stay in memory and are sent only to HTTPS `dev.meta.ai`; the Muse CLI login is not read, and no API keys are minted or model calls made.
 
 ## Other network requests
 
