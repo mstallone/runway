@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import Runway
 
@@ -17,6 +18,7 @@ final class WidgetDataStoreResetExpiryTests: XCTestCase {
     }
 
     private final class Runtime: ProviderRuntime {
+        private(set) var refreshCount = 0
         let provider: Provider
         var snapshot: ProviderSnapshot
         init(id: String = "codex") {
@@ -28,7 +30,10 @@ final class WidgetDataStoreResetExpiryTests: XCTestCase {
                      metricLabel: "Rate Limit Resets", showsResetExpiries: true),
              .values(id: "\(provider.id).other", provider: provider, title: "Other", metricLabel: "Other")]
         }
-        func refresh() async -> ProviderSnapshot { snapshot }
+        func refresh() async -> ProviderSnapshot {
+            refreshCount += 1
+            return snapshot
+        }
     }
 
     private final class Preferences {
@@ -206,6 +211,94 @@ final class WidgetDataStoreResetExpiryTests: XCTestCase {
         await fulfillment(of: [withdrawn], timeout: 1)
         XCTAssertTrue(client.delivered.isEmpty)
         XCTAssertNil(settings.resetReminderError)
+        task.cancel()
+        await task.value
+    }
+
+    func testMilestoneCrossedDuringPermissionWaitIsDeliveredImmediately() async {
+        let runtime = Runtime()
+        runtime.snapshot.lines = [resetLine()]
+        let store = makeStore(runtime: runtime)
+        await store.refreshAll(force: true)
+        let settings = NotificationSettingsStore(defaults: defaults)
+        settings.resetExpiryReminders = true
+        let client = RecordingNotificationClient()
+        var now = expiry.addingTimeInterval(-901)
+        client.status = .notDetermined
+        client.authorize = {
+            now = self.expiry.addingTimeInterval(-600)
+            return true
+        }
+        let posted = expectation(description: "Current milestone delivered after permission")
+        client.didAdd = { posted.fulfill() }
+        let task = ResetExpiryNotificationMonitor(
+            settings: settings, dataStore: store,
+            evaluator: ResetExpiryNotificationEvaluator(defaults: defaults),
+            notifications: AppNotifications(client: client), now: { now }
+        ).start()
+        defer { task.cancel() }
+        await fulfillment(of: [posted], timeout: 1)
+        XCTAssertEqual(client.requests.count, 1)
+        XCTAssertTrue(client.requests.first?.content.body.contains("10 minutes") == true)
+        task.cancel()
+        await task.value
+    }
+
+    func testTimerWithdrawsAtExpiryWithoutPollingOrRefreshingProvider() async {
+        let runtime = Runtime()
+        let imminentExpiry = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970) + 2)
+        runtime.snapshot.lines = [resetLine(expiries: [imminentExpiry])]
+        let store = makeStore(runtime: runtime)
+        await store.refreshAll(force: true)
+        let settings = NotificationSettingsStore(defaults: defaults)
+        settings.resetExpiryReminders = true
+        let client = RecordingNotificationClient()
+        let removed = expectation(description: "Alert withdrawn at expiry")
+        client.didRemove = { removed.fulfill() }
+        let task = ResetExpiryNotificationMonitor(
+            settings: settings, dataStore: store,
+            evaluator: ResetExpiryNotificationEvaluator(defaults: defaults),
+            notifications: AppNotifications(client: client)
+        ).start()
+        defer { task.cancel() }
+        await fulfillment(of: [removed], timeout: 4)
+        XCTAssertEqual(client.requests.count, 1)
+        XCTAssertTrue(client.delivered.isEmpty)
+        XCTAssertEqual(runtime.refreshCount, 1)
+        task.cancel()
+        await task.value
+    }
+
+    func testWakeAndClockChangesReevaluateTheCurrentMilestone() async {
+        let runtime = Runtime()
+        runtime.snapshot.lines = [resetLine()]
+        let store = makeStore(runtime: runtime)
+        await store.refreshAll(force: true)
+        let settings = NotificationSettingsStore(defaults: defaults)
+        settings.resetExpiryReminders = true
+        let client = RecordingNotificationClient()
+        var posted = expectation(description: "Initial reminder")
+        client.didAdd = { posted.fulfill() }
+        var now = expiry.addingTimeInterval(-24 * 3600)
+        let task = ResetExpiryNotificationMonitor(
+            settings: settings, dataStore: store,
+            evaluator: ResetExpiryNotificationEvaluator(defaults: defaults),
+            notifications: AppNotifications(client: client), now: { now }
+        ).start()
+        defer { task.cancel() }
+        await fulfillment(of: [posted], timeout: 1)
+
+        posted = expectation(description: "Catch up after Mac wake")
+        now = expiry.addingTimeInterval(-90 * 60)
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.didWakeNotification, object: nil)
+        await fulfillment(of: [posted], timeout: 1)
+
+        posted = expectation(description: "Catch up after clock change")
+        now = expiry.addingTimeInterval(-10 * 60)
+        NotificationCenter.default.post(name: .NSSystemClockDidChange, object: nil)
+        await fulfillment(of: [posted], timeout: 1)
+        XCTAssertEqual(client.requests.count, 3)
+        XCTAssertEqual(client.delivered.count, 1)
         task.cancel()
         await task.value
     }

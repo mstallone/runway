@@ -1,8 +1,8 @@
-import Foundation
+import AppKit
 import Observation
 
-/// A separate clock keeps the 15-minute reminder timely even while a provider refresh is slow.
-/// Observation wakes the same serial loop for settings/data changes; the timer does no network work.
+/// One timer wakes at the next milestone or expiry, independently of provider refreshes.
+/// Data/settings changes, Mac wake, and clock changes reschedule it without polling.
 @MainActor
 final class ResetExpiryNotificationMonitor {
     private let settings: NotificationSettingsStore
@@ -27,23 +27,29 @@ final class ResetExpiryNotificationMonitor {
     func start() -> Task<Void, Never> {
         Task {
             let (events, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
-            let timer = Task {
-                while !Task.isCancelled {
-                    continuation.yield(())
-                    do { try await Task.sleep(for: .seconds(30)) } catch { break }
-                }
-            }
+            var timer: Timer?
+            let wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+            ) { _ in continuation.yield(()) }
+            let clockObserver = NotificationCenter.default.addObserver(
+                forName: .NSSystemClockDidChange, object: nil, queue: .main
+            ) { _ in continuation.yield(()) }
             defer {
-                timer.cancel()
+                timer?.invalidate()
+                NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
+                NotificationCenter.default.removeObserver(clockObserver)
                 continuation.finish()
             }
+            continuation.yield(())
             for await _ in events {
                 guard !Task.isCancelled else { break }
+                timer?.invalidate()
                 armObservation(continuation)
+                let evaluatedAt = now()
                 await evaluator.evaluate(
                     metrics: dataStore.resetExpiryNotificationMetrics(),
                     enabled: settings.resetExpiryReminders,
-                    now: now(),
+                    now: evaluatedAt,
                     post: { reminder in
                         await notifications.post(
                             idPrefix: "reset-expiry", title: reminder.title,
@@ -56,8 +62,36 @@ final class ResetExpiryNotificationMonitor {
                     isCurrent: isCurrent
                 )
                 settings.resetReminderError = evaluator.errorMessage
+                if let deadline = Self.nextWakeDate(
+                    metrics: dataStore.resetExpiryNotificationMetrics(),
+                    enabled: settings.resetExpiryReminders, after: evaluatedAt,
+                    retryDelivery: evaluator.needsDeliveryRetry
+                ) {
+                    let next = Timer(timeInterval: max(0, deadline.timeIntervalSince(now())), repeats: false) { _ in
+                        continuation.yield(())
+                    }
+                    RunLoop.main.add(next, forMode: .common)
+                    timer = next
+                }
             }
         }
+    }
+
+    /// Use the evaluation's start time so a milestone crossed while awaiting permission is
+    /// scheduled immediately, rather than skipped. Expiry itself wakes us to remove the alert.
+    static func nextWakeDate(
+        metrics: [ResetExpiryNotificationEvaluator.Metric], enabled: Bool,
+        after date: Date, retryDelivery: Bool = false
+    ) -> Date? {
+        guard enabled else { return nil }
+        var dates = metrics.flatMap { metric in
+            let offsets = metric.canNotify ? ResetExpiryNotificationEvaluator.thresholds + [0] : [0]
+            return metric.expiries.flatMap { expiry in
+                offsets.map { ResetExpiryNotificationEvaluator.normalizedExpiry(expiry).addingTimeInterval(-$0) }
+            }
+        }
+        if retryDelivery { dates.append(date.addingTimeInterval(RefreshSetting.interval)) }
+        return dates.filter { $0 > date }.min()
     }
 
     /// Recheck after permission/delivery awaits: a used credit, changed setting, or crossed

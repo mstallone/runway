@@ -50,6 +50,7 @@ final class ResetExpiryNotificationEvaluator {
     private var storageError: String?
     private var deliveryError: String?
     var errorMessage: String? { storageError ?? deliveryError }
+    var needsDeliveryRetry: Bool { deliveryError != nil }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
