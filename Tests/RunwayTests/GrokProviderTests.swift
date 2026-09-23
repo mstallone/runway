@@ -279,7 +279,7 @@ final class GrokProviderTests: XCTestCase {
 
     func testRefreshAppendsLocalSpendTilesFromLog() async {
         let now = RunwayISO8601.date(from: "2026-06-18T12:00:00.000Z")!
-        // grok-build: 1M input @ $1 = $1.00 today; composer-2.5-fast: 1M output @ $15 = $15.00 yesterday.
+        // grok-build: 1M input @ $2 long-context rate = $2 today; Composer: 1M output @ $15 = $15 yesterday.
         let log = """
         {"ts":"2026-06-18T09:00:00.000Z","pid":1,"msg":"model changed","ctx":{"model":"grok-build"}}
         {"ts":"2026-06-18T10:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"cached_prompt_tokens":0,"completion_tokens":0,"reasoning_tokens":0}}
@@ -298,11 +298,11 @@ final class GrokProviderTests: XCTestCase {
         // Existing credit lines stay; the three spend tiles are appended from the local log.
         XCTAssertEqual(progress(snapshot.lines, "Weekly limit")?.used, 99)
         XCTAssertEqual(values(snapshot.lines, "Today"),
-                       [MetricValue(number: 1.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count, label: "tokens")])
+                       [MetricValue(number: 2.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count, label: "tokens")])
         XCTAssertEqual(values(snapshot.lines, "Yesterday"),
                        [MetricValue(number: 15.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count, label: "tokens")])
         XCTAssertEqual(values(snapshot.lines, "Last 30 Days"),
-                       [MetricValue(number: 16.0, kind: .dollars, estimated: true), MetricValue(number: 2_000_000, kind: .count, label: "tokens")])
+                       [MetricValue(number: 17.0, kind: .dollars, estimated: true), MetricValue(number: 2_000_000, kind: .count, label: "tokens")])
     }
 
     func testPeriodWithoutUsageLeavesTileUnbacked() async {

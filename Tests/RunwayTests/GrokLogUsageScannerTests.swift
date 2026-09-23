@@ -117,8 +117,9 @@ final class GrokLogUsageScannerTests: XCTestCase {
 
         let day = usage.series.daily.first { $0.date == "2026-06-10" }
         XCTAssertEqual(day?.totalTokens, 4_000_000)
-        // grok-build: 1M input @ $1 + 1M output @ $2 = $3. composer-2.5-fast: 1M @ $3 + 1M @ $15 = $18.
-        XCTAssertEqual(day?.costUSD ?? 0, 21.0, accuracy: 0.0001)
+        // grok-build: the 1M prompt uses long-context rates, $2 input + $4 output = $6.
+        // composer-2.5-fast: 1M @ $3 + 1M @ $15 = $18.
+        XCTAssertEqual(day?.costUSD ?? 0, 24.0, accuracy: 0.0001)
         let models = usage.modelUsage?.daily.first { $0.date == "2026-06-10" }?.models ?? []
         XCTAssertEqual(Set(models.map(\.model)), Set(["grok-build", "grok-composer-2.5-fast"]))
     }
@@ -133,12 +134,12 @@ final class GrokLogUsageScannerTests: XCTestCase {
 
         let usage = GrokLogUsageScanner.parse(log, since: since, pricing: TestPricing.bundled)
 
-        // First row priced as grok-build ($1/M input), second after the switch as composer-2.5-fast ($3/M).
-        XCTAssertEqual(usage.series.daily.first?.costUSD ?? 0, 4.0, accuracy: 0.0001)
+        // The 1M prompt prices at grok-build's $2/M long-context rate; after the switch, Composer is $3/M.
+        XCTAssertEqual(usage.series.daily.first?.costUSD ?? 0, 5.0, accuracy: 0.0001)
     }
 
     func testUsesCachedReadRateForCachedPromptTokens() {
-        // 800k of the 1M prompt tokens are cache reads (grok-build: $0.2/M read vs $1/M input).
+        // 800k of the 1M prompt tokens are cache reads. The full prompt selects the long-context tier.
         let log = """
         {"ts":"2026-06-12T08:00:00.000Z","pid":1,"msg":"model changed","ctx":{"model":"grok-build"}}
         {"ts":"2026-06-12T09:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"cached_prompt_tokens":800000,"completion_tokens":0,"reasoning_tokens":0}}
@@ -146,8 +147,8 @@ final class GrokLogUsageScannerTests: XCTestCase {
 
         let usage = GrokLogUsageScanner.parse(log, since: since, pricing: TestPricing.bundled)
 
-        // 200k input @ $1/M ($0.2) + 800k cache read @ $0.2/M ($0.16) = $0.36.
-        XCTAssertEqual(usage.series.daily.first?.costUSD ?? 0, 0.36, accuracy: 0.0001)
+        // 200k input @ $2/M ($0.4) + 800k cache read @ $0.4/M ($0.32) = $0.72.
+        XCTAssertEqual(usage.series.daily.first?.costUSD ?? 0, 0.72, accuracy: 0.0001)
     }
 
     func testSkipsRowsWithoutTokenFieldsAndOutsideWindow() {

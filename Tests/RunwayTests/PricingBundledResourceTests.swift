@@ -47,8 +47,12 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "gpt-5.6-terra-high-fast")?.inputPerMillion, 4)
         XCTAssertEqual(pricing.resolve(model: "gpt-5.6-luna")?.inputPerMillion, 0.2)
         XCTAssertEqual(pricing.resolve(model: "gpt-5.6-luna-fast")?.inputPerMillion, 0.4)
-        XCTAssertEqual(pricing.resolve(model: "gemini-3.6-flash")?.inputPerMillion, 1.5)
-        XCTAssertEqual(pricing.resolve(model: "gemini-3.6-flash-high")?.inputPerMillion, 1.5)
+        // Google's API pricing lists these discounted rates through December 31, 2026.
+        // https://ai.google.dev/gemini-api/docs/pricing
+        XCTAssertEqual(pricing.resolve(model: "gemini-3.6-flash")?.inputPerMillion, 0.75)
+        XCTAssertEqual(pricing.resolve(model: "gemini-3.6-flash-high")?.inputPerMillion, 0.75)
+        XCTAssertEqual(pricing.resolve(model: "gemini-3.6-flash")?.outputPerMillion, 3.75)
+        XCTAssertEqual(pricing.resolve(model: "gemini-3.6-flash")?.cacheReadPerMillion, 0.075)
         XCTAssertEqual(pricing.resolve(model: "gemini-3.7-flash-high")?.inputPerMillion, 0.75)
         XCTAssertEqual(pricing.resolve(model: "gemini-3.7-flash-high")?.outputPerMillion, 3.5)
         XCTAssertEqual(pricing.resolve(model: "gemini-3.8-flash-high")?.inputPerMillion, 0.75)
@@ -59,7 +63,9 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "glm-5.3")?.inputPerMillion, 1.4)
         XCTAssertEqual(pricing.resolve(model: "grok-bot-default"), pricing.resolve(model: "grok-4.6"))
         XCTAssertEqual(pricing.resolve(model: "kimi-k3")?.inputPerMillion, 3)
-        XCTAssertEqual(pricing.resolve(model: "grok-4-20-thinking")?.inputPerMillion, 2)
+        // Current first-party rates from https://docs.x.ai/developers/models.
+        XCTAssertEqual(pricing.resolve(model: "grok-4-20-thinking")?.inputPerMillion, 1.25)
+        XCTAssertEqual(pricing.resolve(model: "grok-4-20-thinking")?.outputPerMillion, 2.5)
         XCTAssertEqual(pricing.resolve(model: "grok-4.5")?.inputPerMillion, 2)
         XCTAssertEqual(pricing.resolve(model: "grok-4.5-fast-high")?.inputPerMillion, 4)
         XCTAssertEqual(pricing.resolve(model: "grok-4.5-high-fast")?.inputPerMillion, 4)
@@ -205,6 +211,15 @@ final class PricingBundledResourceTests: XCTestCase {
     /// stale models.dev entries. Per Cursor, 4.8 fast is 3x cheaper per token than 4.7 fast.
     func testOpusFastModeSupplementOverrides() throws {
         let pricing = Self.pricing
+        // LiteLLM no longer carries the retired 4.6 fast multiplier. Historical CSV rows still
+        // need their explicit fast rates instead of disappearing from the spend estimate.
+        let opus46Fast = try XCTUnwrap(pricing.resolve(model: "claude-4.6-opus-max-thinking-fast"))
+        XCTAssertEqual(opus46Fast.inputPerMillion, 30)
+        XCTAssertEqual(opus46Fast.cacheWritePerMillion, 37.5)
+        XCTAssertEqual(opus46Fast.cacheReadPerMillion, 3)
+        XCTAssertEqual(opus46Fast.outputPerMillion, 150)
+        XCTAssertEqual(pricing.resolve(model: "claude-4.6-opus-max-thinking")?.inputPerMillion, 5)
+
         let opus47Fast = try XCTUnwrap(pricing.resolve(model: "claude-opus-4-7-thinking-high-fast"))
         XCTAssertEqual(opus47Fast.inputPerMillion, 30)
         XCTAssertEqual(opus47Fast.cacheWritePerMillion, 37.5)

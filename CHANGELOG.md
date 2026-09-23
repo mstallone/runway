@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.8.15
+
+### Bug Fixes
+- Support Muse dashboard sessions from Firefox, including profiles and containers ([#132](https://github.com/mstallone/runway/pull/132)) by @mstallone
+- Read Muse subscription usage from the Meta dashboard API without minting API keys ([#131](https://github.com/mstallone/runway/pull/131)) by @mstallone
+- Simplify exhausted usage and preserve unavailable account icons ([#130](https://github.com/mstallone/runway/pull/130)) by @mstallone
+- Show Copilot Enterprise usage without requiring GraphQL enterprise listing ([#129](https://github.com/mstallone/runway/pull/129)) by @mstallone
+- Show Muse token history and estimated spend while keeping weekly usage visible ([#128](https://github.com/mstallone/runway/pull/128)) by @mstallone
+
+### Chores
+- Refresh bundled pricing and retain retired Opus 4.6 Fast rates for historical usage by @mstallone
+
+---
+
+### Changelog
+**Full Changelog**: [v0.8.14...v0.8.15](https://github.com/mstallone/runway/compare/v0.8.14...v0.8.15)
+
+- [9001e98](https://github.com/mstallone/runway/commit/9001e9830e699ecb29d47196d87f5c3143fb7865) Support Muse dashboard sessions from Firefox (#132) by @mstallone
+- [3a6718c](https://github.com/mstallone/runway/commit/3a6718cca80edb635e2cc30aff8963a705885752) Read Muse subscription usage from the Meta dashboard API (#131) by @mstallone
+- [d679bb0](https://github.com/mstallone/runway/commit/d679bb00cc8e7156fd28b8a92cf9025adcf935af) Simplify exhausted usage and preserve unavailable account icons (#130) by @mstallone
+- [0b8ccdc](https://github.com/mstallone/runway/commit/0b8ccdca4f2af307d208f715246366f66f196bcd) Show Copilot Enterprise Usage Without GraphQL Listing (#129) by @mstallone
+- [6c04f7e](https://github.com/mstallone/runway/commit/6c04f7eaa63ae09cbd832415a96f5aea2cce558c) Show Muse Token Spend Without Hiding Weekly Usage (#128) by @mstallone
+
 ## v0.8.14
 
 ### Bug Fixes
