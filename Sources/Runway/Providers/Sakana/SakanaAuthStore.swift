@@ -198,7 +198,7 @@ enum SakanaBrowserCredentialError: Error, Sendable {
     case decryptionFailed(Int32)
 }
 
-/// Borrows Sakana Console's Auth.js cookie from a signed-in Chromium browser. The cookie database is
+/// Reads a scoped session cookie from a signed-in Chromium browser (Sakana by default). The database is
 /// read-only, the decrypted token exists only in memory, and Runway never refreshes or mutates it.
 struct SakanaAuthStore: Sendable {
     static let cookieHost = "console.sakana.ai"
@@ -209,6 +209,9 @@ struct SakanaAuthStore: Sendable {
     var keyReader: any SakanaSafeStorageKeyReading
     var sources: @Sendable () -> [SakanaBrowserCookieSource]
     private let keyCache: SakanaSafeStorageKeyCache
+    private let sessionCookieName: String
+    private let sessionCookieHosts: [String]
+    private let providerID: String
 
     init(
         sqlite: any SQLiteAccessing = SQLiteCLIAccessor(),
@@ -216,13 +219,19 @@ struct SakanaAuthStore: Sendable {
         keyReader: any SakanaSafeStorageKeyReading = SakanaSafeStorageKeyReader(),
         sources: (@Sendable () -> [SakanaBrowserCookieSource])? = nil,
         homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
-        keyCache: SakanaSafeStorageKeyCache = SakanaSafeStorageKeyCache()
+        keyCache: SakanaSafeStorageKeyCache = SakanaSafeStorageKeyCache(),
+        cookieName: String = Self.cookieName,
+        cookieHosts: [String] = [Self.cookieHost, "." + Self.cookieHost],
+        providerID: String = "sakana"
     ) {
         self.sqlite = sqlite
         self.files = files
         self.keyReader = keyReader
         self.sources = sources ?? { Self.discoverSources(homeDirectory: homeDirectory()) }
         self.keyCache = keyCache
+        self.sessionCookieName = cookieName
+        self.sessionCookieHosts = cookieHosts
+        self.providerID = providerID
     }
 
     /// Prompt-free local evidence used by first-run/new-provider detection. It checks the same exact
@@ -231,7 +240,7 @@ struct SakanaAuthStore: Sendable {
         scanCandidates().candidates.isEmpty == false
     }
 
-    func loadSession(allowInteraction: Bool) throws -> SakanaBrowserSession {
+    func loadSession(allowInteraction: Bool, excludingTokens: Set<String> = []) throws -> SakanaBrowserSession {
         let scan = scanCandidates()
         let available = scan.candidates.sorted { $0.updatedAt > $1.updatedAt }
         guard !available.isEmpty else {
@@ -240,6 +249,7 @@ struct SakanaAuthStore: Sendable {
             throw SakanaAuthError.notLoggedIn
         }
 
+        var sawRejectedCookie = false
         var sawUnreadableKey = false
         var sawInvalidCookie = false
         var sawDeferredKey = false
@@ -263,6 +273,10 @@ struct SakanaAuthStore: Sendable {
                     sawInvalidCookie = true
                     continue
                 }
+                if excludingTokens.contains(token) {
+                    sawRejectedCookie = true
+                    continue
+                }
                 return SakanaBrowserSession(token: token, browserName: candidate.source.browserName)
             } catch SakanaBrowserCredentialError.manualReadDeferred {
                 // A deferral only ever happens on the prompt-free automatic path, so scanning on
@@ -279,10 +293,10 @@ struct SakanaAuthStore: Sendable {
                 // approval dialog holding the UI gate. The cookie itself was never examined, so
                 // "invalid cookie, sign in again" would send the user to redo a login that is fine.
                 sawUnreadableKey = true
-                AppLog.error(LogTag.auth("sakana"), "Sakana Safe Storage key could not be read; the cookie was not examined")
+                AppLog.error(LogTag.auth(providerID), "Browser Safe Storage key could not be read; the cookie was not examined")
             } catch {
                 sawInvalidCookie = true
-                AppLog.error(LogTag.auth("sakana"), "Sakana browser credential read failed: \(error.localizedDescription)")
+                AppLog.error(LogTag.auth(providerID), "Browser credential read failed: \(error.localizedDescription)")
             }
         }
         // A deferred key outranks the other failures: connecting it is the one self-serviceable
@@ -290,6 +304,7 @@ struct SakanaAuthStore: Sendable {
         if sawDeferredKey { throw SakanaAuthError.connectRequired }
         if sawUnreadableKey { throw SakanaAuthError.credentialsUnreadable }
         if sawInvalidCookie { throw SakanaAuthError.invalidCookie }
+        if sawRejectedCookie { throw SakanaAuthError.sessionExpired }
         throw SakanaAuthError.credentialsUnreadable
     }
 
@@ -321,16 +336,18 @@ struct SakanaAuthStore: Sendable {
                 }
             } catch is SakanaBrowserCredentialError {
                 scan.sawMalformedCookie = true
-                AppLog.error(LogTag.auth("sakana"), "Sakana browser cookie row was malformed.")
+                AppLog.error(LogTag.auth(providerID), "Browser cookie row was malformed.")
             } catch {
                 scan.sawDatabaseError = true
-                AppLog.error(LogTag.auth("sakana"), "Sakana browser cookie database read failed: \(error.localizedDescription)")
+                AppLog.error(LogTag.auth(providerID), "Browser cookie database read failed: \(error.localizedDescription)")
             }
         }
         return scan
     }
 
     private func candidate(from source: SakanaBrowserCookieSource) throws -> Candidate? {
+        let hosts = sessionCookieHosts.map { "'" + $0.replacingOccurrences(of: "'", with: "''") + "'" }.joined(separator: ", ")
+        let name = sessionCookieName.replacingOccurrences(of: "'", with: "''")
         let sql = """
         SELECT hex(CAST(host_key AS BLOB)) || '|' ||
                CAST(last_update_utc AS TEXT) || '|' ||
@@ -339,8 +356,8 @@ struct SakanaAuthStore: Sendable {
                    ELSE 'encrypted:' || hex(encrypted_value)
                END
         FROM cookies
-        WHERE name = '\(Self.cookieName)'
-          AND host_key IN ('\(Self.cookieHost)', '.\(Self.cookieHost)')
+        WHERE name = '\(name)'
+          AND host_key IN (\(hosts))
         ORDER BY last_update_utc DESC
         LIMIT 1;
         """
@@ -351,6 +368,7 @@ struct SakanaAuthStore: Sendable {
         guard fields.count == 3,
               let hostData = Self.data(hex: String(fields[0])),
               let host = String(data: hostData, encoding: .utf8),
+              sessionCookieHosts.contains(host),
               let updatedAt = UInt64(fields[1]),
               let separator = fields[2].firstIndex(of: ":"),
               let stored = Self.data(hex: String(fields[2][fields[2].index(after: separator)...]))

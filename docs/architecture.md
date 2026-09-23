@@ -24,7 +24,7 @@ The `runway` executable imports the same module. A normal invocation reads `Prov
 
 Each provider is a small module that conforms to `ProviderRuntime`. A refresh flows through three parts:
 
-1. **Auth store**: reads credentials that already exist on the machine (config files, keychain). Runway never asks the user to paste tokens.
+1. **Auth store**: reads credentials that already exist on the machine (config files, keychain, browser sessions). Runway never asks the user to paste tokens.
 2. **Usage client**: calls the provider's API.
 3. **Mapper**: turns the response into a `ProviderSnapshot` with typed widget values (`.progress`, `.values`, `.badge`, `.chart`) plus `.text` notices, which reach the local API but do not render as widgets.
 
@@ -39,6 +39,8 @@ Runway never calls the OAuth token endpoints for Codex, Cursor, Copilot, or Muse
 Automatic refreshes never request secret data from another app's Keychain item. They inspect only non-secret metadata and reuse, for the rest of the process while the item is unchanged, a value loaded by a manual refresh. After launch or a credential change, the user connects the login again through a manual refresh. That waiting state shows a neutral Connect control, not a warning. Only a denied manual read, an expired token, or an unreadable keychain shows a warning. Manual Refresh All queues protected providers and prompts for them one at a time, so approval dialogs never overlap. If a refresh is cancelled while its read is still queued, the read leaves the queue without touching Keychain. Clicking Use on a Codex reset credit may also prompt after every cached credential was rejected. Both paths are user-initiated.
 
 Claude, Codex, Grok, Muse, and pi share `IncrementalJSONLScanner` for local JSONL history. The scanner caches parsed events per file by path, size, and modification time in a versioned Application Support store, partitioned by provider and home. Provider instances that read the same home share one scanner actor, so cards do not parse the same files twice. A session log that only grew since its last parse re-reads just the appended bytes. Records leave the cache as their file modification dates fall out of the history window. The scanner also memoizes aggregation and pricing: when a refresh finds no log changes and the pricing snapshot, history window, and calendar are unchanged, it reuses the previous aggregation.
+
+Muse subscription meters use the Meta developer dashboard’s teams/subscription-quota JSON APIs and the existing Chromium cookie reader, shared with Sakana Fugu. Its provider coalesces concurrent reads and enforces a 15-minute floor for both automatic and manual refreshes. Muse CLI credentials and key-minting endpoints are not involved. Local token history uses the existing independent session-log scanner.
 
 ## Stores
 
