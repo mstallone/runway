@@ -68,6 +68,10 @@ final class PricingBundledResourceTests: XCTestCase {
             ("anthropic", "claude-opus-4-8"), ("anthropic", "claude-opus-5")
         ] {
             XCTAssertEqual(Self.pricing.resolve(model: prefix + "/" + model), Self.pricing.resolve(model: model))
+            XCTAssertEqual(
+                Self.pricing.resolve(model: prefix + "/" + model.replacingOccurrences(of: ".", with: "-")),
+                Self.pricing.resolve(model: model)
+            )
         }
         for model in ["anthropic/claude-opus-4-8", "anthropic/claude-opus-5"] {
             let fast = TokenBreakdown(input: 1_000_000, isFast: true)

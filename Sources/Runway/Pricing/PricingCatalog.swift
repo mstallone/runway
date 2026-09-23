@@ -24,9 +24,13 @@ struct PricingCatalog: Sendable, Equatable {
     func findFuzzy(_ model: String) -> (key: String, rates: ModelRates)? {
         // A missing provider-prefixed key should keep the exact base model and its metadata,
         // rather than selecting a longer reseller key for a Pro/Mini/Lite variant.
-        if let base = model.split(separator: "/").last.map(String.init), base != model,
-           let rates = entries[base] {
-            return (base, rates)
+        if let base = model.split(separator: "/").last.map(String.init), base != model {
+            if let rates = entries[base] { return (base, rates) }
+            let normalizedBase = Self.normalizedKey(base)
+            if let key = entries.keys.filter({ Self.normalizedKey($0) == normalizedBase }).min(),
+               let rates = entries[key] {
+                return (key, rates)
+            }
         }
         let normalizedModel = Self.normalizedKey(model)
         var best: (key: String, rates: ModelRates)?

@@ -80,6 +80,7 @@ final class ModelPricingTests: XCTestCase {
             "openrouter/openai/gpt-5.5-pro": rates(30, 180)
         ])
         XCTAssertEqual(pricing.resolve(model: "openai/gpt-5.5")?.inputPerMillion, 5)
+        XCTAssertEqual(pricing.resolve(model: "openai/gpt-5-5")?.inputPerMillion, 5)
     }
 
     func testExplicitProviderPriceStillWinsOverUnprefixedBase() throws {
@@ -353,6 +354,14 @@ final class ModelPricingTests: XCTestCase {
         XCTAssertEqual(pricing.estimatedCostDollars(
             model: "claude-opus-4-6", tokens: TokenBreakdown(input: 1_000_000, isFast: true)
         ), 10)
+    }
+
+    func testMostSpecificFastMultiplierWinsForPrefixedAndDatedModels() {
+        let supplement = PricingSupplement(fastMultipliers: ["gpt-5": 2, "gpt-5.5": 2.5])
+        for model in ["openai/gpt-5.5", "openai/gpt-5-5", "gpt-5.5-20260423"] {
+            XCTAssertEqual(supplement.fastMultiplier(for: model), 2.5)
+        }
+        XCTAssertEqual(supplement.fastMultiplier(for: "openai/gpt-5"), 2)
     }
 
     func testUnknownModelCostIsNil() throws {
