@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.8.16
+
+### New Features
+- Add opt-in reminders before unused Codex and Grok reset credits expire ([#134](https://github.com/mstallone/runway/pull/134)) by @mstallone
+
+### Bug Fixes
+- Replace unavailable usage bars with compact notices while preserving available data and On Demand placement ([#135](https://github.com/mstallone/runway/pull/135)) by @mstallone
+
+### Chores
+- Refresh bundled LiteLLM and models.dev pricing snapshots by @mstallone
+
+---
+
+### Changelog
+**Full Changelog**: [v0.8.15...v0.8.16](https://github.com/mstallone/runway/compare/v0.8.15...v0.8.16)
+
+- [27d3ff9](https://github.com/mstallone/runway/commit/27d3ff9a5e3247f4805d41b0a7a270fae5ed9594) Add macOS reset expiry reminders (#134) by @mstallone
+- [f34390f](https://github.com/mstallone/runway/commit/f34390f1cbd6a43b0f10f192d3be2ef6011491fc) Show compact notices for unavailable usage (#135) by @mstallone
+
 ## v0.8.15
 
 ### Bug Fixes
