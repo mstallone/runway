@@ -64,6 +64,16 @@ final class ModelPricingTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "grok-4.3")?.inputPerMillion, 1.25)
     }
 
+    func testOrdinaryFuzzyLookupDoesNotSelectBatchPrices() throws {
+        let pricing = try makePricing(primary: [
+            "openrouter/anthropic/claude-opus-5": rates(5, 25),
+            "openrouter/anthropic/claude-opus-5:batch": rates(2.5, 12.5)
+        ])
+        XCTAssertEqual(pricing.resolve(model: "anthropic/claude-opus-5")?.inputPerMillion, 5)
+        XCTAssertEqual(pricing.resolve(model: "anthropic/claude-opus-5:batch")?.inputPerMillion, 2.5)
+        XCTAssertEqual(pricing.resolve(model: "openrouter/anthropic/claude-opus-5:batch")?.inputPerMillion, 2.5)
+    }
+
     func testSeparatorNormalizationMatch() throws {
         // Log slug grok-4-3 (dashes) matches catalog key xai/grok-4.3 (dot).
         let pricing = try makePricing(primary: ["xai/grok-4.3": rates(1.25, 2.5)])

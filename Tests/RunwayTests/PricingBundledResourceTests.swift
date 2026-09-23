@@ -54,6 +54,14 @@ final class PricingBundledResourceTests: XCTestCase {
         }
     }
 
+    func testOrdinaryPrefixedClaudeModelsDoNotUseBatchDiscounts() throws {
+        for model in ["claude-opus-5", "claude-opus-4-7", "claude-opus-4-8"] {
+            let rates = try XCTUnwrap(Self.pricing.resolve(model: "anthropic/" + model))
+            XCTAssertEqual(rates.inputPerMillion, 5)
+            XCTAssertEqual(rates.outputPerMillion, 25)
+        }
+    }
+
     /// Spot-check Cursor CSV slugs end to end against known rates (the old manifest's assertions,
     /// now against live catalogs — update the constants if the providers themselves reprice).
     func testKnownCursorSlugsPriceCorrectly() {

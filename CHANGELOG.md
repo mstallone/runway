@@ -9,8 +9,10 @@
 - Show Copilot Enterprise usage without requiring GraphQL enterprise listing ([#129](https://github.com/mstallone/runway/pull/129)) by @mstallone
 - Show Muse token history and estimated spend while keeping weekly usage visible ([#128](https://github.com/mstallone/runway/pull/128)) by @mstallone
 
+- Preserve historical model pricing and keep batch discounts out of ordinary usage estimates ([#133](https://github.com/mstallone/runway/pull/133)) by @mstallone
+
 ### Chores
-- Refresh bundled pricing while retaining historical model coverage and correct Codex/Grok aliases by @mstallone
+- Refresh bundled LiteLLM and models.dev pricing snapshots ([#133](https://github.com/mstallone/runway/pull/133)) by @mstallone
 
 ---
 
