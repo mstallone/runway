@@ -476,7 +476,13 @@ struct DashboardView: View {
         }
         return ExpansionHeightEstimator.expandedSectionRows(
             alwaysShown: rows(group.alwaysShownWidgets),
-            expanded: rows(group.expandedWidgets)
+            expanded: rows(group.expandedWidgets),
+            hasNotice: dataStore.usageUnavailableMessage(
+                for: group.provider.id,
+                placedDescriptors: (group.alwaysShownWidgets + group.expandedWidgets).compactMap {
+                    layout.descriptor(for: $0)
+                }
+            ) != nil
         )
     }
 

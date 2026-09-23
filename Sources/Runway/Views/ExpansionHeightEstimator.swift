@@ -24,10 +24,11 @@ enum ExpansionHeightEstimator {
     }
 
     /// The rows the caret actually reveals: the applicability-filtered On Demand rows — or none
-    /// when an empty (post-filter) Always Visible side promotes them above the caret.
-    static func expandedSectionRows(alwaysShown: [Row], expanded: [Row]) -> [Row] {
-        guard alwaysShown.contains(where: \.isApplicable) else { return [] }
-        return expanded.filter(\.isApplicable)
+    /// when an empty (post-filter) Always Visible side promotes them above the caret. A compact
+    /// notice prevents promotion and hides unavailable rows, matching the rendered card.
+    static func expandedSectionRows(alwaysShown: [Row], expanded: [Row], hasNotice: Bool = false) -> [Row] {
+        guard hasNotice || alwaysShown.contains(where: \.isApplicable) else { return [] }
+        return expanded.filter { $0.isApplicable && (!hasNotice || $0.data.hasData) }
     }
 
     /// Ties a learned delta to the provider's revealed composition: the ordered metric IDs (order

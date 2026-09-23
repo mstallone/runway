@@ -10,6 +10,10 @@ final class UsageUnavailableTests: XCTestCase {
         .percent(id: "test.session", provider: provider, title: "Session")
     }
 
+    private var weekly: WidgetDescriptor {
+        .percent(id: "test.weekly", provider: provider, title: "Weekly")
+    }
+
     private var spend: WidgetDescriptor {
         WidgetDescriptor(id: "test.today", providerID: provider.id, metricLabel: "Today",
                          sample: WidgetData(title: "Today", icon: provider.icon, kind: .dollars, used: 0))
@@ -17,7 +21,7 @@ final class UsageUnavailableTests: XCTestCase {
 
     private func store(first: ProviderSnapshot, second: ProviderSnapshot? = nil) -> WidgetDataStore {
         let defaults = UserDefaults(suiteName: "UsageUnavailableTests.\(UUID().uuidString)")!
-        let descriptors = [session, spend]
+        let descriptors = [session, weekly, spend]
         let runtime = TogglingProviderRuntime(provider: provider, descriptors: descriptors,
                                              first: first, second: second ?? first)
         return WidgetDataStore(
@@ -92,6 +96,53 @@ final class UsageUnavailableTests: XCTestCase {
         let partialStore = self.store(first: partial)
         await partialStore.refreshAll(force: true)
         XCTAssertNil(partialStore.usageUnavailableMessage(for: provider.id, placedDescriptors: [session, spend]))
+    }
+
+    func testNoticeKeepsSavedOnDemandRowsAfterUpstreamPromotion() async throws {
+        // Cover both promotion paths: every enabled metric is On Demand, or applicability
+        // removes the only Always Visible metric. Available spend must stay behind the caret.
+        for filtersAlwaysVisible in [false, true] {
+            let applicable = Set([weekly.id, spend.id])
+            let first = ProviderSnapshot(
+                providerID: provider.id, displayName: provider.displayName,
+                lines: [.values(label: "Today", values: [MetricValue(number: 4, kind: .dollars)])],
+                applicableMetricIDs: applicable,
+                warning: "Usage unavailable. Try again later."
+            )
+            let second = ProviderSnapshot(
+                providerID: provider.id, displayName: provider.displayName,
+                lines: [
+                    .progress(label: "Weekly", used: 20, limit: 100, format: .percent),
+                    .values(label: "Today", values: [MetricValue(number: 4, kind: .dollars)]),
+                ],
+                applicableMetricIDs: applicable
+            )
+            let dataStore = store(first: first, second: second)
+            let defaults = UserDefaults(suiteName: "UsageUnavailableLayout.\(UUID().uuidString)")!
+            let layout = LayoutStore(
+                registry: WidgetRegistry(providers: [provider], descriptors: [session, weekly, spend]),
+                defaults: defaults,
+                defaultMetricIDs: filtersAlwaysVisible ? [session.id, weekly.id, spend.id] : [weekly.id, spend.id],
+                defaultPinnedMetricIDs: [],
+                defaultExpandedMetricIDs: [weekly.id, spend.id]
+            )
+            let savedOrder = layout.metricOrder(for: provider.id)
+            let savedExpanded = layout.expandedMetricIDs
+
+            await dataStore.refreshAll(force: true)
+            let group = try XCTUnwrap(layout.dashboardGroups(dataStore: dataStore).first)
+            XCTAssertTrue(group.alwaysShownWidgets.isEmpty)
+            XCTAssertEqual(group.expandedWidgets.map(\.descriptorID), [weekly.id, spend.id])
+            XCTAssertNotNil(dataStore.usageUnavailableMessage(for: provider.id, placedDescriptors: [weekly, spend]))
+
+            await dataStore.refreshAll(force: true)
+            let recovered = try XCTUnwrap(layout.dashboardGroups(dataStore: dataStore).first)
+            XCTAssertEqual(recovered.alwaysShownWidgets.map(\.descriptorID), [weekly.id, spend.id],
+                           "without a notice, normal promotion still prevents a blank card")
+            XCTAssertTrue(recovered.expandedWidgets.isEmpty)
+            XCTAssertEqual(layout.metricOrder(for: provider.id), savedOrder)
+            XCTAssertEqual(layout.expandedMetricIDs, savedExpanded)
+        }
     }
 
     func testCompactCardIsShorterThanEmptyBarsAndPreservesAvailableRows() throws {
