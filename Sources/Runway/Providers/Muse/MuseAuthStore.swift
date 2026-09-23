@@ -1,6 +1,6 @@
 import Foundation
 
-/// Reuses Runway's Chromium cookie reader and coordinated Safe Storage access. Muse CLI
+/// Reuses Runway's browser cookie reader, including Firefox's unencrypted cookie store. Muse CLI
 /// credentials are deliberately not consulted: subscription reads use the dashboard session.
 struct MuseAuthStore: Sendable {
     static let cookieName = "llama_dev_sess"
@@ -16,7 +16,12 @@ struct MuseAuthStore: Sendable {
         homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser }
     ) {
         browser = SakanaAuthStore(
-            sqlite: sqlite, files: files, keyReader: keyReader, sources: sources,
+            sqlite: sqlite, files: files, keyReader: keyReader,
+            sources: sources ?? {
+                let home = homeDirectory()
+                return SakanaAuthStore.discoverSources(homeDirectory: home)
+                    + FirefoxBrowserCookies.discoverSources(homeDirectory: home)
+            },
             homeDirectory: homeDirectory,
             cookieName: Self.cookieName, cookieHosts: Self.cookieHosts, providerID: "muse"
         )
@@ -49,7 +54,7 @@ enum MuseAuthError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .notLoggedIn:
-            return "Sign in to dev.meta.ai in Chrome, Arc, Brave, or Edge to see Muse subscription usage."
+            return "Sign in to dev.meta.ai in Chrome, Arc, Brave, Edge, or Firefox to see Muse subscription usage."
         case .invalidCredentialData:
             return "The Meta browser session couldn't be decoded. Sign in to dev.meta.ai again, then refresh."
         case .sessionExpired:
