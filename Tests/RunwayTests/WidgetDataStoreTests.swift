@@ -373,9 +373,9 @@ final class WidgetDataStoreTests: XCTestCase {
 
     func testEmptyStateErrorShowsOnlyWhileNoLastGoodDataExists() async {
         // A provider that has never refreshed successfully (a Keychain item awaiting approval, a
-        // fresh not-signed-in install) surfaces its error as the card body via `emptyStateError`.
+        // fresh not-signed-in install) surfaces its error as the card body via `usageUnavailableMessage`.
         // Once any last-good data exists, a later failure keeps the rows on screen — the error moves
-        // to the header triangle only and `emptyStateError` stays nil.
+        // to the header triangle only and `usageUnavailableMessage` stays nil.
         let provider = Provider(id: "test", displayName: "Test", icon: .providerMark("claude"))
         let meter = WidgetDescriptor(
             id: "test.session",
@@ -405,11 +405,11 @@ final class WidgetDataStoreTests: XCTestCase {
         )
 
         await store.refreshAll(force: true)  // failure with nothing to fall back on
-        XCTAssertEqual(store.emptyStateError(for: provider.id, placedDescriptors: [meter]), permissionMessage)
+        XCTAssertEqual(store.usageUnavailableMessage(for: provider.id, placedDescriptors: [meter]), permissionMessage)
         XCTAssertEqual(store.errorMessage(for: provider.id), permissionMessage)
 
         await store.refreshAll(force: true)  // success: real data arrives
-        XCTAssertNil(store.emptyStateError(for: provider.id, placedDescriptors: [meter]))
+        XCTAssertNil(store.usageUnavailableMessage(for: provider.id, placedDescriptors: [meter]))
         XCTAssertNil(store.errorMessage(for: provider.id))
         XCTAssertTrue(store.data(for: meter).hasData)
     }
@@ -446,7 +446,7 @@ final class WidgetDataStoreTests: XCTestCase {
         await store.refreshAll(force: true)  // failure, last-good rows retained
 
         XCTAssertEqual(store.errorMessage(for: provider.id), "Token expired. Run `claude` to log in again.")
-        XCTAssertNil(store.emptyStateError(for: provider.id, placedDescriptors: [meter]))
+        XCTAssertNil(store.usageUnavailableMessage(for: provider.id, placedDescriptors: [meter]))
         XCTAssertTrue(store.data(for: meter).hasData)
     }
 
@@ -487,14 +487,14 @@ final class WidgetDataStoreTests: XCTestCase {
         await store.refreshAll(force: true)  // "success" that carried only the placeholder badge
         await store.refreshAll(force: true)  // failure
 
-        XCTAssertEqual(store.emptyStateError(for: provider.id, placedDescriptors: [meter]), permissionMessage)
+        XCTAssertEqual(store.usageUnavailableMessage(for: provider.id, placedDescriptors: [meter]), permissionMessage)
     }
 
     func testEmptyStateErrorIsNotMaskedByDataBelongingOnlyToHiddenMetrics() async {
         // The judgment sees only the card's PLACED rows. A last-good line that backs a metric the
         // user has hidden (a cached Weekly line while just Session is enabled) must not keep the
         // visible "No data" wall — the error card still replaces it. Re-placing the hidden metric
-        // (both descriptors) flips the judgment back to keeping the rows.
+        // (both descriptors) keeps its real value alongside the compact error.
         let provider = Provider(id: "test", displayName: "Test", icon: .providerMark("claude"))
         let session = WidgetDescriptor(
             id: "test.session",
@@ -531,13 +531,14 @@ final class WidgetDataStoreTests: XCTestCase {
         await store.refreshAll(force: true)  // failure
 
         XCTAssertEqual(
-            store.emptyStateError(for: provider.id, placedDescriptors: [session]),
+            store.usageUnavailableMessage(for: provider.id, placedDescriptors: [session]),
             permissionMessage,
             "data on a hidden metric must not suppress the error card"
         )
-        XCTAssertNil(
-            store.emptyStateError(for: provider.id, placedDescriptors: [session, weekly]),
-            "with the Weekly row placed, its stale data stays on screen instead"
+        XCTAssertEqual(
+            store.usageUnavailableMessage(for: provider.id, placedDescriptors: [session, weekly]),
+            permissionMessage,
+            "the missing Session bar collapses while Weekly's stale data remains visible"
         )
     }
 

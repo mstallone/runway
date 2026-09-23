@@ -17,7 +17,7 @@ When Codex reports your plan name, Runway shows it beside the provider name. `se
 
 ## Where credentials come from
 
-Sign in with the Codex CLI (`codex`). Runway reads the same `auth.json` file or home-scoped OS keyring item (`$CODEX_HOME` respected). Codex credentials are read-only to Runway. It never refreshes a token and never writes `auth.json` or the keyring. The `codex` CLI owns the login. When the token lapses, the card shows **"Codex login needs renewal"**. Run `codex` (it renews its own login), then refresh Runway. The spend tiles keep working.
+Sign in with the Codex CLI (`codex`). Runway reads the same `auth.json` file or home-scoped OS keyring item (`$CODEX_HOME` respected). Codex credentials are read-only to Runway. It never refreshes a token and never writes `auth.json` or the keyring. The `codex` CLI owns the login. When the token lapses, the card shows **"Codex login needs renewal"**. Run `codex` (it renews its own login), then refresh Runway. The spend tiles keep working; unavailable quota bars become one compact renewal message.
 
 Automatic refreshes never request the keyring secret. After launch or a credential change, the card shows a neutral **Connect** action. That manual read is cached in memory for the running session while the item's non-secret metadata is unchanged. Choose **Always Allow** to avoid a dialog on future manual reads. If the login keychain cannot be inspected (it is locked, say), the card asks you to unlock it.
 
@@ -51,7 +51,7 @@ For supported GPT-5.4, GPT-5.5, GPT-5.6, and GPT-6 models, requests above 272k i
 ## Troubleshooting
 
 - **"Not logged in"**: run `codex` and sign in, then refresh.
-- **"Codex login needs renewal"**: the stored token has expired or was revoked. Runway never renews Codex tokens, so run `codex` (it refreshes its login on start), then refresh Runway. The spend tiles keep working.
+- **"Codex login needs renewal"**: the stored token has expired or was revoked. Runway never renews Codex tokens, so run `codex` (it refreshes its login on start), then refresh Runway. The spend tiles keep working; unavailable quota bars become one compact renewal message.
 - **"Codex login found in Keychain"** (neutral key glyph): the login has not been loaded this session. Connect, and choose **Always Allow** when macOS asks for access to `Codex Auth`.
 - **"Keychain access to the Codex login was declined"**: a manual read was denied. Refresh and choose **Always Allow** when macOS asks.
 - **API-key-only setups** cannot read subscription usage. Sign in with your ChatGPT account instead.

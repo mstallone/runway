@@ -60,7 +60,7 @@ struct WidgetGroupedListView: View {
     private func section(_ group: ProviderGroup) -> some View {
         VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
             header(group)
-            container(group)
+            metricContainer(group)
         }
         .opacity(activeProviderID == group.provider.id ? 0 : 1)
         .reorderFrame(id: group.provider.id, in: reorderSpaceName, store: rowFrames)
@@ -161,34 +161,8 @@ struct WidgetGroupedListView: View {
         }
     }
 
-    /// The provider's card body: its metric rows, or — when the provider has an error and no
-    /// last-good data at all — the error prompt in their place. A column of "No data" bars under an
-    /// unexplained header triangle told the user nothing about what to do next.
-    @ViewBuilder
-    private func container(_ group: ProviderGroup) -> some View {
-        if let message = emptyStateError(for: group) {
-            // The error body replaces only the metric rows. The provider's quick links keep their
-            // usual place behind the caret — a Status or API-keys page is often exactly what
-            // resolves the error. The data-less expanded metrics stay hidden.
-            let links = group.provider.visibleLinks
-            let isExpanded = layout.isProviderExpanded(group.provider.id)
-            DashboardMetricCard {
-                errorBody(message: message, providerID: group.provider.id)
-                if !links.isEmpty {
-                    expandToggle(providerID: group.provider.id, isExpanded: isExpanded)
-                    if isExpanded {
-                        ProviderLinksView(links: links)
-                    }
-                }
-            }
-        } else {
-            metricContainer(group)
-        }
-    }
-
-    /// The empty-state judgment must see exactly the rows this card renders — its placed, applicable
-    /// descriptors — so data belonging only to hidden metrics can't mask the error prompt.
-    private func emptyStateError(for group: ProviderGroup) -> String? {
+    /// Judge the card's placed, applicable metrics so hidden metrics cannot mask missing usage.
+    private func usageUnavailableMessage(for group: ProviderGroup) -> String? {
         let placed = (group.alwaysShownWidgets + group.expandedWidgets).compactMap { widget -> WidgetDescriptor? in
             guard let descriptor = layout.descriptor(for: widget),
                   dataStore.isMetricApplicable(descriptor)
@@ -197,13 +171,14 @@ struct WidgetGroupedListView: View {
             }
             return descriptor
         }
-        return dataStore.emptyStateError(for: group.provider.id, placedDescriptors: placed)
+        return dataStore.usageUnavailableMessage(for: group.provider.id, placedDescriptors: placed)
     }
 
     private func errorBody(message: String, providerID: String) -> some View {
         ProviderErrorCardView(
             message: message,
             isRefreshing: dataStore.refreshingProviderIDs.contains(providerID),
+            showsRefreshAction: dataStore.headerNoticeAction(for: providerID) == .refresh,
             style: dataStore.noticeIsConnectPrompt(for: providerID) ? .connect : .warning,
             onRefresh: { refreshProvider(providerID) }
         )
@@ -223,11 +198,13 @@ struct WidgetGroupedListView: View {
         // recomputed several times per row (twice per adjacent pair plus once in `row`).
         let providerID = group.provider.id
         let isExpanded = layout.isProviderExpanded(providerID)
-        let resolvedAlwaysRows = resolvedRows(group.alwaysShownWidgets, alwaysVisible: true)
-        let resolvedExpandedRows = resolvedRows(group.expandedWidgets)
+        let message = usageUnavailableMessage(for: group)
+        let resolvedAlwaysRows = resolvedRows(group.alwaysShownWidgets, alwaysVisible: true, hidingEmptyRows: message != nil)
+        let resolvedExpandedRows = resolvedRows(group.expandedWidgets, hidingEmptyRows: message != nil)
         let (alwaysRows, expandedRows) = promotedRowsIfNeeded(
             alwaysRows: resolvedAlwaysRows,
-            expandedRows: resolvedExpandedRows
+            expandedRows: resolvedExpandedRows,
+            hasNotice: message != nil
         )
         // The caret separates Always Visible and On Demand rows, so text-row condensing should not
         // bridge across it. Each side tightens only against rows on the same side of the separator.
@@ -241,6 +218,9 @@ struct WidgetGroupedListView: View {
         )
         // Same card builder the lifted preview uses, so the floating chip can't drift from the live card.
         return DashboardMetricCard {
+            if let message {
+                errorBody(message: message, providerID: providerID)
+            }
             // One stable list keeps the drag-owning metric row alive when it crosses the caret boundary.
             // Separate always-shown/expanded loops can tear that source view down before `onEnded` fires,
             // leaving the lift overlay visible until another drag forces a reset.
@@ -258,7 +238,7 @@ struct WidgetGroupedListView: View {
         }
     }
 
-    private func resolvedRows(_ widgets: [PlacedWidget], alwaysVisible: Bool = false) -> [ResolvedRow] {
+    private func resolvedRows(_ widgets: [PlacedWidget], alwaysVisible: Bool = false, hidingEmptyRows: Bool = false) -> [ResolvedRow] {
         widgets.compactMap { widget -> ResolvedRow? in
             guard let descriptor = layout.descriptor(for: widget),
                   dataStore.isMetricApplicable(descriptor)
@@ -266,6 +246,7 @@ struct WidgetGroupedListView: View {
                 return nil
             }
             let data = dataStore.data(for: descriptor)
+            guard !hidingEmptyRows || data.hasData else { return nil }
             return ResolvedRow(widget: widget, descriptor: descriptor,
                                data: alwaysVisible ? WeeklyQuotaVisibility.presentation(data, descriptor: descriptor) : data)
         }
@@ -273,12 +254,14 @@ struct WidgetGroupedListView: View {
 
     /// The dashboard promises at least one Always Visible row. Account-aware filtering can remove every
     /// row on that side (for example, a Business Copilot seat whose org metrics were saved On Demand),
-    /// so promote the applicable On Demand rows rather than rendering a header-only card.
+    /// so promote the applicable On Demand rows rather than rendering a header-only card. A compact
+    /// notice already supplies visible content, so On Demand rows stay behind the caret in that case.
     private func promotedRowsIfNeeded(
         alwaysRows: [ResolvedRow],
-        expandedRows: [ResolvedRow]
+        expandedRows: [ResolvedRow],
+        hasNotice: Bool = false
     ) -> (always: [ResolvedRow], expanded: [ResolvedRow]) {
-        alwaysRows.isEmpty && !expandedRows.isEmpty
+        !hasNotice && alwaysRows.isEmpty && !expandedRows.isEmpty
             ? (expandedRows, [])
             : (alwaysRows, expandedRows)
     }
@@ -453,24 +436,14 @@ struct WidgetGroupedListView: View {
         guard let group = groups.first(where: { $0.provider.id == providerID }) else {
             return []
         }
-        let rawAlwaysShown = group.alwaysShownWidgets.compactMap { widget -> String? in
-            guard let descriptor = layout.descriptor(for: widget),
-                  dataStore.isMetricApplicable(descriptor)
-            else {
-                return nil
-            }
-            return descriptor.id
-        }
-        let rawExpanded = group.expandedWidgets.compactMap { widget -> String? in
-            guard let descriptor = layout.descriptor(for: widget),
-                  dataStore.isMetricApplicable(descriptor)
-            else {
-                return nil
-            }
-            return descriptor.id
-        }
-        let alwaysShown = rawAlwaysShown.isEmpty ? rawExpanded : rawAlwaysShown
-        let expanded = rawAlwaysShown.isEmpty ? [] : rawExpanded
+        let message = usageUnavailableMessage(for: group)
+        let rows = promotedRowsIfNeeded(
+            alwaysRows: resolvedRows(group.alwaysShownWidgets, hidingEmptyRows: message != nil),
+            expandedRows: resolvedRows(group.expandedWidgets, hidingEmptyRows: message != nil),
+            hasNotice: message != nil
+        )
+        let alwaysShown = rows.always.map(\.descriptor.id)
+        let expanded = rows.expanded.map(\.descriptor.id)
         // The caret is a drop target whenever the expanded section is open — including a links-only
         // section (buttons but no expanded metrics), so a metric can be dragged past the caret to tuck
         // it below the fold even when only buttons are showing there.
@@ -482,10 +455,11 @@ struct WidgetGroupedListView: View {
     private func makeProviderLift(for group: ProviderGroup, value: DragGesture.Value) -> ReorderLift? {
         // The floating preview should match what the card shows: the error prompt when that is on
         // screen, otherwise only the always-shown rows unless this provider's caret is currently open.
-        let errorMessage = emptyStateError(for: group)
+        let errorMessage = usageUnavailableMessage(for: group)
         let (alwaysRows, expandedRows) = promotedRowsIfNeeded(
-            alwaysRows: resolvedRows(group.alwaysShownWidgets, alwaysVisible: true),
-            expandedRows: resolvedRows(group.expandedWidgets)
+            alwaysRows: resolvedRows(group.alwaysShownWidgets, alwaysVisible: true, hidingEmptyRows: errorMessage != nil),
+            expandedRows: resolvedRows(group.expandedWidgets, hidingEmptyRows: errorMessage != nil),
+            hasNotice: errorMessage != nil
         )
         let visibleRows = layout.isProviderExpanded(group.provider.id)
             ? alwaysRows + expandedRows
@@ -495,9 +469,10 @@ struct WidgetGroupedListView: View {
             payload: .dashboardProvider(
                 provider: group.provider,
                 plan: dataStore.plan(for: group.provider.id),
-                rows: errorMessage == nil ? visibleRows.map(\.data) : [],
+                rows: visibleRows.map(\.data),
                 errorMessage: errorMessage,
-                errorIsConnectPrompt: dataStore.noticeIsConnectPrompt(for: group.provider.id)
+                errorIsConnectPrompt: dataStore.noticeIsConnectPrompt(for: group.provider.id),
+                errorAllowsRefresh: dataStore.headerNoticeAction(for: group.provider.id) == .refresh
             ),
             value: value,
             frames: rowFrames.frames

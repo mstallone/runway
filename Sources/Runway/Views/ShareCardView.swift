@@ -24,11 +24,10 @@ struct ShareCardView: View {
     /// land mid-session). Passed explicitly — this view renders in an `ImageRenderer`, outside the
     /// app's environment, so it can't read the account registry itself.
     var displayNameOverride: String? = nil
-    /// The dashboard's empty-state error when the live card is showing the error prompt instead of
-    /// metric rows. The export mirrors it (without the Refresh button — dead chrome in a PNG).
+    /// The dashboard's compact notice for unavailable rows, shown alongside any available metrics.
+    /// The export omits the Refresh button because a static image cannot perform the action.
     var errorMessage: String? = nil
-    /// Whether `errorMessage` is the neutral connect prompt, so the export mirrors the live card's
-    /// neutral styling instead of dressing it as a warning.
+    /// Whether the notice asks the user to connect a credential.
     var errorIsConnectPrompt: Bool = false
 
     /// Authored card width in points. The renderer multiplies this by `ShareCardRenderer.scale` for the
@@ -74,8 +73,8 @@ struct ShareCardView: View {
     /// provider falls back to a quiet placeholder so the card never renders blank.
     @ViewBuilder
     private var metricsCard: some View {
-        if let errorMessage {
-            DashboardMetricCard {
+        DashboardMetricCard {
+            if let errorMessage {
                 ProviderErrorCardView(
                     message: errorMessage,
                     isRefreshing: false,
@@ -84,8 +83,7 @@ struct ShareCardView: View {
                     onRefresh: {}
                 )
             }
-        } else if rows.isEmpty {
-            DashboardMetricCard {
+            if rows.isEmpty, errorMessage == nil {
                 Text("No metrics to show")
                     .font(.system(size: 14))
                     .foregroundStyle(.secondary)
@@ -93,12 +91,9 @@ struct ShareCardView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
             }
-        } else {
-            DashboardMetricCard {
-                let condensed = Self.condensedTextRowIndices(rows, boundary: expandBoundaryIndex)
-                ForEach(Array(rows.enumerated()), id: \.offset) { index, data in
-                    WidgetRowView(data: data, condensedTop: condensed.contains(index))
-                }
+            let condensed = Self.condensedTextRowIndices(rows, boundary: expandBoundaryIndex)
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, data in
+                WidgetRowView(data: data, condensedTop: condensed.contains(index))
             }
         }
     }

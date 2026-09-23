@@ -77,13 +77,23 @@ enum ShareCardRenderer {
         displayName: String? = nil
     ) -> Bool {
         let isExpanded = layout.isProviderExpanded(group.provider.id)
+        let message = dataStore.usageUnavailableMessage(
+            for: group.provider.id,
+            placedDescriptors: (group.alwaysShownWidgets + group.expandedWidgets).compactMap { widget in
+                guard let descriptor = layout.descriptor(for: widget),
+                      dataStore.isMetricApplicable(descriptor) else { return nil }
+                return descriptor
+            }
+        )
         let rawAlwaysRows = group.alwaysShownWidgets.compactMap { widget -> WidgetData? in
             guard let descriptor = layout.descriptor(for: widget),
                   dataStore.isMetricApplicable(descriptor)
             else {
                 return nil
             }
-            return WeeklyQuotaVisibility.presentation(dataStore.data(for: descriptor), descriptor: descriptor)
+            let data = dataStore.data(for: descriptor)
+            guard message == nil || data.hasData else { return nil }
+            return WeeklyQuotaVisibility.presentation(data, descriptor: descriptor)
         }
         let rawExpandedRows = group.expandedWidgets.compactMap { widget -> WidgetData? in
             guard let descriptor = layout.descriptor(for: widget),
@@ -91,12 +101,14 @@ enum ShareCardRenderer {
             else {
                 return nil
             }
-            return dataStore.data(for: descriptor)
+            let data = dataStore.data(for: descriptor)
+            return message == nil || data.hasData ? data : nil
         }
         // Match the dashboard's invariant after account-aware filtering: if no applicable metric remains
-        // Always Visible, promote the On Demand rows rather than exporting a blank collapsed card.
-        let alwaysRows = rawAlwaysRows.isEmpty ? rawExpandedRows : rawAlwaysRows
-        let expandedRows = rawAlwaysRows.isEmpty ? [] : rawExpandedRows
+        // Always Visible, promote On Demand rows unless a compact notice already fills the card.
+        let promote = rawAlwaysRows.isEmpty && message == nil
+        let alwaysRows = promote ? rawExpandedRows : rawAlwaysRows
+        let expandedRows = promote ? [] : rawExpandedRows
         let rows = isExpanded ? alwaysRows + expandedRows : alwaysRows
         let view = ShareCardView(
             provider: group.provider,
@@ -105,21 +117,7 @@ enum ShareCardRenderer {
             appearance: appearance,
             expandBoundaryIndex: isExpanded ? alwaysRows.count : nil,
             displayNameOverride: displayName,
-            // When the live card shows the empty-state error prompt instead of rows, the export
-            // mirrors it — otherwise the shared PNG would be a wall of "No data" rows with the
-            // on-screen reason missing. Judged against the same placed, applicable descriptors the
-            // dashboard card uses.
-            errorMessage: dataStore.emptyStateError(
-                for: group.provider.id,
-                placedDescriptors: (group.alwaysShownWidgets + group.expandedWidgets).compactMap { widget in
-                    guard let descriptor = layout.descriptor(for: widget),
-                          dataStore.isMetricApplicable(descriptor)
-                    else {
-                        return nil
-                    }
-                    return descriptor
-                }
-            ),
+            errorMessage: message,
             errorIsConnectPrompt: dataStore.noticeIsConnectPrompt(for: group.provider.id)
         )
         return renderAndCopy(view, label: group.provider.id, layout: layout)

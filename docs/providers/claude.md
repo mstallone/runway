@@ -38,7 +38,7 @@ If you cancel or deny a Claude Code approval prompt during a manual refresh, Run
 
 If one source holds an expired or locked-out token, Runway falls back to the others, so signing in again with `claude` is picked up on the next refresh without restarting Runway.
 
-**Token renewal.** Claude Code owns its login, and Runway defers to it. When a stored token has already been expired for a while, so no live Claude Code session can be mid-rotation, Runway renews it the same way Claude Code would and writes the rotated credential back to the store it came from (the Keychain item or `.credentials.json`), keeping one token chain. Two apps rotating the same login independently can trip the server's token-reuse protection and sign you out everywhere, so Runway only renews after expiry, only after verifying it can write the result back, and never for Claude Desktop's login. If renewal is not possible (a guard declines, or the refresh token itself is revoked), the live Session and Weekly meters pause and the Claude header shows **"Claude login needs renewal"**. Open Claude Code so it mints a fresh login, then refresh Runway. The local spend tiles keep working. To turn renewal off:
+**Token renewal.** Claude Code owns its login, and Runway defers to it. When a stored token has already been expired for a while, so no live Claude Code session can be mid-rotation, Runway renews it the same way Claude Code would and writes the rotated credential back to the store it came from (the Keychain item or `.credentials.json`), keeping one token chain. Two apps rotating the same login independently can trip the server's token-reuse protection and sign you out everywhere, so Runway only renews after expiry, only after verifying it can write the result back, and never for Claude Desktop's login. If renewal is not possible (a guard declines, or the refresh token itself is revoked), the live Session and Weekly meters pause and the Claude header shows **"Claude login needs renewal"**. Open Claude Code so it mints a fresh login, then refresh Runway. The local spend tiles keep working, and unavailable meters become one compact renewal message. To turn renewal off:
 
 ```sh
 defaults write com.mattstallone.runway runway.claude.disableTokenRefresh -bool true
@@ -62,7 +62,7 @@ In the [CLI](../cli.md) and [local API](../local-http-api.md), extra cards appea
 
 ## Troubleshooting
 
-- **"Not logged in"**: run `claude` to sign in, then refresh. If local session logs exist, the spend tiles still show. Session and Weekly stay empty until you sign in.
+- **"Not logged in"**: run `claude` to sign in, then refresh. If local session logs exist, the spend tiles still show. Unavailable Session and Weekly bars become one compact login message until you sign in.
 - **"Claude Code login found"** (neutral key glyph / **Connect** button): the login exists but has not been loaded this session. Connect, and choose **Always Allow** if macOS asks for access to `Claude Code-credentials`.
 - **"Keychain access to the Claude Code login was declined"**: a manual read was denied. Refresh and choose **Always Allow** when macOS asks.
 - **"Claude Code credentials couldn't be checked"**: unlock your login keychain, then refresh.

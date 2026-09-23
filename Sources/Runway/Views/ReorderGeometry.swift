@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ReorderLift {
     enum Payload {
-        case dashboardProvider(provider: Provider, plan: String?, rows: [WidgetData], errorMessage: String? = nil, errorIsConnectPrompt: Bool = false)
+        case dashboardProvider(provider: Provider, plan: String?, rows: [WidgetData], errorMessage: String? = nil, errorIsConnectPrompt: Bool = false, errorAllowsRefresh: Bool = true)
         case dashboardMetric(data: WidgetData)
         case customizeProviderRow(provider: Provider, isEnabled: Bool, metricCount: Int)
         case customizeMetric(title: String)
@@ -60,13 +60,14 @@ struct ReorderLiftPreview: View {
     @ViewBuilder
     private var preview: some View {
         switch lift.payload {
-        case .dashboardProvider(let provider, let plan, let rows, let errorMessage, let errorIsConnectPrompt):
+        case .dashboardProvider(let provider, let plan, let rows, let errorMessage, let errorIsConnectPrompt, let errorAllowsRefresh):
             dashboardProviderPreview(
                 provider: provider,
                 plan: plan,
                 rows: rows,
                 errorMessage: errorMessage,
-                errorIsConnectPrompt: errorIsConnectPrompt
+                errorIsConnectPrompt: errorIsConnectPrompt,
+                errorAllowsRefresh: errorAllowsRefresh
             )
         case .dashboardMetric(let data):
             dashboardMetricPreview(data)
@@ -82,12 +83,12 @@ struct ReorderLiftPreview: View {
         plan: String?,
         rows: [WidgetData],
         errorMessage: String?,
-        errorIsConnectPrompt: Bool
+        errorIsConnectPrompt: Bool,
+        errorAllowsRefresh: Bool
     ) -> some View {
-        // Same anatomy as the live dashboard section (`WidgetGroupedListView.section` + `container`):
-        // Header over the shared metric card, at the compact layout's header→card spacing. When the
-        // live card shows the error prompt instead of rows, the lifted chip shows it too (inert —
-        // the whole preview is non-interactive).
+        // Same anatomy as the live dashboard section (`WidgetGroupedListView.section` + `metricContainer`):
+        // Header over the shared metric card, at the compact layout's header→card spacing. The
+        // preview keeps the compact notice and any available rows; its controls are inert.
         VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
             ProviderSectionHeader(provider: provider, plan: plan)
                 .padding(.horizontal, 8)
@@ -97,13 +98,13 @@ struct ReorderLiftPreview: View {
                     ProviderErrorCardView(
                         message: errorMessage,
                         isRefreshing: false,
+                        showsRefreshAction: errorAllowsRefresh,
                         style: errorIsConnectPrompt ? .connect : .warning,
                         onRefresh: {}
                     )
-                } else {
-                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                        WidgetRowView(data: row)
-                    }
+                }
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    WidgetRowView(data: row)
                 }
             }
         }

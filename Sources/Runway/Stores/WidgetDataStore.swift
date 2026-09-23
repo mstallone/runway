@@ -879,24 +879,16 @@ final class WidgetDataStore {
         providerErrors[providerID]
     }
 
-    /// The provider's current refresh error when NONE of the card's placed rows can show last-good
-    /// data — a provider that has never refreshed successfully (a login awaiting Keychain approval,
-    /// a fresh install that isn't signed in). The dashboard then replaces the card's empty "No data"
-    /// rows with the error prompt itself. While any placed row still shows stale data this stays
-    /// `nil`: the rows keep it on screen and the header triangle carries the error instead.
-    ///
-    /// `placedDescriptors` is the card's own row list (placed and applicable) — the check must
-    /// mirror exactly what the card renders. Judging by the whole registry instead would let a line
-    /// belonging only to a HIDDEN metric (a cached spend line while just Session is enabled) keep a
-    /// visible wall of "No data" rows under an unexplained triangle — exactly the state this
-    /// accessor exists to replace. Error badges and row-less status/note lines resolve to no placed
-    /// row, so they never count as data.
-    func emptyStateError(for providerID: String, placedDescriptors: [WidgetDescriptor]) -> String? {
-        guard let message = providerErrors[providerID] else { return nil }
-        let hasVisibleData = placedDescriptors.contains { descriptor in
-            descriptor.providerID == providerID && data(for: descriptor).hasData
-        }
-        return hasVisibleData ? nil : message
+    /// Replace unavailable metrics with one compact notice. Partial successes can carry login or
+    /// fetch warnings while local spend still loads, so consider both hard errors and warnings.
+    /// Only placed, applicable rows count; hidden metrics must not mask an empty card. Real values
+    /// (including cached values) stay visible alongside the notice. An ordinary empty spend period
+    /// alone does not warrant replacing rows when the rest of the card has data.
+    func usageUnavailableMessage(for providerID: String, placedDescriptors: [WidgetDescriptor]) -> String? {
+        guard let message = headerNotice(for: providerID) else { return nil }
+        let rows = placedDescriptors.filter { $0.providerID == providerID }.map { data(for: $0) }
+        let hasEmptyBars = rows.contains { $0.isBounded && !$0.hasData }
+        return hasEmptyBars || !rows.contains(where: \.hasData) ? message : nil
     }
 
     /// A soft, non-blocking notice from the provider's latest *successful* snapshot (e.g. Claude's
@@ -928,7 +920,7 @@ final class WidgetDataStore {
         return snapshots[providerID]?.resolvedWarningAction ?? .refresh
     }
 
-    /// Whether the notice `headerNotice(for:)` (or `emptyStateError(for:)`) returns is the neutral
+    /// Whether the notice `headerNotice(for:)` (or `usageUnavailableMessage(for:placedDescriptors:)`) returns is the neutral
     /// connect prompt: a credential exists on the machine but hasn't been loaded into this process.
     /// The dashboard then shows a Connect affordance — nothing is broken, so no amber triangle.
     /// Follows `headerNotice`'s precedence: with a current refresh error the error's flavor speaks;
