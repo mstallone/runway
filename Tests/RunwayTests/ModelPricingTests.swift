@@ -74,6 +74,21 @@ final class ModelPricingTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "openrouter/anthropic/claude-opus-5:batch")?.inputPerMillion, 2.5)
     }
 
+    func testPrefixedModelPrefersExactBaseOverUnrequestedVariant() throws {
+        let pricing = try makePricing(primary: [
+            "gpt-5.5": rates(5, 30),
+            "openrouter/openai/gpt-5.5-pro": rates(30, 180)
+        ])
+        XCTAssertEqual(pricing.resolve(model: "openai/gpt-5.5")?.inputPerMillion, 5)
+    }
+
+    func testExplicitProviderPriceStillWinsOverUnprefixedBase() throws {
+        let pricing = try makePricing(primary: [
+            "gpt-5.5": rates(5, 30), "provider/gpt-5.5": rates(6, 36)
+        ])
+        XCTAssertEqual(pricing.resolve(model: "provider/gpt-5.5")?.inputPerMillion, 6)
+    }
+
     func testSeparatorNormalizationMatch() throws {
         // Log slug grok-4-3 (dashes) matches catalog key xai/grok-4.3 (dot).
         let pricing = try makePricing(primary: ["xai/grok-4.3": rates(1.25, 2.5)])

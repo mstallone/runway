@@ -22,6 +22,12 @@ struct PricingCatalog: Sendable, Equatable {
     /// Fuzzy lookup over every entry; prefers the longest matching key (then the lexicographically
     /// smallest for determinism). Only called after exact lookups miss.
     func findFuzzy(_ model: String) -> (key: String, rates: ModelRates)? {
+        // A missing provider-prefixed key should keep the exact base model and its metadata,
+        // rather than selecting a longer reseller key for a Pro/Mini/Lite variant.
+        if let base = model.split(separator: "/").last.map(String.init), base != model,
+           let rates = entries[base] {
+            return (base, rates)
+        }
         let normalizedModel = Self.normalizedKey(model)
         var best: (key: String, rates: ModelRates)?
         for (key, rates) in entries {

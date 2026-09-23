@@ -62,6 +62,20 @@ final class PricingBundledResourceTests: XCTestCase {
         }
     }
 
+    func testPrefixedModelsKeepBasePricesAndFastMetadata() throws {
+        for (prefix, model) in [
+            ("openai", "gpt-5.5"), ("google", "gemini-3.5-flash"),
+            ("anthropic", "claude-opus-4-8"), ("anthropic", "claude-opus-5")
+        ] {
+            XCTAssertEqual(Self.pricing.resolve(model: prefix + "/" + model), Self.pricing.resolve(model: model))
+        }
+        for model in ["anthropic/claude-opus-4-8", "anthropic/claude-opus-5"] {
+            let fast = TokenBreakdown(input: 1_000_000, isFast: true)
+            XCTAssertEqual(Self.pricing.estimatedCostDollars(model: model, tokens: fast), 10)
+            XCTAssertEqual(Self.pricing.resolve(model: model + "-fast")?.inputPerMillion, 10)
+        }
+    }
+
     /// Spot-check Cursor CSV slugs end to end against known rates (the old manifest's assertions,
     /// now against live catalogs — update the constants if the providers themselves reprice).
     func testKnownCursorSlugsPriceCorrectly() {
