@@ -6,22 +6,15 @@ struct MuseMappedUsage: Equatable, Sendable {
     var observedAt: Date?
 }
 
-/// The server-rendered dashboard carries weighted subscription totals. This follows the
-/// usage-page approach discovered in OpenUsage PR #1248; no GraphQL tokens or inference probe.
-/// https://github.com/robinebers/openusage/pull/1248
+/// Maps the JSON response used by the Meta developer dashboard's subscription-quota API.
 enum MuseUsageMapper {
     static func map(_ body: Data) throws -> MuseMappedUsage {
-        guard body.count <= 10 * 1024 * 1024,
-              let html = String(data: body, encoding: .utf8)
-        else { throw MuseUsageError.invalidResponse }
-        guard let marker = html.range(of: #""subscription_quota_usage"\s*:\s*"#, options: .regularExpression) else {
-            throw MuseUsageError.quotaUnavailable
-        }
-        let value = html[marker.upperBound...]
-        if value.hasPrefix("null") { throw MuseUsageError.quotaUnavailable }
-        guard let raw = objectPrefix(value), let quota = ProviderParse.jsonObject(Data(raw.utf8)) else {
+        guard body.count <= 1024 * 1024, let object = ProviderParse.jsonObject(body) else {
             throw MuseUsageError.invalidResponse
         }
+        guard let value = object["subscription_quota"] else { throw MuseUsageError.invalidResponse }
+        if value is NSNull { throw MuseUsageError.quotaUnavailable }
+        guard let quota = value as? [String: Any] else { throw MuseUsageError.invalidResponse }
         // Both windows must be valid: absence must never create a reassuring zero bar.
         let window = try progressLine(quota, prefix: "window", label: "Five-Hour Usage", period: MetricPeriod.sessionMs)
         let weekly = try progressLine(quota, prefix: "weekly", label: "Weekly Usage", period: MetricPeriod.weekMs)
@@ -29,30 +22,6 @@ enum MuseUsageMapper {
             plan: displayPlan(quota["tier"] as? String), lines: [window, weekly],
             observedAt: resetDate(quota["as_of"])
         )
-    }
-
-    /// Balanced braces must ignore quoted braces and escaped quotes inside other fields.
-    private static func objectPrefix(_ text: Substring) -> Substring? {
-        guard text.first == "{" else { return nil }
-        var depth = 0
-        var quoted = false
-        var escaped = false
-        for index in text.indices {
-            let character = text[index]
-            if quoted {
-                if escaped { escaped = false }
-                else if character == "\\" { escaped = true }
-                else if character == "\"" { quoted = false }
-            } else if character == "\"" {
-                quoted = true
-            } else if character == "{" {
-                depth += 1
-            } else if character == "}" {
-                depth -= 1
-                if depth == 0 { return text[...index] }
-            }
-        }
-        return nil
     }
 
     static func displayPlan(_ name: String?) -> String? {

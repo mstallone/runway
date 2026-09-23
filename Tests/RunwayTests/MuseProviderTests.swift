@@ -4,11 +4,11 @@ import XCTest
 @MainActor
 final class MuseProviderTests: XCTestCase {
     func testReadsDashboardWithCookieAndNeverMintsOrInfers() async {
-        let http = RoutingHTTPClient { request in
+        let http = museHTTP { request in
             XCTAssertEqual(request.method, "GET")
-            XCTAssertEqual(request.url, MuseUsageClient.usageURL)
-            XCTAssertEqual(request.headers["Cookie"], "llm_sess=\(museToken)")
-            XCTAssertEqual(request.headers["Accept"], "text/html")
+            XCTAssertEqual(request.url, museQuotaURL)
+            XCTAssertEqual(request.headers["Cookie"], "llama_dev_sess=\(museToken)")
+            XCTAssertEqual(request.headers["Accept"], "application/json")
             XCTAssertNil(request.headers["Authorization"])
             XCTAssertNil(request.body)
             return museResponse()
@@ -19,35 +19,35 @@ final class MuseProviderTests: XCTestCase {
         XCTAssertEqual(museUsed(snapshot), 12)
         XCTAssertEqual(museUsed(snapshot, label: "Weekly Usage"), 34)
         XCTAssertEqual(snapshot.refreshedAt, museNow.addingTimeInterval(-30))
-        XCTAssertEqual(http.requests.count, 1)
+        XCTAssertEqual(http.requests.count, 2)
     }
 
     func testManualAndAutomaticRefreshesShareTheMinimumInterval() async {
         let clock = MuseTestClock()
-        let http = RoutingHTTPClient { _ in museResponse() }
+        let http = museHTTP { _ in museResponse() }
         let provider = makeMuseProvider(http: http, now: { clock.now })
         _ = await provider.refresh()
         clock.now = museNow.addingTimeInterval(60)
         _ = await ProviderRefreshContext.$isManual.withValue(true) { await provider.refresh() }
-        XCTAssertEqual(http.requests.count, 1)
+        XCTAssertEqual(http.requests.count, 2)
         clock.now = museNow.addingTimeInterval(MuseProvider.minimumRefreshInterval)
         _ = await provider.refresh()
-        XCTAssertEqual(http.requests.count, 2)
+        XCTAssertEqual(http.requests.count, 4)
     }
 
-    func testConcurrentRefreshesMakeOneRequest() async {
-        let http = RoutingHTTPClient { _ in museResponse() }
+    func testConcurrentRefreshesShareOneFetch() async {
+        let http = museHTTP { _ in museResponse() }
         let provider = makeMuseProvider(http: http)
         async let first = provider.refresh()
         async let second = provider.refresh()
         let snapshots = await [first, second]
         XCTAssertEqual(snapshots[0], snapshots[1])
-        XCTAssertEqual(http.requests.count, 1)
+        XCTAssertEqual(http.requests.count, 2)
     }
 
     func testRateLimitPreservesMeasurementAndHonorsLongRetryAfter() async {
         let clock = MuseTestClock()
-        let http = RoutingHTTPClient { _ in
+        let http = museHTTP { _ in
             if clock.now == museNow { return museResponse() }
             return museResponse("", status: 429, headers: ["retry-after": "7200"])
         }
@@ -61,10 +61,10 @@ final class MuseProviderTests: XCTestCase {
         XCTAssertNil(stale.loginRequired)
         clock.now = museNow.addingTimeInterval(4500)
         _ = await ProviderRefreshContext.$isManual.withValue(true) { await provider.refresh() }
-        XCTAssertEqual(http.requests.count, 2)
+        XCTAssertEqual(http.requests.count, 4)
         clock.now = museNow.addingTimeInterval(8100)
         _ = await provider.refresh()
-        XCTAssertEqual(http.requests.count, 3)
+        XCTAssertEqual(http.requests.count, 6)
     }
 
     func testHTTPDateRetryAfterWithNoPreviousMeasurement() async {
@@ -74,21 +74,21 @@ final class MuseProviderTests: XCTestCase {
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss 'GMT'"
         let retry = formatter.string(from: museNow.addingTimeInterval(3600))
-        let http = RoutingHTTPClient { _ in museResponse("", status: 429, headers: ["retry-after": retry]) }
+        let http = museHTTP { _ in museResponse("", status: 429, headers: ["retry-after": retry]) }
         let provider = makeMuseProvider(http: http, now: { clock.now })
         let snapshot = await provider.refresh()
         XCTAssertNil(museUsed(snapshot))
         clock.now = museNow.addingTimeInterval(1800)
         _ = await provider.refresh()
-        XCTAssertEqual(http.requests.count, 1)
+        XCTAssertEqual(http.requests.count, 2)
         clock.now = museNow.addingTimeInterval(3600)
         _ = await provider.refresh()
-        XCTAssertEqual(http.requests.count, 2)
+        XCTAssertEqual(http.requests.count, 4)
     }
 
     func testAuthRejectionClearsOldMetersAndStillThrottlesRetries() async {
         let clock = MuseTestClock()
-        let http = RoutingHTTPClient { _ in clock.now == museNow ? museResponse() : museResponse("", status: 401) }
+        let http = museHTTP { _ in clock.now == museNow ? museResponse() : museResponse("", status: 401) }
         let provider = makeMuseProvider(http: http, now: { clock.now })
         _ = await provider.refresh()
         clock.now = museNow.addingTimeInterval(900)
@@ -96,13 +96,13 @@ final class MuseProviderTests: XCTestCase {
         XCTAssertNil(museUsed(expired))
         XCTAssertTrue(expired.lines.contains(where: \.isError))
         _ = await provider.refresh()
-        XCTAssertEqual(http.requests.count, 2)
+        XCTAssertEqual(http.requests.count, 4)
     }
 
     func testBrowserAccountChangeNeverInheritsOldQuotaOrCooldown() async {
         let rows = MuseCookieRows()
-        let http = RoutingHTTPClient { request in
-            request.headers["Cookie"] == "llm_sess=\(museToken)" ? museResponse() : museResponse("", status: 503)
+        let http = museHTTP { request in
+            request.headers["Cookie"] == "llama_dev_sess=\(museToken)" ? museResponse() : museResponse("", status: 503)
         }
         let provider = makeMuseProvider(http: http, rows: rows)
         _ = await provider.refresh()
@@ -110,23 +110,23 @@ final class MuseProviderTests: XCTestCase {
         let changed = await provider.refresh()
         XCTAssertNil(museUsed(changed))
         XCTAssertNil(changed.plan)
-        XCTAssertEqual(http.requests.count, 2)
+        XCTAssertEqual(http.requests.count, 4)
     }
 
     func testLogoutDropsPreviousMetersWithoutCallingNetwork() async {
         let rows = MuseCookieRows()
-        let http = RoutingHTTPClient { _ in museResponse() }
+        let http = museHTTP { _ in museResponse() }
         let provider = makeMuseProvider(http: http, rows: rows)
         _ = await provider.refresh()
         rows.row = nil
         let loggedOut = await provider.refresh()
         XCTAssertNil(museUsed(loggedOut))
-        XCTAssertEqual(http.requests.count, 1)
+        XCTAssertEqual(http.requests.count, 2)
     }
 
     func testMissingQuotaRetainsOldObservationWithWarningNotZero() async {
         let clock = MuseTestClock()
-        let http = RoutingHTTPClient { _ in clock.now == museNow ? museResponse() : museResponse("<html>changed page</html>") }
+        let http = museHTTP { _ in clock.now == museNow ? museResponse() : museResponse("<html>changed page</html>") }
         let provider = makeMuseProvider(http: http, now: { clock.now })
         let first = await provider.refresh()
         clock.now = museNow.addingTimeInterval(900)
@@ -138,7 +138,7 @@ final class MuseProviderTests: XCTestCase {
 
     func testLocalHistoryLoadsWithQuotaAndWithoutBrowserLogin() async throws {
         let scanner = try museLogScanner(tokens: 1_000_000)
-        let http = RoutingHTTPClient { _ in museResponse() }
+        let http = museHTTP { _ in museResponse() }
         let provider = makeMuseProvider(http: http, logUsageScanner: scanner)
         let snapshot = await provider.refresh()
         XCTAssertEqual(museUsed(snapshot), 12)
@@ -151,12 +151,43 @@ final class MuseProviderTests: XCTestCase {
         XCTAssertNil(museUsed(localSnapshot))
         XCTAssertNotNil(localSnapshot.line(label: "Today"))
         XCTAssertNotNil(localSnapshot.warning)
-        XCTAssertEqual(http.requests.count, 1)
+        XCTAssertEqual(http.requests.count, 2)
+    }
+
+    func testExpiredNewerProfileFallsThroughAndIsNotRetriedOnEveryRefresh() async {
+        let rows = MuseCookieRows()
+        let expired = String(repeating: "expired-profile", count: 4)
+        rows.rowsByPath = [
+            "/profiles/new/Cookies": MuseCookieRows(token: expired, updatedAt: 99).row!,
+            "/profiles/old/Cookies": MuseCookieRows().row!
+        ]
+        let http = museHTTP { request in
+            request.headers["Cookie"] == "llama_dev_sess=\(expired)" ? museResponse("", status: 401) : museResponse()
+        }
+        let provider = makeMuseProvider(http: http, rows: rows)
+        let snapshot = await provider.refresh()
+        XCTAssertEqual(museUsed(snapshot), 12)
+        XCTAssertEqual(http.requests.count, 4)
+        _ = await provider.refresh()
+        XCTAssertEqual(http.requests.count, 4)
+    }
+
+    func testRateLimitDoesNotTryAnotherBrowserProfile() async {
+        let rows = MuseCookieRows()
+        rows.rowsByPath = [
+            "/profiles/new/Cookies": MuseCookieRows(updatedAt: 99).row!,
+            "/profiles/old/Cookies": MuseCookieRows(token: String(repeating: "other", count: 9)).row!
+        ]
+        let http = museHTTP { _ in museResponse("", status: 429) }
+        let provider = makeMuseProvider(http: http, rows: rows)
+        let snapshot = await provider.refresh()
+        XCTAssertNil(museUsed(snapshot))
+        XCTAssertEqual(http.requests.count, 2)
     }
 
     func testLocalHistoryAfterNetworkFailureDoesNotVerifyLoginRecovery() async throws {
         let scanner = try museLogScanner(tokens: 500_000)
-        let http = RoutingHTTPClient { _ in throw URLError(.notConnectedToInternet) }
+        let http = museHTTP { _ in throw URLError(.notConnectedToInternet) }
         let provider = makeMuseProvider(http: http, logUsageScanner: scanner)
         let snapshot = await provider.refresh()
         XCTAssertNotNil(snapshot.warning)
@@ -165,7 +196,7 @@ final class MuseProviderTests: XCTestCase {
     }
 
     func testConnectPromptStillLoadsLocalHistoryWithoutNetwork() async throws {
-        let http = RoutingHTTPClient { _ in XCTFail("Must not fetch without a browser session"); return museResponse() }
+        let http = museHTTP { _ in XCTFail("Must not fetch without a browser session"); return museResponse() }
         let provider = makeMuseProvider(
             http: http, rows: MuseCookieRows(token: "v10ciphertext", encrypted: true),
             logUsageScanner: try museLogScanner(tokens: 42)

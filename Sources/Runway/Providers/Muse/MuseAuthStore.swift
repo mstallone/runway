@@ -3,7 +3,7 @@ import Foundation
 /// Reuses Runway's Chromium cookie reader and coordinated Safe Storage access. Muse CLI
 /// credentials are deliberately not consulted: subscription reads use the dashboard session.
 struct MuseAuthStore: Sendable {
-    static let cookieName = "llm_sess"
+    static let cookieName = "llama_dev_sess"
     static let cookieHosts = ["dev.meta.ai", ".dev.meta.ai", "meta.ai", ".meta.ai"]
 
     private let browser: SakanaAuthStore
@@ -26,9 +26,9 @@ struct MuseAuthStore: Sendable {
         browser.hasBrowserSessionFootprint()
     }
 
-    func loadSession(allowInteraction: Bool) throws -> SakanaBrowserSession {
+    func loadSession(allowInteraction: Bool, excludingTokens: Set<String> = []) throws -> SakanaBrowserSession {
         do {
-            return try browser.loadSession(allowInteraction: allowInteraction)
+            return try browser.loadSession(allowInteraction: allowInteraction, excludingTokens: excludingTokens)
         } catch let error as SakanaAuthError {
             switch error {
             case .notLoggedIn: throw MuseAuthError.notLoggedIn

@@ -240,7 +240,7 @@ struct SakanaAuthStore: Sendable {
         scanCandidates().candidates.isEmpty == false
     }
 
-    func loadSession(allowInteraction: Bool) throws -> SakanaBrowserSession {
+    func loadSession(allowInteraction: Bool, excludingTokens: Set<String> = []) throws -> SakanaBrowserSession {
         let scan = scanCandidates()
         let available = scan.candidates.sorted { $0.updatedAt > $1.updatedAt }
         guard !available.isEmpty else {
@@ -249,6 +249,7 @@ struct SakanaAuthStore: Sendable {
             throw SakanaAuthError.notLoggedIn
         }
 
+        var sawRejectedCookie = false
         var sawUnreadableKey = false
         var sawInvalidCookie = false
         var sawDeferredKey = false
@@ -270,6 +271,10 @@ struct SakanaAuthStore: Sendable {
                 }
                 guard let token = Self.validToken(plaintext) else {
                     sawInvalidCookie = true
+                    continue
+                }
+                if excludingTokens.contains(token) {
+                    sawRejectedCookie = true
                     continue
                 }
                 return SakanaBrowserSession(token: token, browserName: candidate.source.browserName)
@@ -299,6 +304,7 @@ struct SakanaAuthStore: Sendable {
         if sawDeferredKey { throw SakanaAuthError.connectRequired }
         if sawUnreadableKey { throw SakanaAuthError.credentialsUnreadable }
         if sawInvalidCookie { throw SakanaAuthError.invalidCookie }
+        if sawRejectedCookie { throw SakanaAuthError.sessionExpired }
         throw SakanaAuthError.credentialsUnreadable
     }
 

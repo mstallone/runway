@@ -23,6 +23,7 @@ final class MuseProvider: ProviderRuntime {
     /// A provider floor applies to automatic and manual reads. Local history still refreshes.
     static let minimumRefreshInterval: TimeInterval = 15 * 60
     private var sessionToken: String?
+    private var rejectedTokens: Set<String> = []
     private var lastGood: ProviderSnapshot?
     private var cachedSubscription: ProviderSnapshot?
     private var nextFetchAt: Date?
@@ -95,8 +96,8 @@ final class MuseProvider: ProviderRuntime {
     private func refreshSubscription(at now: Date) async -> ProviderSnapshot {
         do {
             let allowInteraction = ProviderRefreshContext.isManual
-            let session = try await loadOffMainActor { [authStore] in
-                try authStore.loadSession(allowInteraction: allowInteraction)
+            let session = try await loadOffMainActor { [authStore, rejectedTokens] in
+                try authStore.loadSession(allowInteraction: allowInteraction, excludingTokens: rejectedTokens)
             }
             if sessionToken != session.token {
                 clearSubscription()
@@ -110,7 +111,10 @@ final class MuseProvider: ProviderRuntime {
             let response = try await usageClient.fetchUsage(sessionToken: session.token)
             if response.statusCode == 401 || response.statusCode == 403
                 || (300..<400).contains(response.statusCode) {
-                throw MuseAuthError.sessionExpired
+                rejectedTokens.insert(session.token)
+                clearSubscription()
+                AppLog.info(LogTag.auth("muse"), "Meta rejected a session from \(session.browserName); trying another profile")
+                return await refreshSubscription(at: now)
             }
             if response.statusCode == 429 {
                 let seconds = max(
@@ -129,6 +133,7 @@ final class MuseProvider: ProviderRuntime {
                 provider: provider, plan: mapped.plan, lines: mapped.lines,
                 refreshedAt: mapped.observedAt.map { min($0, now) } ?? now
             )
+            AppLog.info(LogTag.auth("muse"), "subscription usage loaded from \(session.browserName)")
             lastGood = snapshot
             cachedSubscription = snapshot
             rateLimitedUntil = nil

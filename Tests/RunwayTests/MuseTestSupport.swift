@@ -28,7 +28,7 @@ let museNow = Date(timeIntervalSince1970: 1_800_000_000)
 let museToken = String(repeating: "muse-session-", count: 4)
 let museCookiePath = "/fixture/Chrome/Cookies"
 
-func musePage(_ overrides: [String: Any] = [:]) -> String {
+func museQuotaJSON(_ overrides: [String: Any] = [:]) -> String {
     var quota: [String: Any] = [
         "tier": "Muse Code Power Usage", "as_of": museNow.timeIntervalSince1970 - 30,
         "window_weighted_used": "24", "window_weighted_limit": "200", "window_resets_at": 1_800_005_000,
@@ -36,20 +36,21 @@ func musePage(_ overrides: [String: Any] = [:]) -> String {
     ]
     quota.merge(overrides) { _, new in new }
     let json = String(decoding: try! JSONSerialization.data(withJSONObject: quota, options: [.sortedKeys]), as: UTF8.self)
-    return "<html><script>var bootstrap = {\"subscription_quota_usage\" : \(json)};</script></html>"
+    return "{\"subscription_quota\":\(json)}"
 }
 
-func museResponse(_ body: String = musePage(), status: Int = 200, headers: [String: String] = [:]) -> HTTPResponse {
+func museResponse(_ body: String = museQuotaJSON(), status: Int = 200, headers: [String: String] = [:]) -> HTTPResponse {
     HTTPResponse(statusCode: status, headers: headers, body: Data(body.utf8))
 }
 
 final class MuseCookieRows: SQLiteAccessing, @unchecked Sendable {
     var row: String?
+    var rowsByPath: [String: String]?
     var queries: [String] = []
 
-    init(token: String? = museToken, host: String = ".meta.ai", encrypted: Bool = false) {
+    init(token: String? = museToken, host: String = ".meta.ai", encrypted: Bool = false, updatedAt: Int = 42) {
         if let token {
-            row = "\(Self.hex(host))|42|\(encrypted ? "encrypted" : "plain"):\(Self.hex(token))"
+            row = "\(Self.hex(host))|\(updatedAt)|\(encrypted ? "encrypted" : "plain"):\(Self.hex(token))"
         }
     }
 
@@ -59,6 +60,7 @@ final class MuseCookieRows: SQLiteAccessing, @unchecked Sendable {
 
     func queryValue(path: String, sql: String) throws -> String? {
         queries.append(sql)
+        if let rowsByPath { return rowsByPath[path] }
         return row
     }
 
@@ -71,9 +73,10 @@ struct MuseNoKeyReader: SakanaSafeStorageKeyReading {
 }
 
 func museAuth(rows: MuseCookieRows = MuseCookieRows(), keyReader: any SakanaSafeStorageKeyReading = MuseNoKeyReader()) -> MuseAuthStore {
-    MuseAuthStore(
-        sqlite: rows, files: FakeFiles([museCookiePath: ""]), keyReader: keyReader,
-        sources: { [.init(browserName: "Chrome", databasePath: museCookiePath, safeStorageService: "Chrome Safe Storage")] }
+    let paths = rows.rowsByPath.map { Array($0.keys).sorted() } ?? [museCookiePath]
+    return MuseAuthStore(
+        sqlite: rows, files: FakeFiles(Dictionary(uniqueKeysWithValues: paths.map { ($0, "") })), keyReader: keyReader,
+        sources: { paths.map { .init(browserName: $0, databasePath: $0, safeStorageService: "Chrome Safe Storage") } }
     )
 }
 
@@ -100,4 +103,15 @@ func museUsed(_ snapshot: ProviderSnapshot, label: String = "Five-Hour Usage") -
 
 final class MuseTestClock: @unchecked Sendable {
     var now = museNow
+}
+
+let museQuotaURL = MuseUsageClient.teamsURL.appendingPathComponent("team-fixture/subscription-quota")
+
+func museHTTP(_ quota: @escaping @Sendable (HTTPRequest) throws -> HTTPResponse) -> RoutingHTTPClient {
+    RoutingHTTPClient { request in
+        if request.url == MuseUsageClient.teamsURL {
+            return museResponse(#"{"teams":[{"team_id":"team-fixture"}]}"#)
+        }
+        return try quota(request)
+    }
 }
