@@ -59,3 +59,7 @@ The usage endpoint is used by Kimi Code's own `/usage` command but is not docume
 - **"Couldn't safely refresh Kimi Code credentials"**: Kimi Code is probably rotating the same token right now. Wait for it to finish, then refresh again.
 - **"Kimi Code subscription usage is unavailable"**: the login works, but this account or endpoint does not expose membership usage.
 - **Kimi stays off after changing `KIMI_CODE_HOME` in your shell profile**: relaunch Runway. Shell home and endpoint overrides are pinned for one app launch so every refresh uses one credential identity.
+
+When Weekly is Always Visible and exhausted, the dashboard replaces its bar with **Usage Exhausted** and a live countdown plus the reset date and time, and temporarily hides the other Always Visible bars until a refresh reports available usage. On Demand rows and saved settings are preserved; independent model pools affect only their own session bar. See [Dashboard](../dashboard.md) for details.
+
+If this account is pinned and its login becomes unavailable, its menu-bar icon stays visible but faded, with no usage values, until a refresh confirms a usable login. See [Menu Bar](../menu-bar.md#login-unavailable).

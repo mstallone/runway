@@ -847,6 +847,7 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertNil(badge(snapshot.lines, "Error"))
         XCTAssertNil(snapshot.line(label: "Session"))
         XCTAssertEqual(snapshot.warning, ClaudeAuthError.loginRenewalRequired.localizedDescription)
+        XCTAssertEqual(snapshot.loginRequired, true)
         XCTAssertEqual(snapshot.plan, "Pro")
     }
 
@@ -1072,6 +1073,7 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertNil(badge(snapshot.lines, "Error"))
         XCTAssertNil(snapshot.line(label: "Session"))
         XCTAssertEqual(snapshot.warning, ClaudeAuthError.loginRenewalRequired.localizedDescription)
+        XCTAssertEqual(snapshot.loginRequired, true)
     }
 
     func testFallsBackToFileWhenKeychainTokenIsLockedOut() async {
@@ -1164,6 +1166,7 @@ final class ClaudeProviderTests: XCTestCase {
 
         XCTAssertNil(badge(snapshot.lines, "Error"))
         XCTAssertEqual(snapshot.warning, ClaudeAuthError.loginRenewalRequired.localizedDescription)
+        XCTAssertEqual(snapshot.loginRequired, true)
         XCTAssertNil(snapshot.line(label: "Session"))
         // The renewal snapshot keeps the preferred (keychain) login's plan badge and the local tiles.
         XCTAssertEqual(snapshot.plan, "Max")

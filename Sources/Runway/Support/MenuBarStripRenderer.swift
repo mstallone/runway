@@ -167,8 +167,14 @@ enum MenuBarStripRenderer {
     /// The compact Bars glyph (≤4 bounded-metric bars), or `nil` when no pinned metric has a fill.
     static func barsImage(for content: MenuBarContent) -> NSImage? {
         let fractions = content.bars.map(\.fraction)
-        guard !fractions.isEmpty else { return nil }
-        let renderer = ImageRenderer(content: MenuBarBars(fractions: fractions, side: 18))
+        let exhausted = content.groups.filter(\.isDimmed)
+        guard !fractions.isEmpty || !exhausted.isEmpty else { return nil }
+        let renderer = ImageRenderer(content: HStack(spacing: 8) {
+            if !fractions.isEmpty { MenuBarBars(fractions: fractions, side: 18) }
+            ForEach(exhausted, id: \.providerID) { group in
+                MenuBarTextSegment(group: group)
+            }
+        })
         renderer.scale = 2
         guard let image = renderer.nsImage else { return nil }
         image.isTemplate = true
@@ -252,7 +258,8 @@ private struct MenuBarTextSegment: View {
     var body: some View {
         HStack(spacing: 4) {
             glyph(group.icon)
-            metricsView(group.metrics)
+                .opacity(group.isDimmed ? 0.4 : 1)
+            if !group.metrics.isEmpty { metricsView(group.metrics) }
         }
         .monospacedDigit()
         .fixedSize()

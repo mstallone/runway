@@ -64,3 +64,7 @@ Spend tiles and the trend read `model_completed` events from the local journals.
 - **"Usage response invalid"**: the login works, but the usage payload was missing or malformed. Try again after Muse Code updates.
 - **Spend tiles show "No data"**: Runway found no `model_completed` events in the last 30 days under `~/.local/share/muse/sessions/` (or `$XDG_DATA_HOME/muse/sessions/`). Complete a Muse Code turn so a session journal is saved, then refresh.
 - **Muse stays off after changing `MUSE_AUTH_PATH`, `XDG_CONFIG_HOME`, or `XDG_DATA_HOME` in your shell profile**: relaunch Runway. Shell home overrides are pinned for one app launch.
+
+When Weekly is Always Visible and exhausted, the dashboard replaces its bar with **Usage Exhausted** and a live countdown plus the reset date and time, and temporarily hides the other Always Visible bars until a refresh reports available usage. On Demand rows and saved settings are preserved; independent model pools affect only their own session bar. See [Dashboard](../dashboard.md) for details.
+
+If this account is pinned and its login becomes unavailable, its menu-bar icon stays visible but faded, with no usage values, until a refresh confirms a usable login. See [Menu Bar](../menu-bar.md#login-unavailable).

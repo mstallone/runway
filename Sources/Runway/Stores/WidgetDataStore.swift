@@ -99,6 +99,7 @@ final class WidgetDataStore {
     /// renders it as a warning indicator beside the provider name; the last good snapshot keeps
     /// displaying (stale-while-revalidate) instead of being replaced by dead "No data" rows.
     var providerErrors: [String: String] = [:]
+    private var providerLoginFailures: Set<String> = []
     /// The providers whose current `providerErrors` entry is the neutral connect prompt (a
     /// credential exists but hasn't been loaded this process) rather than a real failure. The
     /// dashboard renders those with the Connect affordance instead of the warning treatment.
@@ -553,6 +554,7 @@ final class WidgetDataStore {
             // Failed refresh: surface the error but keep the last good snapshot on screen rather than
             // collapsing every row to "No data". The provider error string is already user-safe.
             providerErrors[providerID] = message
+            if snapshot.loginRequired == true { providerLoginFailures.insert(providerID) }
             // A connect prompt travels this same path but renders neutrally — remember which it is.
             if snapshot.lines.first?.isConnectPrompt == true {
                 providerConnectPrompts.insert(providerID)
@@ -569,6 +571,12 @@ final class WidgetDataStore {
             providerErrors[providerID] = nil
         }
         providerConnectPrompts.remove(providerID)
+        switch snapshot.loginRequired {
+        case true?: providerLoginFailures.insert(providerID)
+        case false?: providerLoginFailures.remove(providerID)
+        case nil:
+            if snapshots[providerID]?.loginRequired == true { providerLoginFailures.insert(providerID) }
+        }
         // Recovered: drop any backoff so the provider resumes the normal cadence immediately.
         failureRetryAfter[providerID] = nil
         // A provider can refresh its live limits successfully while its optional local log/CSV scan
@@ -831,6 +839,14 @@ final class WidgetDataStore {
             )
             return (provider, snapshot)
         }
+    }
+
+    func loginRequired(for providerID: String) -> Bool {
+        // A transport failure cannot prove that an earlier login failure has recovered. Keep
+        // that state until a successful snapshot replaces it, including partial-success warnings.
+        return providerLoginFailures.contains(providerID)
+            || snapshots[providerID]?.loginRequired == true
+            || noticeIsConnectPrompt(for: providerID)
     }
 
     /// The provider's latest refresh error, or `nil` when its last refresh succeeded.

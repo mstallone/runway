@@ -19,7 +19,7 @@ struct DashboardContentView: View {
     @AppStorage(TotalSpendSetting.key) private var showTotalSpend = true
 
     var body: some View {
-        let displayGroups = layout.displayGroups(matching: container.dataStore.isMetricApplicable)
+        let displayGroups = layout.dashboardGroups(dataStore: container.dataStore)
         PopoverScrollView(heightCoordinator: heightCoordinator, screen: .dashboard) {
             VStack(alignment: .leading, spacing: 0) {
                 // A pending update found by a scheduled Sparkle check tops everything — it's the

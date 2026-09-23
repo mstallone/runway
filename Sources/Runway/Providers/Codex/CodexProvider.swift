@@ -260,7 +260,8 @@ final class CodexProvider: ProviderRuntime {
             refreshedAt: now(),
             usageHistory: usageHistory,
             warning: warning,
-            warningIsConnectPrompt: warningIsConnectPrompt
+            warningIsConnectPrompt: warningIsConnectPrompt,
+            loginRequired: warning != nil
         )
     }
 

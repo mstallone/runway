@@ -1035,6 +1035,7 @@ final class CodexReadOnlyCredentialTests: XCTestCase {
         // spend tiles, not a hard error card.
         XCTAssertNil(errorBadge(snapshot))
         XCTAssertEqual(snapshot.warning, CodexAuthError.loginRenewalRequired.localizedDescription)
+        XCTAssertEqual(snapshot.loginRequired, true)
     }
 
     func testUsage401ReportsRenewalWithoutARetryOrTokenEndpointCall() async {
@@ -1069,6 +1070,7 @@ final class CodexReadOnlyCredentialTests: XCTestCase {
         XCTAssertEqual(http.requests.count, 1, "no refresh-and-retry: one usage call, then renewal")
         XCTAssertNil(errorBadge(snapshot))
         XCTAssertEqual(snapshot.warning, CodexAuthError.loginRenewalRequired.localizedDescription)
+        XCTAssertEqual(snapshot.loginRequired, true)
     }
 
     func testManualRefreshStopsScanningHomesAfterADeniedPrompt() {

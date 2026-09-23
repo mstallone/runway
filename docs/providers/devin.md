@@ -29,3 +29,7 @@ If the CLI credentials fail but the app is signed in with a different account, R
 ## Under the hood
 
 Connect RPC `GetUserStatus` on the configured API server (default `server.codeium.com`). Quota percentages arrive as remaining and are flipped to used. No token refresh. A 401/403 switches to the next auth source.
+
+When Weekly is Always Visible and exhausted, the dashboard replaces its bar with **Usage Exhausted** and a live countdown plus the reset date and time, and temporarily hides the other Always Visible bars until a refresh reports available usage. On Demand rows and saved settings are preserved; independent model pools affect only their own session bar. See [Dashboard](../dashboard.md) for details.
+
+If this account is pinned and its login becomes unavailable, its menu-bar icon stays visible but faded, with no usage values, until a refresh confirms a usable login. See [Menu Bar](../menu-bar.md#login-unavailable).

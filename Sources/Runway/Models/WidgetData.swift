@@ -87,6 +87,8 @@ struct WidgetData: Hashable {
     /// Set by those descriptors and carried through `WidgetDataStore.resolve`, so the "fresh window"
     /// treatment is a descriptor opt-in rather than a hardcoded widget-ID list in the model.
     var isSessionWindow: Bool = false
+    /// Dashboard-only replacement for an exhausted Always Visible weekly meter.
+    var exhaustedWeeklyTitle: String? = nil
     /// Per-day points for a Usage Trend row (empty for every other tile). Set true `isChart` flags the
     /// row so the view draws the sparkline instead of the value layout; `chartNote` is the source line
     /// shown on hover (e.g. "From your Claude usage history (estimated)").

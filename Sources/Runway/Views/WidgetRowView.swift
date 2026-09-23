@@ -86,7 +86,16 @@ struct WidgetRowView: View {
 
     @ViewBuilder
     private var rowContent: some View {
-        if data.isChart, data.hasData {
+        if let title = data.exhaustedWeeklyTitle {
+            VStack(alignment: .leading, spacing: density.rowInnerSpacing) {
+                Text(title)
+                    .font(labelFont)
+                    .foregroundStyle(.primary)
+                Text(data.exhaustedWeeklyResetText)
+                    .font(supportingFont)
+                    .foregroundStyle(.secondary)
+            }
+        } else if data.isChart, data.hasData {
             // The sparkline owns its own label + bars; a chart with no real points falls through to the
             // unbounded "No data" row below (and so descriptor template data never leaks here).
             UsageSparkline(data: data)

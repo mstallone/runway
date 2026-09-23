@@ -6,6 +6,85 @@ import XCTest
 /// when nothing is pinned.
 @MainActor
 final class MenuBarContentTests: XCTestCase {
+    func testExhaustedAccountKeepsDimIconWithoutValuesAndRestores() {
+        let session = percent("a.session", "Session", 20)
+        let weekly = percent("a.weekly", "Weekly", 100).exportingLimit("weekly", unit: "percent")
+        let other = percent("b.weekly", "Weekly", 10).exportingLimit("weekly", unit: "percent")
+        let groups = [group("a", session), group("b", other)]
+        let exhausted = MenuBarContentBuilder.build(groups: groups, data: { $0.sample },
+                                                    quotaDescriptors: { $0 == "a" ? [weekly] : [other] })
+        XCTAssertFalse(exhausted.isEmpty)
+        XCTAssertTrue(exhausted.groups[0].isExhausted)
+        XCTAssertTrue(exhausted.groups[0].metrics.isEmpty)
+        XCTAssertFalse(exhausted.groups[1].isExhausted)
+        XCTAssertEqual(exhausted.bars.map(\.id), [other.id])
+        XCTAssertTrue(exhausted.accessibilityText.contains("Usage Exhausted"))
+        let resetWeekly = percent("a.weekly", "Weekly", 0).exportingLimit("weekly", unit: "percent")
+        let restored = MenuBarContentBuilder.build(groups: groups, data: { $0.sample },
+                                                   quotaDescriptors: { $0 == "a" ? [resetWeekly] : [other] })
+        XCTAssertFalse(restored.groups[0].isExhausted)
+        XCTAssertEqual(restored.groups[0].metrics.map(\.id), [session.id])
+        XCTAssertFalse(exhausted.isRenderEquivalent(to: restored, style: .text))
+        XCTAssertFalse(exhausted.isRenderEquivalent(to: restored, style: .bars))
+        let iconOnly = MenuBarContentBuilder.build(groups: [group("a", weekly)], data: { $0.sample })
+        XCTAssertNotNil(MenuBarStripRenderer.image(for: iconOnly, style: .text))
+        XCTAssertNotNil(MenuBarStripRenderer.image(for: iconOnly, style: .bars))
+    }
+
+    func testIndependentPoolDoesNotDimUsablePinnedPool() {
+        let session = percent("a.session", "Session", 10).exportingLimit("geminiSession", unit: "percent")
+        let weekly = percent("a.weekly", "Weekly", 100).exportingLimit("geminiWeekly", unit: "percent")
+        let other = percent("a.other", "Claude Session", 10).exportingLimit("nonGeminiSession", unit: "percent")
+        let mixed = MenuBarContentBuilder.build(groups: [group("a", session, other)], data: { $0.sample },
+                                               quotaDescriptors: { _ in [weekly] })
+        XCTAssertFalse(mixed.groups[0].isExhausted)
+        let exhausted = MenuBarContentBuilder.build(groups: [group("a", session)], data: { $0.sample },
+                                                   quotaDescriptors: { _ in [weekly] })
+        XCTAssertTrue(exhausted.groups[0].isExhausted)
+        let missingWeekly = noDataPercent("a.weekly", "Weekly").exportingLimit("weekly", unit: "percent")
+        let unknown = MenuBarContentBuilder.build(groups: [group("a", session)], data: { $0.sample },
+                                                 quotaDescriptors: { _ in [missingWeekly] })
+        XCTAssertFalse(unknown.groups[0].isExhausted)
+    }
+
+    func testLoginFailureKeepsPinnedIconWithNoDataOrCachedValues() {
+        for metric in [noDataPercent("a.weekly", "Weekly"), percent("a.weekly", "Weekly", 25)] {
+            let content = MenuBarContentBuilder.build(groups: [group("a", metric)], data: { $0.sample },
+                                                      loginRequired: { _ in true })
+            XCTAssertFalse(content.isEmpty)
+            XCTAssertTrue(content.groups[0].isDimmed)
+            XCTAssertTrue(content.groups[0].metrics.isEmpty)
+            XCTAssertTrue(content.bars.isEmpty)
+            XCTAssertTrue(content.accessibilityText.contains("Login Required"))
+            XCTAssertNotNil(MenuBarStripRenderer.image(for: content, style: .text))
+            XCTAssertNotNil(MenuBarStripRenderer.image(for: content, style: .bars))
+        }
+        XCTAssertTrue(MenuBarContentBuilder.build(groups: [], data: { $0.sample },
+                                                  loginRequired: { _ in true }).isEmpty)
+    }
+
+    func testExhaustedUnpinnedWeeklyPreservesIconWhenOnlyPinHasNoData() {
+        let session = noDataPercent("a.session", "Session")
+        let weekly = percent("a.weekly", "Weekly", 100).exportingLimit("weekly", unit: "percent")
+        let content = MenuBarContentBuilder.build(groups: [group("a", session)], data: { $0.sample },
+                                                  quotaDescriptors: { _ in [weekly] })
+        XCTAssertFalse(content.isEmpty)
+        XCTAssertTrue(content.groups[0].isExhausted)
+        XCTAssertTrue(content.groups[0].metrics.isEmpty)
+    }
+
+    func testDormantAndCappedPinsDoNotPreventIndependentPoolExhaustion() {
+        let session = percent("a.session", "Session", 10).exportingLimit("geminiSession", unit: "percent")
+        let weekly = percent("a.weekly", "Weekly", 100).exportingLimit("geminiWeekly", unit: "percent")
+        let dormant = noDataPercent("a.claude", "Claude Session").exportingLimit("nonGeminiSession", unit: "percent")
+        let dormantContent = MenuBarContentBuilder.build(groups: [group("a", session, dormant)], data: { $0.sample },
+                                                         quotaDescriptors: { _ in [weekly] })
+        XCTAssertTrue(dormantContent.groups[0].isExhausted)
+        let cappedContent = MenuBarContentBuilder.build(
+            groups: [group("a", session, weekly, percent("a.claude", "Claude Session", 10))], data: { $0.sample })
+        XCTAssertTrue(cappedContent.groups[0].isExhausted)
+    }
+
     func testEmptyWhenNoGroups() {
         let content = MenuBarContentBuilder.build(groups: [], data: { $0.sample })
         XCTAssertTrue(content.isEmpty)

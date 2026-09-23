@@ -229,7 +229,8 @@ final class ClaudeProvider: ProviderRuntime {
         let error = ClaudeAuthError.notLoggedIn
         let snapshot = await localUsageSnapshot(
             mapped: ClaudeMappedUsage(plan: nil, lines: []),
-            warning: error.localizedDescription
+            warning: error.localizedDescription,
+            loginRequired: true
         )
         let hasLocalUsage = snapshot.usageHistory?.series.daily.contains {
             $0.totalTokens > 0 || ($0.costUSD ?? 0) > 0
@@ -261,7 +262,7 @@ final class ClaudeProvider: ProviderRuntime {
             },
             lines: []
         )
-        return await localUsageSnapshot(mapped: mapped, warning: error.localizedDescription)
+        return await localUsageSnapshot(mapped: mapped, warning: error.localizedDescription, loginRequired: true)
     }
 
     private func probe(
@@ -277,6 +278,7 @@ final class ClaudeProvider: ProviderRuntime {
         )
 
         var warning: String?
+        var loginRequired: Bool?
         // Everything below is a "fix this, then refresh" notice; only the rate-limited fetch overrides it.
         var warningAction = ProviderSnapshot.WarningAction.refresh
         switch authStore.liveUsageAvailability(state) {
@@ -286,6 +288,7 @@ final class ClaudeProvider: ProviderRuntime {
             // it reaches the header triangle even when the badge/note lines aren't in the user's layout.
             warning = mapped.warning
             warningAction = mapped.warningAction
+            loginRequired = warningAction == .wait ? nil : false
         case .missingProfileScope:
             // The login authenticates for inference but lacks the `user:profile` scope the usage endpoint
             // needs (typically a `claude setup-token` token). Don't leave the session/weekly bars silently
@@ -294,6 +297,7 @@ final class ClaudeProvider: ProviderRuntime {
             // spend tiles below are unaffected and still load.
             AppLog.warn(LogTag.plugin("claude"), "live usage unavailable: credential lacks the user:profile scope (inference-only token); re-login with `claude` to restore session/weekly limits")
             warning = ClaudeUsageMapper.missingProfileScopeWarning
+            loginRequired = true
         case .inferenceOnlyToken:
             // An explicit CLAUDE_CODE_OAUTH_TOKEN is inference-only by design; nothing to fetch and nothing
             // to nag about — the spend tiles still load below.
@@ -306,12 +310,14 @@ final class ClaudeProvider: ProviderRuntime {
             warning = fallbackWarning.message
             warningAction = .refresh
             warningIsConnectPrompt = fallbackWarning.isConnectPrompt
+            if mapped.lines.isEmpty { loginRequired = true }
         }
         return await localUsageSnapshot(
             mapped: mapped,
             warning: warning,
             warningAction: warningAction,
-            warningIsConnectPrompt: warningIsConnectPrompt
+            warningIsConnectPrompt: warningIsConnectPrompt,
+            loginRequired: loginRequired
         )
     }
 
@@ -321,7 +327,8 @@ final class ClaudeProvider: ProviderRuntime {
         mapped initialMapped: ClaudeMappedUsage,
         warning: String?,
         warningAction: ProviderSnapshot.WarningAction = .refresh,
-        warningIsConnectPrompt: Bool = false
+        warningIsConnectPrompt: Bool = false,
+        loginRequired: Bool? = nil
     ) async -> ProviderSnapshot {
         var mapped = initialMapped
         // Local spend tiles, scanned natively from Claude Code's session logs and priced through the
@@ -360,7 +367,8 @@ final class ClaudeProvider: ProviderRuntime {
             usageHistory: usageHistory,
             warning: warning,
             warningAction: warningAction,
-            warningIsConnectPrompt: warningIsConnectPrompt
+            warningIsConnectPrompt: warningIsConnectPrompt,
+            loginRequired: loginRequired
         )
     }
 

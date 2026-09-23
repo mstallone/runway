@@ -316,6 +316,16 @@ final class MuseProviderTests: XCTestCase {
         )
     }
 
+    func testLocalHistoryAfterNetworkFailureDoesNotVerifyLoginRecovery() async throws {
+        let scanner = try museLogScanner(tokens: 500_000)
+        let http = RoutingHTTPClient { _ in throw URLError(.notConnectedToInternet) }
+        let provider = makeMuseProvider(http: http, logUsageScanner: scanner)
+        let snapshot = await provider.refresh()
+        XCTAssertNotNil(snapshot.warning)
+        XCTAssertNotNil(snapshot.line(label: "Today"))
+        XCTAssertNil(snapshot.loginRequired)
+    }
+
     func testUnauthorizedBecomesSessionExpired() async {
         let http = RoutingHTTPClient { _ in museJSONResponse("{}", status: 401) }
         let provider = makeMuseProvider(http: http)
@@ -381,12 +391,14 @@ final class MuseProviderTests: XCTestCase {
         let fresh = await provider.refresh()
         XCTAssertEqual(fresh.plan, "Power Usage")
         XCTAssertNil(fresh.warning)
+        XCTAssertEqual(fresh.loginRequired, false)
 
         probe.now = museNow.addingTimeInterval(1)
         let limited = await provider.refresh()
         XCTAssertEqual(limited.plan, "Power Usage")
         XCTAssertEqual(limited.lines.map(\.label), fresh.lines.map(\.label))
         XCTAssertEqual(limited.warningAction, .wait)
+        XCTAssertNil(limited.loginRequired)
         XCTAssertTrue(limited.warning?.contains("manual refreshes will make it worse") == true)
         XCTAssertEqual(http.requests.count, 2)
 
