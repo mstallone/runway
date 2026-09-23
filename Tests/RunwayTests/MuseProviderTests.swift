@@ -67,6 +67,53 @@ final class MuseProviderTests: XCTestCase {
         XCTAssertEqual(http.requests.count, 6)
     }
 
+    func testCancellingRefreshCancelsItsSharedNetworkTask() async {
+        let (starts, started) = AsyncStream.makeStream(of: Void.self)
+        let (completions, completed) = AsyncStream.makeStream(of: Bool.self)
+        let http = RoutingHTTPClient { _ in
+            started.yield(())
+            try? await Task.sleep(for: .seconds(2))
+            completed.yield(Task.isCancelled)
+            return museResponse("", status: 503)
+        }
+        let provider = makeMuseProvider(http: http)
+        let refresh = Task { await provider.refresh() }
+        var startIterator = starts.makeAsyncIterator()
+        _ = await startIterator.next()
+        refresh.cancel()
+        _ = await refresh.value
+        var completionIterator = completions.makeAsyncIterator()
+        let wasCancelled = await completionIterator.next()
+        XCTAssertEqual(wasCancelled, true)
+        XCTAssertEqual(http.requests.count, 1)
+    }
+
+    func testTemporaryCookieReadFailurePreservesRetryAfterForSameSession() async {
+        let clock = MuseTestClock()
+        let rows = MuseCookieRows()
+        let http = museHTTP { _ in
+            clock.now == museNow ? museResponse() : museResponse("", status: 429, headers: ["retry-after": "3600"])
+        }
+        let provider = makeMuseProvider(http: http, rows: rows, now: { clock.now })
+        _ = await provider.refresh()
+        clock.now = museNow.addingTimeInterval(900)
+        _ = await provider.refresh()
+        rows.readFails = true
+        clock.now = museNow.addingTimeInterval(960)
+        let unreadable = await provider.refresh()
+        XCTAssertNil(museUsed(unreadable))
+        XCTAssertEqual(unreadable.loginRequired, true)
+        rows.readFails = false
+        clock.now = museNow.addingTimeInterval(1020)
+        let waiting = await provider.refresh()
+        XCTAssertEqual(http.requests.count, 4)
+        XCTAssertEqual(museUsed(waiting), 12)
+        XCTAssertEqual(waiting.warningAction, .wait)
+        clock.now = museNow.addingTimeInterval(4500)
+        _ = await provider.refresh()
+        XCTAssertEqual(http.requests.count, 6)
+    }
+
     func testHTTPDateRetryAfterWithNoPreviousMeasurement() async {
         let clock = MuseTestClock()
         let formatter = DateFormatter()

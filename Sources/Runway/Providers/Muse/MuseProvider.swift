@@ -82,7 +82,11 @@ final class MuseProvider: ProviderRuntime {
         let task = Task { await refreshOnce() }
         refreshTask = task
         defer { refreshTask = nil }
-        return await task.value
+        return await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
     }
 
     private func refreshOnce() async -> ProviderSnapshot {
@@ -141,18 +145,16 @@ final class MuseProvider: ProviderRuntime {
         } catch {
             AppLog.warn(LogTag.auth("muse"), "dashboard usage unavailable: \(error.localizedDescription)")
             if let authError = error as? MuseAuthError {
-                // Never show a previous browser account's meters after logout or an unreadable login.
-                if authError == .sessionExpired {
-                    lastGood = nil
-                } else {
+                if authError == .notLoggedIn || authError == .sessionExpired {
                     clearSubscription()
                 }
+                // Hide meters while credentials are unreadable, but retain the session-bound
+                // cache and cooldown. They are reused only after the same cookie is verified;
+                // a different cookie clears them before any cache hit or network request.
                 if authError == .keychainConnectRequired {
                     return ProviderSnapshot.connectPrompt(provider: provider, error: authError)
                 }
-                let snapshot = ProviderSnapshot.error(provider: provider, error: authError)
-                cachedSubscription = snapshot
-                return snapshot
+                return ProviderSnapshot.error(provider: provider, error: authError)
             }
             let snapshot: ProviderSnapshot
             if var stale = lastGood {

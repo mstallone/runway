@@ -46,6 +46,7 @@ func museResponse(_ body: String = museQuotaJSON(), status: Int = 200, headers: 
 final class MuseCookieRows: SQLiteAccessing, @unchecked Sendable {
     var row: String?
     var rowsByPath: [String: String]?
+    var readFails = false
     var queries: [String] = []
 
     init(token: String? = museToken, host: String = ".meta.ai", encrypted: Bool = false, updatedAt: Int = 42) {
@@ -60,6 +61,7 @@ final class MuseCookieRows: SQLiteAccessing, @unchecked Sendable {
 
     func queryValue(path: String, sql: String) throws -> String? {
         queries.append(sql)
+        if readFails { throw CocoaError(.fileReadUnknown) }
         if let rowsByPath { return rowsByPath[path] }
         return row
     }
