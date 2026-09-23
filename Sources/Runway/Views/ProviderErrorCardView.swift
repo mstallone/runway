@@ -1,21 +1,15 @@
 import SwiftUI
 
-/// The card body a provider shows instead of its metric rows when its refresh failed and there is
-/// no last-good data to keep on screen — a login awaiting Keychain approval, a fresh install that
-/// isn't signed in. A column of empty "No data" bars tells the user nothing; this states the
-/// problem and carries the one action that can move it forward: a manual Refresh, the explicit
-/// user gesture that is allowed to show a Keychain approval prompt.
-///
-/// Once a provider has any last-good data, the dashboard keeps the metric rows and surfaces the
-/// error on the header triangle instead (see `WidgetDataStore.emptyStateError(for:)`).
+/// Compact replacement for unavailable metric rows. Available usage and local spend stay visible
+/// below it; the provider header carries the warning or connect glyph. Manual actions can request
+/// Keychain approval, while notices that require waiting omit the action.
 struct ProviderErrorCardView: View {
     struct Copy: Equatable {
         var title: String
         var description: String
     }
 
-    /// How the prompt reads: `.warning` (amber triangle, "Refresh") for a real failure the user
-    /// must fix, `.connect` (neutral key glyph, "Connect") for a credential that exists but simply
+    /// `.warning` offers Refresh; `.connect` offers Connect for a credential that exists but simply
     /// hasn't been loaded into this process yet — nothing is broken and nothing was denied.
     enum Style {
         case warning
@@ -32,34 +26,23 @@ struct ProviderErrorCardView: View {
 
     var body: some View {
         let copy = Self.copy(for: message)
-        // Same anatomy as `DismissableHintCard` (glyph, title, caption, small button) so the two
-        // read as one family, minus its dismiss control — an error state can't be waved away. The
-        // button sits centered under the whole body: it acts on the card, not on the text column.
-        VStack(spacing: 8) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: style == .connect ? "key.fill" : "exclamationmark.triangle")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(style == .connect ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
-                    .frame(width: 20, height: 20)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(copy.title)
-                        .font(.subheadline.weight(.semibold))
-                    Text(copy.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(copy.title)
+                    .font(.subheadline.weight(.medium))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if showsRefreshAction {
+                    Button(style == .connect ? "Connect" : "Refresh", action: onRefresh)
+                        .controlSize(.small)
+                        .disabled(isRefreshing)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-
-            if showsRefreshAction {
-                Button(style == .connect ? "Connect" : "Refresh", action: onRefresh)
-                    .controlSize(.small)
-                    .disabled(isRefreshing)
-            }
+            Text(copy.description)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .padding(.vertical, 8)
     }
 

@@ -80,8 +80,22 @@ enum WeeklyQuotaVisibility {
 extension LayoutStore {
     /// Account applicability first, followed by reversible filtering of exhausted quota bars.
     func dashboardGroups(dataStore: WidgetDataStore) -> [ProviderGroup] {
-        displayGroups(matching: dataStore.isMetricApplicable).map {
-            WeeklyQuotaVisibility.filter($0, descriptor: descriptor(for:), data: dataStore.data(for:))
+        displayGroups(matching: dataStore.isMetricApplicable).map { group in
+            var group = group
+            let widgets = group.alwaysShownWidgets + group.expandedWidgets
+            if dataStore.usageUnavailableMessage(
+                for: group.provider.id,
+                placedDescriptors: widgets.compactMap { descriptor(for: $0) }
+            ) != nil {
+                // Grouping may have promoted On Demand rows before the notice was known. The
+                // notice fills the card, so restore their saved placement for every dashboard surface.
+                group = ProviderGroup(
+                    provider: group.provider,
+                    alwaysShownWidgets: widgets.filter { !expandedMetricIDs.contains($0.descriptorID) },
+                    expandedWidgets: widgets.filter { expandedMetricIDs.contains($0.descriptorID) }
+                )
+            }
+            return WeeklyQuotaVisibility.filter(group, descriptor: descriptor(for:), data: dataStore.data(for:))
         }
     }
 }

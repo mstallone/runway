@@ -28,6 +28,26 @@ final class ExpansionHeightEstimatorTests: XCTestCase {
         XCTAssertTrue(revealed.isEmpty)
     }
 
+    func testNoticeKeepsAvailableOnDemandRowsInExpansionEstimate() {
+        var missing = meterData()
+        missing.hasData = false
+        let rows = [
+            ExpansionHeightEstimator.Row(id: "missing", data: missing, isApplicable: true),
+            textRow("today"),
+            textRow("inapplicable", applicable: false),
+        ]
+        for alwaysShown in [[], [textRow("always")]] {
+            let revealed = ExpansionHeightEstimator.expandedSectionRows(
+                alwaysShown: alwaysShown, expanded: rows, hasNotice: true
+            )
+            XCTAssertEqual(revealed.map(\.id), ["today"])
+            XCTAssertEqual(
+                ExpansionHeightEstimator.estimatedDelta(revealedRows: revealed, linkCount: 0),
+                ExpansionHeightEstimator.estimatedRowHeight(textData(), condensedTop: false)
+            )
+        }
+    }
+
     func testDeltaKeyTracksCompositionOrderAndLinks() {
         let today = textRow("today")
         let monthly = textRow("monthly")
