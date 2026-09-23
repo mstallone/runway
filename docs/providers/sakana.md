@@ -73,3 +73,7 @@ The billing data is embedded in the console's authenticated page payload rather 
 - **"The Sakana browser session couldn't be decoded"**: update or restart the browser, sign in again, and retry. A change to the browser's cookie encryption can cause this.
 - **"Unsupported billing response"**: Sakana changed its private console page format. Update Runway. Your browser login and API key are not modified.
 - **Graph or spend rows show "No data"**: use Fugu through a detected Codex home. Plain `fugu` cannot be priced. Use Fugu Ultra or Cyber for priced history.
+
+When Weekly is Always Visible and exhausted, the dashboard replaces its bar with **Usage Exhausted** and a live countdown plus the reset date and time, and temporarily hides the other Always Visible bars until a refresh reports available usage. On Demand rows and saved settings are preserved; independent model pools affect only their own session bar. See [Dashboard](../dashboard.md) for details.
+
+If this account is pinned and its login becomes unavailable, its menu-bar icon stays visible but faded, with no usage values, until a refresh confirms a usable login. See [Menu Bar](../menu-bar.md#login-unavailable).

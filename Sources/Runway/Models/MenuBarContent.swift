@@ -21,11 +21,15 @@ struct MenuBarContent: Equatable {
         let displayName: String
         let icon: IconSource
         let metrics: [Metric]
+        var isExhausted: Bool = false
+        var loginRequired: Bool = false
+        var isDimmed: Bool { isExhausted || loginRequired }
     }
 
     /// Provider groups for the Text style, in Customize order. Dynamic: only metrics that currently
     /// have real data appear, and a provider whose pinned metrics all lack data drops out entirely
-    /// (no orphan icon) — so the strip never renders "—" placeholders.
+    /// (no orphan icon) — so the strip never renders "—" placeholders. An exhausted weekly
+    /// allowance keeps an icon-only group, explicitly marked so renderers can dim it.
     let groups: [Group]
     /// Bounded metrics (those with a fill) for the Bars style, flattened in order and capped to four.
     let bars: [Metric]
@@ -46,6 +50,8 @@ struct MenuBarContent: Equatable {
             mine.providerID == theirs.providerID
                 && mine.displayName == theirs.displayName
                 && mine.icon == theirs.icon
+                && mine.isExhausted == theirs.isExhausted
+                && mine.loginRequired == theirs.loginRequired
                 && mine.metrics.count == theirs.metrics.count
                 && zip(mine.metrics, theirs.metrics).allSatisfy { lhs, rhs in
                     lhs.id == rhs.id && lhs.label == rhs.label && lhs.value == rhs.value
@@ -68,6 +74,8 @@ struct MenuBarContent: Equatable {
     /// "Claude Session 41%, Weekly 12%; Cursor Credits $12".
     var accessibilityText: String {
         groups.map { group in
+            if group.loginRequired { return "\(group.displayName) Login Required" }
+            if group.isExhausted { return "\(group.displayName) Usage Exhausted" }
             let metrics = group.metrics.map { "\($0.label) \($0.value)" }.joined(separator: ", ")
             return "\(group.displayName) \(metrics)"
         }
@@ -96,7 +104,9 @@ enum MenuBarContentBuilder {
     static func build(
         groups: [ProviderMetrics],
         data: (WidgetDescriptor) -> WidgetData,
-        title: (Provider) -> String = { $0.displayName }
+        title: (Provider) -> String = { $0.displayName },
+        quotaDescriptors: (String) -> [WidgetDescriptor] = { _ in [] },
+        loginRequired: (String) -> Bool = { _ in false }
     ) -> MenuBarContent {
         let resolvedGroups = groups.compactMap { group -> MenuBarContent.Group? in
             // Applicability can change after dormant pins were retained. Resolve live values first so
@@ -108,12 +118,20 @@ enum MenuBarContentBuilder {
                     .filter(\.hasData)
                     .prefix(maxMetricsPerGroup)
             )
-            guard !metrics.isEmpty else { return nil }
+            let needsLogin = loginRequired(group.provider.id)
+            let exhausted = WeeklyQuotaVisibility.menuBarIsExhausted(
+                descriptors: quotaDescriptors(group.provider.id) + group.metrics,
+                pinned: group.metrics.filter { descriptor in metrics.contains { $0.id == descriptor.id } },
+                data: data
+            )
+            guard !group.metrics.isEmpty, !metrics.isEmpty || needsLogin || exhausted else { return nil }
             return MenuBarContent.Group(
                 providerID: group.provider.id,
                 displayName: title(group.provider),
                 icon: group.provider.icon,
-                metrics: metrics
+                metrics: exhausted || needsLogin ? [] : metrics,
+                isExhausted: exhausted,
+                loginRequired: needsLogin
             )
         }
         // Bars show any *bounded* metric (it has a fill), not just percentages. Unbounded values (raw

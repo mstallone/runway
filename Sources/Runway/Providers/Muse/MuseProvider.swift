@@ -175,7 +175,8 @@ final class MuseProvider: ProviderRuntime {
                 lines: lastGood.usage.lines,
                 refreshedAt: lastGood.refreshedAt,
                 warning: rateLimitedWarning(retryAfterSeconds: retryAfterSeconds),
-                warningAction: .wait
+                warningAction: .wait,
+                loginRequired: nil
             )
         }
         return ProviderSnapshot.error(provider: provider, error: MuseUsageError.requestFailed(429))
@@ -245,7 +246,8 @@ final class MuseProvider: ProviderRuntime {
             ),
             warning: warning,
             warningAction: warningAction,
-            warningIsConnectPrompt: isConnectPrompt ? true : snapshot.warningIsConnectPrompt
+            warningIsConnectPrompt: isConnectPrompt ? true : snapshot.warningIsConnectPrompt,
+            loginRequired: snapshot.loginRequired
         )
     }
 

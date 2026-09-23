@@ -12,6 +12,8 @@ This full detection only runs on a new install. Updates never change the provide
 
 Each provider card leads with its **Always Visible** metrics. Metrics you have moved to **On Demand** sit behind the card's caret. Click the caret to reveal them in a single-column list below it, and click again to collapse. Closing the popover collapses every open card. A provider with no On Demand metrics and no quick links shows no caret.
 
+When an Always Visible Weekly meter reaches its limit, the card temporarily hides its other Always Visible progress bars. Weekly becomes a compact **Usage Exhausted** message with a live countdown plus the reset date and time, without a bar or percentage; text rows and On Demand metrics stay available. The bars return in their saved order after a refresh reports usage below the weekly limit. This does not change Customize settings or saved menu-bar pins. In the menu bar, exhausted accounts show a faded provider icon without values (see [Menu Bar](menu-bar.md#exhausted-weekly-usage)). A weekly meter that is disabled or On Demand does not trigger hiding. Independent weekly pools (Antigravity and Codex Spark) hide only their own session bar.
+
 A card can also show **quick-link buttons** at the bottom of its expanded section (Status, Console, Dashboard, and so on) that open the provider's own pages in your browser. They are part of the expander, so collapsing the caret hides them too. Buttons lay out up to three across and wrap to a second row.
 
 ## Total Spend
@@ -106,3 +108,5 @@ A global shortcut (recorded in Settings) toggles the popover from anywhere.
 ## Closing
 
 Closing the popover resets navigation: scroll returns to the top, Customize closes, and every provider card collapses.
+
+Pinned accounts that need a login remain in the menu bar as faded icons without values, including when the dashboard retains cached usage or local history. The dashboard notice explains how to reconnect. Normal menu-bar values return after a successful refresh; see [Menu Bar](menu-bar.md#login-unavailable).

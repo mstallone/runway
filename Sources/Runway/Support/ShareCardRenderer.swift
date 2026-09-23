@@ -83,7 +83,7 @@ enum ShareCardRenderer {
             else {
                 return nil
             }
-            return dataStore.data(for: descriptor)
+            return WeeklyQuotaVisibility.presentation(dataStore.data(for: descriptor), descriptor: descriptor)
         }
         let rawExpandedRows = group.expandedWidgets.compactMap { widget -> WidgetData? in
             guard let descriptor = layout.descriptor(for: widget),

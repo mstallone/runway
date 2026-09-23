@@ -38,3 +38,7 @@ Go meters are percents from `GET https://opencode.ai/zen/go/v1/usage`, OpenCode'
 Go windows: `GET https://opencode.ai/zen/go/v1/usage` with the `opencode-go` key as `Authorization: Bearer …`. The response is `{ usage: { rolling, weekly, monthly } }`, each with `percent` and `resetsAt`. A 401 is a rejected key. A 403 `EntitlementError` means no Go subscription.
 
 Spend tiles and trend: assistant-message `cost` and token fields from every `opencode*.db` in the data directory. OpenCode partitions its database by release channel (stable is `opencode.db`, the preview line is `opencode-next.db`), so all channels are combined. Both `opencode-go` (Go) and `opencode` (Zen) count. Read-only.
+
+When Weekly is Always Visible and exhausted, the dashboard replaces its bar with **Usage Exhausted** and a live countdown plus the reset date and time, and temporarily hides the other Always Visible bars until a refresh reports available usage. On Demand rows and saved settings are preserved; independent model pools affect only their own session bar. See [Dashboard](../dashboard.md) for details.
+
+If this account is pinned and its login becomes unavailable, its menu-bar icon stays visible but faded, with no usage values, until a refresh confirms a usable login. See [Menu Bar](../menu-bar.md#login-unavailable).

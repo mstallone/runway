@@ -79,3 +79,7 @@ In the [CLI](../cli.md) and [local API](../local-http-api.md), extra cards appea
 `GET https://api.anthropic.com/api/oauth/usage` with the selected OAuth token. An already-expired token gets one guarded renewal at the token endpoint (`POST https://platform.claude.com/v1/oauth/token`, Claude Code's own public client), with the rotated credential written back to its store. If a token is expired or revoked and renewal declines, Runway tries the next credential source, and when none is left it shows the renewal notice over the local spend tiles.
 
 When the 5-hour session window has no usage yet, the Session row shows **Not started**. Hover it for an explanation.
+
+When Weekly is Always Visible and exhausted, the dashboard replaces its bar with **Usage Exhausted** and a live countdown plus the reset date and time, and temporarily hides the other Always Visible bars until a refresh reports available usage. On Demand rows and saved settings are preserved; independent model pools affect only their own session bar. See [Dashboard](../dashboard.md) for details.
+
+If this account is pinned and its login becomes unavailable, its menu-bar icon stays visible but faded, with no usage values, until a refresh confirms a usable login. See [Menu Bar](../menu-bar.md#login-unavailable).

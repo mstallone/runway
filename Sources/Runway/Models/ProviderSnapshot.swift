@@ -48,6 +48,9 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
     /// Optional for the same cached/synced-snapshot reason as `warningAction`: older snapshots
     /// decode as `nil` and read as `false`.
     var warningIsConnectPrompt: Bool?
+    /// True: login unusable. False: a successful refresh verified it. Nil: unverified, such as
+    /// local-only history after a network failure, or a snapshot from an older app version.
+    var loginRequired: Bool?
 
     /// `warningAction` with its default applied — see the property.
     var resolvedWarningAction: WarningAction { warningAction ?? .refresh }
@@ -62,7 +65,8 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         applicableMetricIDs: Set<String>? = nil,
         warning: String? = nil,
         warningAction: WarningAction? = nil,
-        warningIsConnectPrompt: Bool? = nil
+        warningIsConnectPrompt: Bool? = nil,
+        loginRequired: Bool? = false
     ) {
         self.providerID = providerID
         self.displayName = displayName
@@ -74,6 +78,7 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         self.warning = warning
         self.warningAction = warningAction
         self.warningIsConnectPrompt = warningIsConnectPrompt
+        self.loginRequired = loginRequired
     }
 
     func line(label: String) -> MetricLine? {
@@ -92,7 +97,8 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         applicableMetricIDs: Set<String>? = nil,
         warning: String? = nil,
         warningAction: WarningAction? = nil,
-        warningIsConnectPrompt: Bool? = nil
+        warningIsConnectPrompt: Bool? = nil,
+        loginRequired: Bool? = false
     ) -> ProviderSnapshot {
         ProviderSnapshot(
             providerID: provider.id,
@@ -104,21 +110,25 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
             applicableMetricIDs: applicableMetricIDs,
             warning: warning,
             warningAction: warningAction,
-            warningIsConnectPrompt: warningIsConnectPrompt
+            warningIsConnectPrompt: warningIsConnectPrompt,
+            loginRequired: loginRequired
         )
     }
 
     /// Build an error snapshot straight from a caught error, preserving its user-facing
     /// `localizedDescription`. Preferred over `error(provider:message:)` wherever an `Error` is in hand.
     static func error(provider: Provider, error: Error) -> ProviderSnapshot {
-        Self.error(provider: provider, message: error.localizedDescription)
+        var snapshot = Self.error(provider: provider, message: error.localizedDescription)
+        snapshot.loginRequired = ProviderLoginStatus.requirement(after: error)
+        return snapshot
     }
 
     static func error(provider: Provider, message: String) -> ProviderSnapshot {
         ProviderSnapshot(
             providerID: provider.id,
             displayName: provider.displayName,
-            lines: [.badge(label: MetricLine.errorBadgeLabel, text: message, colorHex: "#EF4444")]
+            lines: [.badge(label: MetricLine.errorBadgeLabel, text: message, colorHex: "#EF4444")],
+            loginRequired: nil
         )
     }
 
@@ -131,7 +141,8 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         ProviderSnapshot(
             providerID: provider.id,
             displayName: provider.displayName,
-            lines: [.badge(label: MetricLine.connectBadgeLabel, text: error.localizedDescription)]
+            lines: [.badge(label: MetricLine.connectBadgeLabel, text: error.localizedDescription)],
+            loginRequired: true
         )
     }
 }

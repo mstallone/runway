@@ -223,7 +223,7 @@ struct WidgetGroupedListView: View {
         // recomputed several times per row (twice per adjacent pair plus once in `row`).
         let providerID = group.provider.id
         let isExpanded = layout.isProviderExpanded(providerID)
-        let resolvedAlwaysRows = resolvedRows(group.alwaysShownWidgets)
+        let resolvedAlwaysRows = resolvedRows(group.alwaysShownWidgets, alwaysVisible: true)
         let resolvedExpandedRows = resolvedRows(group.expandedWidgets)
         let (alwaysRows, expandedRows) = promotedRowsIfNeeded(
             alwaysRows: resolvedAlwaysRows,
@@ -258,14 +258,16 @@ struct WidgetGroupedListView: View {
         }
     }
 
-    private func resolvedRows(_ widgets: [PlacedWidget]) -> [ResolvedRow] {
+    private func resolvedRows(_ widgets: [PlacedWidget], alwaysVisible: Bool = false) -> [ResolvedRow] {
         widgets.compactMap { widget -> ResolvedRow? in
             guard let descriptor = layout.descriptor(for: widget),
                   dataStore.isMetricApplicable(descriptor)
             else {
                 return nil
             }
-            return ResolvedRow(widget: widget, descriptor: descriptor, data: dataStore.data(for: descriptor))
+            let data = dataStore.data(for: descriptor)
+            return ResolvedRow(widget: widget, descriptor: descriptor,
+                               data: alwaysVisible ? WeeklyQuotaVisibility.presentation(data, descriptor: descriptor) : data)
         }
     }
 
@@ -482,7 +484,7 @@ struct WidgetGroupedListView: View {
         // screen, otherwise only the always-shown rows unless this provider's caret is currently open.
         let errorMessage = emptyStateError(for: group)
         let (alwaysRows, expandedRows) = promotedRowsIfNeeded(
-            alwaysRows: resolvedRows(group.alwaysShownWidgets),
+            alwaysRows: resolvedRows(group.alwaysShownWidgets, alwaysVisible: true),
             expandedRows: resolvedRows(group.expandedWidgets)
         )
         let visibleRows = layout.isProviderExpanded(group.provider.id)

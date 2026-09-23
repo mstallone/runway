@@ -135,7 +135,7 @@ enum UIProfiler {
             // `displayGroups` entry can hold only saved-but-inapplicable On Demand metrics (e.g.
             // Copilot metrics for another plan), whose rendered card has no caret — toggling that
             // provider would animate nothing and produce a fake expand benchmark.
-            let expandable = layout.displayGroups(matching: dataStore.isMetricApplicable).first {
+            let expandable = layout.dashboardGroups(dataStore: dataStore).first {
                 $0.hasExpandedMetrics || !$0.provider.visibleLinks.isEmpty
             }?.provider.id
             if let expandable {

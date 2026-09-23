@@ -21,6 +21,16 @@ Settings → Appearance → Icon Style:
 - **Text**: provider icon plus values. Two starred metrics from the same provider stack as a labeled pair. Hover an account segment to see that card's current name.
 - **Bars**: a compact glyph with the first four starred metrics that have a limit. Metrics without limits only appear in Text style.
 
+## Login unavailable
+
+A pinned account with an expired, invalid, missing, or unreadable login stays in the menu bar as a faded provider icon with no values, even when no usage has loaded. This also applies when a login failure leaves cached usage or local spend history available. Both Text and Bars styles restore the normal icon and values after a successful refresh. Open the dashboard for the login notice and recovery steps. Unpinned and disabled accounts stay hidden. Temporary network failures do not count as login failures and cannot clear an already-known login failure.
+
+## Exhausted weekly usage
+
+When an account has used all of its weekly allowance, its menu-bar segment becomes a faded provider icon with no values. In Bars style, its bars are replaced by the faded icon beside any remaining active bars. The icon and values return to normal after a refresh reports available usage. Your stars stay saved, and Weekly does not need to be starred or Always Visible for this to work.
+
+Independent model pools (Antigravity and Codex Spark) fade the icon only when all currently rendered starred metrics belong to exhausted pools. Dormant pins and pins beyond the two-value display limit do not count as usable alternatives. Other usable starred pools keep their values. Open the dashboard for the exhaustion message and reset time.
+
 ## Hiding usage while screen sharing
 
 Settings → General → Privacy → **Hide From Screen Share** (off by default). While your screen is shared or recorded (a Zoom, Meet, or Teams share, a screen recording, macOS Screen Sharing), the strip shows the Runway icon and wordmark instead of your numbers. When the capture ends, your starred metrics come back. Captures you start yourself count too.
@@ -49,4 +59,4 @@ On macOS 27 and later this recovery is off. The system folds items that do not f
 
 ## What the strip shows
 
-The strip only renders real data. A starred metric with nothing fetched yet is skipped. A provider whose stars all lack data disappears, icon included. When nothing has data, the strip shows the app icon. Stars follow your Customize order: Always Visible metrics first, then On Demand ones. A metric can be starred whether it is Always Visible or On Demand.
+The strip only renders real data. A starred metric with nothing fetched yet is skipped. A provider whose stars all lack data disappears, icon included, unless it needs a login or its shared weekly allowance is exhausted—in those cases its faded icon stays visible. An exhausted weekly allowance instead keeps a faded icon and temporarily hides its values. When nothing has data, the strip shows the app icon. Stars follow your Customize order: Always Visible metrics first, then On Demand ones. A metric can be starred whether it is Always Visible or On Demand.

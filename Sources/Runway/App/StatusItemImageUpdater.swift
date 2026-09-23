@@ -62,7 +62,9 @@ final class StatusItemImageUpdater {
         let content = MenuBarContentBuilder.build(
             groups: container.layout.pinnedGroups,
             data: { container.dataStore.data(for: $0) },
-            title: { container.displayName(for: $0) }
+            title: { container.displayName(for: $0) },
+            quotaDescriptors: { container.registry.descriptors(for: $0).filter(container.dataStore.isMetricApplicable) },
+            loginRequired: container.dataStore.loginRequired(for:)
         )
         if let presentation = MenuBarStripRenderer.presentation(
             for: content,

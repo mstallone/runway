@@ -131,7 +131,8 @@ final class SakanaProvider: ProviderRuntime {
                     ? $0.localizedDescription
                     : "Subscription meters unavailable: \($0.localizedDescription)"
             },
-            warningIsConnectPrompt: isConnectPrompt
+            warningIsConnectPrompt: isConnectPrompt,
+            loginRequired: ProviderLoginStatus.requirement(after: subscriptionError)
         )
     }
 }

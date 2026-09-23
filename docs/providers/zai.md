@@ -49,3 +49,7 @@ The quota response carries a `limits` array. Each `CREDIT_LIMIT` entry (called `
 - **"Z.ai API key invalid"**: the key was rejected (401/403). Regenerate it in the [Z.ai console](https://z.ai/manage-apikey/apikey-list).
 - **"No active GLM Coding Plan"** (amber notice by the name): the key is valid, but the account has no GLM Coding Plan. Subscribe at [z.ai/subscribe](https://z.ai/subscribe). Usage appears once your plan is active.
 - **Meters show "No usage data"**: you have a plan, but the quota endpoint returned no usable limits yet. Check your [plan](https://z.ai/manage-apikey/coding-plan/personal/my-plan).
+
+When Weekly is Always Visible and exhausted, the dashboard replaces its bar with **Usage Exhausted** and a live countdown plus the reset date and time, and temporarily hides the other Always Visible bars until a refresh reports available usage. On Demand rows and saved settings are preserved; independent model pools affect only their own session bar. See [Dashboard](../dashboard.md) for details.
+
+If this account is pinned and its login becomes unavailable, its menu-bar icon stays visible but faded, with no usage values, until a refresh confirms a usable login. See [Menu Bar](../menu-bar.md#login-unavailable).

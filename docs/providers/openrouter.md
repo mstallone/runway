@@ -46,3 +46,5 @@ Two REST calls with a `Bearer` token against `https://openrouter.ai/api/v1`:
 - `GET /key`: best-effort. The tier, daily, weekly, and monthly spend, and an optional per-key cap (`limit` minus `limit_remaining` for the current window). If this call fails, the balance still renders from `/credits`.
 
 A period spend of `$0.00` is shown as a measured zero (the API reports it directly) rather than "No data". Credit values can be up to about 60 seconds stale on OpenRouter's side.
+
+If this account is pinned and its login becomes unavailable, its menu-bar icon stays visible but faded, with no usage values, until a refresh confirms a usable login. See [Menu Bar](../menu-bar.md#login-unavailable).

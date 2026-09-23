@@ -375,6 +375,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
 
         XCTAssertNil(badge(snapshot.lines, "Error"))
         XCTAssertEqual(snapshot.warning, ClaudeAuthError.desktopTokenExpired.localizedDescription)
+        XCTAssertEqual(snapshot.loginRequired, true)
         XCTAssertEqual(httpClient.requests.count, 1)
     }
 
@@ -409,6 +410,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
 
         XCTAssertNil(badge(snapshot.lines, "Error"))
         XCTAssertEqual(snapshot.warning, ClaudeAuthError.desktopTokenExpired.localizedDescription)
+        XCTAssertEqual(snapshot.loginRequired, true)
         XCTAssertNil(snapshot.plan)
         XCTAssertTrue(httpClient.requests.isEmpty)
     }
@@ -534,6 +536,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
 
         XCTAssertNil(badge(snapshot.lines, "Error"))
         XCTAssertEqual(snapshot.warning, ClaudeAuthError.loginRenewalRequired.localizedDescription)
+        XCTAssertEqual(snapshot.loginRequired, true)
         XCTAssertEqual(httpClient.requests.count, 1)
     }
 

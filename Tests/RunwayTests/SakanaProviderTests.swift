@@ -212,6 +212,7 @@ final class SakanaProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertNil(snapshot.warning)
+        XCTAssertEqual(snapshot.loginRequired, false)
         XCTAssertEqual(progress(snapshot.lines, "Five-Hour Usage")?.used, 0)
         XCTAssertEqual(progress(snapshot.lines, "Weekly Usage")?.used, 0)
         XCTAssertEqual(http.requests.count, 2)
@@ -256,6 +257,23 @@ final class SakanaProviderTests: XCTestCase {
         XCTAssertNotNil(snapshot.lines.first(where: { $0.label == "Last 30 Days" }))
         XCTAssertEqual(snapshot.usageHistory?.series.daily.first?.totalTokens, 110_000)
         XCTAssertEqual(http.requests.count, 1)
+    }
+
+    func testLocalHistoryAfterNetworkFailureDoesNotVerifyLoginRecovery() async throws {
+        let home = try makeFuguHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let current = now
+        let http = SakanaRecordingHTTPClient { _ in throw URLError(.notConnectedToInternet) }
+        let provider = SakanaProvider(
+            authStore: plaintextAuthStore(token: token),
+            usageClient: SakanaUsageClient(http: http),
+            logUsageScanner: SakanaLogUsageScanner(rootsOverride: [home]),
+            now: { current }
+        )
+        let snapshot = await provider.refresh()
+        XCTAssertNotNil(snapshot.warning)
+        XCTAssertNotNil(snapshot.line(label: "Today"))
+        XCTAssertNil(snapshot.loginRequired)
     }
 
     func testProviderDescriptorsExportStableLimitResourcesInOrder() {

@@ -483,7 +483,7 @@ struct DashboardView: View {
     /// The learned-delta cache key for a provider's current revealed composition — see
     /// `ExpansionHeightEstimator.deltaKey`.
     private func expansionDeltaKey(for providerID: String) -> String {
-        guard let group = layout.displayGroups.first(where: { $0.provider.id == providerID }) else {
+        guard let group = layout.dashboardGroups(dataStore: dataStore).first(where: { $0.provider.id == providerID }) else {
             return providerID
         }
         return ExpansionHeightEstimator.deltaKey(
@@ -496,7 +496,7 @@ struct DashboardView: View {
     /// First-toggle guess for a provider's expanded-section height — see
     /// `ExpansionHeightEstimator.estimatedDelta`.
     private func estimatedExpansionDelta(for providerID: String) -> CGFloat {
-        guard let group = layout.displayGroups.first(where: { $0.provider.id == providerID }) else {
+        guard let group = layout.dashboardGroups(dataStore: dataStore).first(where: { $0.provider.id == providerID }) else {
             return 0
         }
         return ExpansionHeightEstimator.estimatedDelta(
