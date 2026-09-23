@@ -57,10 +57,15 @@ final class ModelPricing: Sendable {
     }
 
     private func resolveUncached(model: String) -> ModelRates? {
-        if let canonical = supplement.canonicalName(for: model), canonical != model {
-            return lookup(canonical) ?? lookup(model)
+        let canonical = supplement.canonicalName(for: model) ?? model
+        guard var rates = lookup(canonical) ?? (canonical != model ? lookup(model) : nil) else { return nil }
+        // Speed-flagged logs resolve the base model, bypassing fastVariant. Keep the same
+        // supplement fallback for that path, without multiplying an already-priced fast slug.
+        if rates.fastMultiplier == 1, !canonical.hasSuffix("-fast"), !model.hasSuffix("-fast"),
+           let multiplier = supplement.fastMultiplier(for: canonical) ?? supplement.fastMultiplier(for: model) {
+            rates.fastMultiplier = multiplier
         }
-        return lookup(model)
+        return rates
     }
 
     /// The secondary catalog is consulted only after the whole primary lookup misses, like ccusage —

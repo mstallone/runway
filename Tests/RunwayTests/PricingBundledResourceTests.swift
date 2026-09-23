@@ -45,6 +45,15 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(grok.outputPerMillion, 0.5)
     }
 
+    func testHistoricalClaudeFastSpeedStillUsesPremiumRates() throws {
+        for model in ["claude-opus-4-6", "claude-opus-4-6-20260205", "claude-opus-4-7"] {
+            let rates = try XCTUnwrap(Self.pricing.resolve(model: model))
+            // Claude's scanner resolves the base model and passes the logged usage.speed flag.
+            XCTAssertEqual(rates.costDollars(for: TokenBreakdown(input: 1_000_000)), 5)
+            XCTAssertEqual(rates.costDollars(for: TokenBreakdown(input: 1_000_000, isFast: true)), 30)
+        }
+    }
+
     /// Spot-check Cursor CSV slugs end to end against known rates (the old manifest's assertions,
     /// now against live catalogs — update the constants if the providers themselves reprice).
     func testKnownCursorSlugsPriceCorrectly() {

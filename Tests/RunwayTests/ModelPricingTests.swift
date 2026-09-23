@@ -307,6 +307,29 @@ final class ModelPricingTests: XCTestCase {
         XCTAssertEqual(pricing.estimatedCostDollars(model: "claude-opus-4-6", tokens: tokens)!, 30, accuracy: 0.0001)
     }
 
+    func testSpeedFlagUsesSupplementFallbackWithoutDoubleChargingFastSlugs() throws {
+        let pricing = try makePricing(
+            supplementJSON: #"{"pricing":{},"fast_multipliers":{"claude-opus-4-6":6},"alias_rules":[{"pattern":"^old-opus$","canonical":"claude-opus-4-6"}]}"#,
+            primary: ["claude-opus-4-6": rates(5, 25)]
+        )
+        let fast = TokenBreakdown(input: 1_000_000, isFast: true)
+        for model in ["claude-opus-4-6", "claude-opus-4-6-20260205", "old-opus"] {
+            XCTAssertEqual(pricing.estimatedCostDollars(model: model, tokens: fast), 30)
+            XCTAssertEqual(pricing.estimatedCostDollars(model: model, tokens: TokenBreakdown(input: 1_000_000)), 5)
+        }
+        XCTAssertEqual(pricing.estimatedCostDollars(model: "claude-opus-4-6-fast", tokens: fast), 30)
+    }
+
+    func testCatalogFastMultiplierWinsOverSupplementFallback() throws {
+        let pricing = try makePricing(
+            supplementJSON: #"{"pricing":{},"fast_multipliers":{"claude-opus-4-6":6},"alias_rules":[]}"#,
+            primary: ["claude-opus-4-6": rates(5, 25, fast: 2)]
+        )
+        XCTAssertEqual(pricing.estimatedCostDollars(
+            model: "claude-opus-4-6", tokens: TokenBreakdown(input: 1_000_000, isFast: true)
+        ), 10)
+    }
+
     func testUnknownModelCostIsNil() throws {
         let pricing = try makePricing()
         XCTAssertNil(pricing.estimatedCostDollars(model: "mystery", tokens: TokenBreakdown(input: 100)))

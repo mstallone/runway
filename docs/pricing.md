@@ -14,7 +14,7 @@ The app ships with bundled snapshots of all three, so pricing works offline and 
 
 Because the supplement is published to GitHub Pages on merge, a pricing correction reaches installed apps within about an hour with no app update.
 
-The supplement also retains historical Opus 4.6 and 4.7 fast-mode prices for older Cursor exports after those modes retire from the live catalogs. Standard-speed entries continue using the catalog rates. Other API estimates follow current published pricing, including temporary discounts; they do not reconstruct a price for each historical date.
+The supplement also retains historical Opus 4.6 and 4.7 fast-mode prices for older Cursor exports and speed-flagged Claude logs after those modes retire from the live catalogs. Standard-speed requests continue using the catalog rates. Other API estimates follow current published pricing, including temporary discounts; they do not reconstruct a price for each historical date.
 
 Updating the app also works. The supplement carries an `updated_at` date, and the app uses whichever of the cached and bundled copies is newer, so a build with fresher rates applies them right away. When the two dates are equal the cache wins, so a second supplement revision on the same day must use a full ISO timestamp (`2026-08-13T14:30:00Z`) as its `updated_at`. Timestamps sort after the bare date, so the later revision wins.
 
