@@ -6,7 +6,8 @@
 #
 # The snapshots are the offline fallback for first launch / no network; at runtime the app fetches
 # the same feeds daily and its disk cache overrides these. Staleness is therefore harmless, but
-# refreshing them at release time keeps first launches accurate. Run from the repo root:
+# refreshing them at release time keeps first launches accurate. Retired keys are retained for
+# historical logs; live entries overwrite their matching keys. Run from the repo root:
 #
 #   ./script/update_pricing_snapshots.sh
 #
@@ -52,6 +53,20 @@ def compact_model(input_pm, output_pm, cache_write_pm, cache_read_pm, cache_read
 def number(value):
     return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
+def write_snapshot(filename, models):
+    path = f"{resources}/{filename}"
+    # Match the app's bundled + live merge: dropping a feed entry must not unprice old logs or
+    # send a formerly exact key through fuzzy matching to a different model (e.g. Codex Mini).
+    try:
+        with open(path) as f:
+            merged = json.load(f)["models"]
+    except FileNotFoundError:
+        merged = {}
+    merged.update(models)
+    with open(path, "w") as f:
+        json.dump({"retrieved_at": retrieved_at, "models": merged}, f, sort_keys=True, separators=(",", ":"))
+    print(f"{filename}: {len(models)} live models, {len(merged) - len(models)} retained historical models")
+
 # LiteLLM: costs are per token; entries without both input and output cost are stubs -> skipped.
 with open(f"{tmpdir}/litellm.json") as f:
     litellm = json.load(f)
@@ -78,9 +93,7 @@ for key, entry in litellm.items():
     )
 if not models:
     sys.exit("LiteLLM feed produced no usable entries - aborting.")
-with open(f"{resources}/pricing_litellm_snapshot.json", "w") as f:
-    json.dump({"retrieved_at": retrieved_at, "models": models}, f, sort_keys=True, separators=(",", ":"))
-print(f"pricing_litellm_snapshot.json: {len(models)} models")
+write_snapshot("pricing_litellm_snapshot.json", models)
 
 # models.dev: costs are already per million; ids stored bare, first provider (sorted) wins.
 with open(f"{tmpdir}/models_dev.json") as f:
@@ -106,9 +119,7 @@ for provider_name in sorted(models_dev):
         )
 if not models:
     sys.exit("models.dev feed produced no usable entries - aborting.")
-with open(f"{resources}/pricing_models_dev_snapshot.json", "w") as f:
-    json.dump({"retrieved_at": retrieved_at, "models": models}, f, sort_keys=True, separators=(",", ":"))
-print(f"pricing_models_dev_snapshot.json: {len(models)} models")
+write_snapshot("pricing_models_dev_snapshot.json", models)
 PY
 
 ls -lh "$RESOURCES"/pricing_*_snapshot.json

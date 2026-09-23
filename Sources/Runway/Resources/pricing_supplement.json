@@ -1,6 +1,6 @@
 {
   "$comment": "Runway pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Muse Spark rates come from Meta's Model API pricing page. Published to update-feed by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries; https://developers.openai.com/api/docs/models/daybreak-blue-latest and https://developers.openai.com/api/docs/pricing for Daybreak aliases and rates; https://dev.meta.ai/docs/pricing-rate-limits for Muse Spark.",
-  "updated_at": "2026-09-05",
+  "updated_at": "2026-09-23T04:54:13Z",
   "pricing": {
     "auto": {
       "input_per_million": 1.25,
@@ -82,6 +82,13 @@
       "cache_write_per_million": 0.95,
       "cache_read_per_million": 0.19,
       "output_per_million": 4.0
+    },
+    "claude-opus-4-6-fast": {
+      "$comment": "Historical Opus 4.6 fast-mode rates (6x standard). Fast mode is retired and LiteLLM removed its multiplier; retain this explicit entry for older Cursor exports, like the retired Opus 4.7 fast entry below. New Opus 4.6 API responses report standard speed.",
+      "input_per_million": 30.0,
+      "cache_write_per_million": 37.5,
+      "cache_read_per_million": 3.0,
+      "output_per_million": 150.0
     },
     "claude-opus-4-7-fast": {
       "$comment": "Cursor bills Opus 4.7 fast mode at these rates; the models.dev entry carries higher (stale) numbers, so this override wins.",
@@ -174,6 +181,8 @@
     }
   },
   "fast_multipliers": {
+    "claude-opus-4-6": 6.0,
+    "claude-opus-4-7": 6.0,
     "gpt-5": 2.0,
     "gpt-5.1-codex": 2.0,
     "gpt-5.1-codex-max": 2.0,
@@ -243,7 +252,7 @@
     { "pattern": "^gpt-5\\.1(?:-(?:low|high))?$", "canonical": "gpt-5" },
     { "pattern": "^gpt-5-mini$", "canonical": "gpt-5-mini" },
     { "pattern": "^grok-4-20(?:-thinking)?$", "canonical": "xai/grok-4.20-0309-reasoning" },
-    { "pattern": "^grok-4\\.3(?:-thinking)?$", "canonical": "xai/grok-4.3" },
+    { "pattern": "^grok-4[.-]3(?:-thinking)?$", "canonical": "xai/grok-4.3" },
     { "pattern": "^grok-build-0\\.1$", "canonical": "grok-build-0.1" },
     { "pattern": "^grok-code-fast-1$", "canonical": "grok-build-0.1" },
     { "pattern": "^grok-build$", "canonical": "grok-build-0.1" },

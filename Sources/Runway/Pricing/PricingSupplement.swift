@@ -47,14 +47,18 @@ struct PricingSupplement: Sendable {
     func fastMultiplier(for model: String) -> Double? {
         if let exact = fastMultipliers[model] { return exact }
         let normalized = PricingCatalog.normalizedKey(model)
+        var best: (base: String, multiplier: Double)?
         for part in normalized.split(whereSeparator: { $0 == "/" || $0 == ":" }) {
             for (base, multiplier) in fastMultipliers {
                 if Self.matchesModelSuffix(part: String(part), base: PricingCatalog.normalizedKey(base)) {
-                    return multiplier
+                    // Prefer GPT-5.5 over GPT-5 regardless of dictionary iteration order.
+                    if let best, best.base.count > base.count
+                        || (best.base.count == base.count && best.base < base) { continue }
+                    best = (base, multiplier)
                 }
             }
         }
-        return nil
+        return best?.multiplier
     }
 
     /// `base` occurs in `part` with nothing after it, or followed by a `-` separator.

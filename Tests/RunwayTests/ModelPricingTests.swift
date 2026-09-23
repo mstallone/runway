@@ -64,6 +64,32 @@ final class ModelPricingTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "grok-4.3")?.inputPerMillion, 1.25)
     }
 
+    func testOrdinaryFuzzyLookupDoesNotSelectBatchPrices() throws {
+        let pricing = try makePricing(primary: [
+            "openrouter/anthropic/claude-opus-5": rates(5, 25),
+            "openrouter/anthropic/claude-opus-5:batch": rates(2.5, 12.5)
+        ])
+        XCTAssertEqual(pricing.resolve(model: "anthropic/claude-opus-5")?.inputPerMillion, 5)
+        XCTAssertEqual(pricing.resolve(model: "anthropic/claude-opus-5:batch")?.inputPerMillion, 2.5)
+        XCTAssertEqual(pricing.resolve(model: "openrouter/anthropic/claude-opus-5:batch")?.inputPerMillion, 2.5)
+    }
+
+    func testPrefixedModelPrefersExactBaseOverUnrequestedVariant() throws {
+        let pricing = try makePricing(primary: [
+            "gpt-5.5": rates(5, 30),
+            "openrouter/openai/gpt-5.5-pro": rates(30, 180)
+        ])
+        XCTAssertEqual(pricing.resolve(model: "openai/gpt-5.5")?.inputPerMillion, 5)
+        XCTAssertEqual(pricing.resolve(model: "openai/gpt-5-5")?.inputPerMillion, 5)
+    }
+
+    func testExplicitProviderPriceStillWinsOverUnprefixedBase() throws {
+        let pricing = try makePricing(primary: [
+            "gpt-5.5": rates(5, 30), "provider/gpt-5.5": rates(6, 36)
+        ])
+        XCTAssertEqual(pricing.resolve(model: "provider/gpt-5.5")?.inputPerMillion, 6)
+    }
+
     func testSeparatorNormalizationMatch() throws {
         // Log slug grok-4-3 (dashes) matches catalog key xai/grok-4.3 (dot).
         let pricing = try makePricing(primary: ["xai/grok-4.3": rates(1.25, 2.5)])
@@ -305,6 +331,37 @@ final class ModelPricingTests: XCTestCase {
         XCTAssertEqual(pricing.estimatedCostDollars(model: "claude-opus-4-6", tokens: tokens)!, 5, accuracy: 0.0001)
         tokens.isFast = true
         XCTAssertEqual(pricing.estimatedCostDollars(model: "claude-opus-4-6", tokens: tokens)!, 30, accuracy: 0.0001)
+    }
+
+    func testSpeedFlagUsesSupplementFallbackWithoutDoubleChargingFastSlugs() throws {
+        let pricing = try makePricing(
+            supplementJSON: #"{"pricing":{},"fast_multipliers":{"claude-opus-4-6":6},"alias_rules":[{"pattern":"^old-opus$","canonical":"claude-opus-4-6"}]}"#,
+            primary: ["claude-opus-4-6": rates(5, 25)]
+        )
+        let fast = TokenBreakdown(input: 1_000_000, isFast: true)
+        for model in ["claude-opus-4-6", "claude-opus-4-6-20260205", "old-opus"] {
+            XCTAssertEqual(pricing.estimatedCostDollars(model: model, tokens: fast), 30)
+            XCTAssertEqual(pricing.estimatedCostDollars(model: model, tokens: TokenBreakdown(input: 1_000_000)), 5)
+        }
+        XCTAssertEqual(pricing.estimatedCostDollars(model: "claude-opus-4-6-fast", tokens: fast), 30)
+    }
+
+    func testCatalogFastMultiplierWinsOverSupplementFallback() throws {
+        let pricing = try makePricing(
+            supplementJSON: #"{"pricing":{},"fast_multipliers":{"claude-opus-4-6":6},"alias_rules":[]}"#,
+            primary: ["claude-opus-4-6": rates(5, 25, fast: 2)]
+        )
+        XCTAssertEqual(pricing.estimatedCostDollars(
+            model: "claude-opus-4-6", tokens: TokenBreakdown(input: 1_000_000, isFast: true)
+        ), 10)
+    }
+
+    func testMostSpecificFastMultiplierWinsForPrefixedAndDatedModels() {
+        let supplement = PricingSupplement(fastMultipliers: ["gpt-5": 2, "gpt-5.5": 2.5])
+        for model in ["openai/gpt-5.5", "openai/gpt-5-5", "gpt-5.5-20260423"] {
+            XCTAssertEqual(supplement.fastMultiplier(for: model), 2.5)
+        }
+        XCTAssertEqual(supplement.fastMultiplier(for: "openai/gpt-5"), 2)
     }
 
     func testUnknownModelCostIsNil() throws {
