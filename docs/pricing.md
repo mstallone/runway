@@ -10,7 +10,7 @@ Runway layers prices from three sources. When the same model appears in more tha
 2. **LiteLLM**: the community-maintained `model_prices_and_context_window.json`, which covers most API-priced models.
 3. **models.dev**: a gap-filler for models LiteLLM misses.
 
-The app ships with bundled snapshots of all three, so pricing works offline and on first launch. At runtime it refetches each source about once an hour (with ETag revalidation) and caches it in `~/Library/Application Support/Runway/pricing/`. A refresh never blocks a usage scan. Scans price against the freshest data already on hand.
+The app ships with bundled snapshots of all three, so pricing works offline and on first launch. Snapshot updates keep historical model keys that the live feeds remove, while current feed entries replace matching keys. At runtime it refetches each source about once an hour (with ETag revalidation) and caches it in `~/Library/Application Support/Runway/pricing/`. A refresh never blocks a usage scan. Scans price against the freshest data already on hand.
 
 Because the supplement is published to GitHub Pages on merge, a pricing correction reaches installed apps within about an hour with no app update.
 

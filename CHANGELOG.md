@@ -10,7 +10,7 @@
 - Show Muse token history and estimated spend while keeping weekly usage visible ([#128](https://github.com/mstallone/runway/pull/128)) by @mstallone
 
 ### Chores
-- Refresh bundled pricing and retain retired Opus 4.6 Fast rates for historical usage by @mstallone
+- Refresh bundled pricing while retaining historical model coverage and correct Codex/Grok aliases by @mstallone
 
 ---
 

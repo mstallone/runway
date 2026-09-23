@@ -250,7 +250,7 @@
     { "pattern": "^gpt-5\\.1(?:-(?:low|high))?$", "canonical": "gpt-5" },
     { "pattern": "^gpt-5-mini$", "canonical": "gpt-5-mini" },
     { "pattern": "^grok-4-20(?:-thinking)?$", "canonical": "xai/grok-4.20-0309-reasoning" },
-    { "pattern": "^grok-4\\.3(?:-thinking)?$", "canonical": "xai/grok-4.3" },
+    { "pattern": "^grok-4[.-]3(?:-thinking)?$", "canonical": "xai/grok-4.3" },
     { "pattern": "^grok-build-0\\.1$", "canonical": "grok-build-0.1" },
     { "pattern": "^grok-code-fast-1$", "canonical": "grok-build-0.1" },
     { "pattern": "^grok-build$", "canonical": "grok-build-0.1" },

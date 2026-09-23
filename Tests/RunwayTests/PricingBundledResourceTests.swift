@@ -32,6 +32,19 @@ final class PricingBundledResourceTests: XCTestCase {
         }
     }
 
+    func testRetiredCatalogKeysStillPriceHistoricalLogs() throws {
+        let pricing = Self.pricing
+        // These exact keys disappeared from the live catalogs. Keeping them avoids silently
+        // fuzzy-matching GPT-5.1 Codex to the cheaper Mini model, or dropping prefixed Grok rows.
+        let codex = try XCTUnwrap(pricing.resolve(model: "gpt-5.1-codex"))
+        XCTAssertEqual(codex.inputPerMillion, 1.25)
+        XCTAssertEqual(codex.outputPerMillion, 10)
+        XCTAssertEqual(pricing.resolve(model: "gpt-5.1-codex-fast")?.inputPerMillion, 2.5)
+        let grok = try XCTUnwrap(pricing.resolve(model: "xai/grok-3-mini"))
+        XCTAssertEqual(grok.inputPerMillion, 0.3)
+        XCTAssertEqual(grok.outputPerMillion, 0.5)
+    }
+
     /// Spot-check Cursor CSV slugs end to end against known rates (the old manifest's assertions,
     /// now against live catalogs — update the constants if the providers themselves reprice).
     func testKnownCursorSlugsPriceCorrectly() {
@@ -250,6 +263,10 @@ final class PricingBundledResourceTests: XCTestCase {
     /// Grok CLI model ids route through the alias rules to their catalog entries.
     func testGrokCLIModelAliases() {
         let pricing = Self.pricing
+        // The dashed log spelling must not fuzzy-match a more expensive regional reseller.
+        XCTAssertEqual(pricing.resolve(model: "grok-4-3"), pricing.resolve(model: "grok-4.3"))
+        XCTAssertEqual(pricing.resolve(model: "grok-4-3-thinking")?.inputPerMillion, 1.25)
+        XCTAssertEqual(pricing.resolve(model: "grok-4-3")?.outputPerMillion, 2.5)
         XCTAssertEqual(pricing.resolve(model: "grok-build")?.inputPerMillion, 1)
         // grok-proxy is the recent Grok Build CLI log slug for the same model.
         XCTAssertEqual(pricing.resolve(model: "grok-proxy"), pricing.resolve(model: "grok-build-0.1"))
