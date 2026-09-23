@@ -8,7 +8,7 @@ final class MuseProvider: ProviderRuntime {
         icon: .providerMark("muse"),
         links: [
             ProviderLink(label: "Dashboard", url: "https://dev.meta.ai"),
-            ProviderLink(label: "Usage", url: "https://accountscenter.meta.com/muse_code")
+            ProviderLink(label: "Usage", url: "https://dev.meta.ai/usage/")
         ]
     )
 
@@ -20,12 +20,14 @@ final class MuseProvider: ProviderRuntime {
 
     private let localSourceNote = "From your Muse logs (estimated)"
 
-    /// `/muse-code/key` mints a Model API key. Polling it every refresh cycle trips Meta's rate
-    /// limit and can fail Muse Code's own `credential.refresh`. On 429, serve last-good meters and
-    /// skip the network until this cooldown ends.
-    private var lastGood: (usage: MuseMappedUsage, refreshedAt: Date, accessToken: String)?
+    /// A provider floor applies to automatic and manual reads. Local history still refreshes.
+    static let minimumRefreshInterval: TimeInterval = 15 * 60
+    private var sessionToken: String?
+    private var lastGood: ProviderSnapshot?
+    private var cachedSubscription: ProviderSnapshot?
+    private var nextFetchAt: Date?
     private var rateLimitedUntil: Date?
-    static let rateLimitCooldown: TimeInterval = 15 * 60
+    private var refreshTask: Task<ProviderSnapshot, Never>?
 
     init(
         authStore: MuseAuthStore = MuseAuthStore(),
@@ -68,15 +70,21 @@ final class MuseProvider: ProviderRuntime {
     }
 
     func hasLocalCredentials() async -> Bool {
-        // Same sources as `refresh()`: the Muse Keychain item, a legacy auth.json access token, or
-        // local session journals. A protected Keychain item counts — only a manual refresh may ask
-        // to load it.
+        // Detection inspects cookie metadata and local logs, without requesting a secret.
         await loadOffMainActor { [authStore, logUsageScanner] in
             authStore.hasCredentialFootprint() || logUsageScanner.hasSessionFootprint()
         }
     }
 
     func refresh() async -> ProviderSnapshot {
+        if let refreshTask { return await refreshTask.value }
+        let task = Task { await refreshOnce() }
+        refreshTask = task
+        defer { refreshTask = nil }
+        return await task.value
+    }
+
+    private func refreshOnce() async -> ProviderSnapshot {
         let refreshedAt = now()
         let pricingSnapshot = await pricing()
         async let localScanTask = logUsageScanner.scan(now: refreshedAt, pricing: pricingSnapshot)
@@ -85,104 +93,85 @@ final class MuseProvider: ProviderRuntime {
     }
 
     private func refreshSubscription(at now: Date) async -> ProviderSnapshot {
-        let allowInteraction = ProviderRefreshContext.isManual
-        let load = await loadOffMainActor { [authStore] in
-            authStore.loadCredentials(allowKeychainInteraction: allowInteraction)
-        }
-
-        switch load {
-        case .token(let auth):
-            if lastGood?.accessToken != auth.accessToken {
-                lastGood = nil
-                rateLimitedUntil = nil
-            }
-            if let until = rateLimitedUntil, now < until {
-                AppLog.info(LogTag.auth("muse"), "mint endpoint cooldown; skipping network")
-                return rateLimitedSnapshot(retryAfterSeconds: Int(ceil(until.timeIntervalSince(now))))
-            }
-            return await fetchSnapshot(auth: auth, allowInteraction: allowInteraction, allowRetry: true, now: now)
-        case .connectRequired:
-            return ProviderSnapshot.connectPrompt(provider: provider, error: MuseAuthError.keychainConnectRequired)
-        case .keychainPermissionRequired:
-            return ProviderSnapshot.error(provider: provider, error: MuseAuthError.keychainPermissionRequired)
-        case .unreadable:
-            return ProviderSnapshot.error(provider: provider, error: MuseAuthError.credentialStoreUnreadable)
-        case .invalid:
-            lastGood = nil
-            rateLimitedUntil = nil
-            return ProviderSnapshot.error(provider: provider, error: MuseAuthError.invalidCredentialData)
-        case .none:
-            lastGood = nil
-            rateLimitedUntil = nil
-            return ProviderSnapshot.error(provider: provider, error: MuseAuthError.notLoggedIn)
-        }
-    }
-
-    private func fetchSnapshot(
-        auth: MuseAuth,
-        allowInteraction: Bool,
-        allowRetry: Bool,
-        now: Date
-    ) async -> ProviderSnapshot {
         do {
-            let response = try await usageClient.fetchKey(accessToken: auth.accessToken)
-            let status = MuseUsageMapper.effectiveStatus(of: response)
-            if status == 401 || status == 403 {
-                if allowRetry {
-                    let reloaded = await loadOffMainActor { [authStore] in
-                        authStore.loadCredentials(allowKeychainInteraction: allowInteraction)
-                    }
-                    if case .token(let latest) = reloaded, latest.accessToken != auth.accessToken {
-                        AppLog.info(LogTag.auth("muse"), "access token rotated locally; retrying mint")
-                        return await fetchSnapshot(
-                            auth: latest,
-                            allowInteraction: allowInteraction,
-                            allowRetry: false,
-                            now: now
-                        )
-                    }
-                }
+            let allowInteraction = ProviderRefreshContext.isManual
+            let session = try await loadOffMainActor { [authStore] in
+                try authStore.loadSession(allowInteraction: allowInteraction)
+            }
+            if sessionToken != session.token {
+                clearSubscription()
+                sessionToken = session.token
+            }
+            if let nextFetchAt, now < nextFetchAt, let cachedSubscription {
+                return cachedSubscription
+            }
+            // Failed reads also obey the floor; menu clicks cannot create a request storm.
+            nextFetchAt = now.addingTimeInterval(Self.minimumRefreshInterval)
+            let response = try await usageClient.fetchUsage(sessionToken: session.token)
+            if response.statusCode == 401 || response.statusCode == 403
+                || (300..<400).contains(response.statusCode) {
                 throw MuseAuthError.sessionExpired
             }
-            if status == 429 {
-                let retryAfter = retryAfterSeconds(from: response)
-                rateLimitedUntil = now.addingTimeInterval(TimeInterval(retryAfter))
-                AppLog.warn(LogTag.auth("muse"), "mint endpoint rate-limited; backing off \(retryAfter)s")
-                return rateLimitedSnapshot(retryAfterSeconds: retryAfter)
+            if response.statusCode == 429 {
+                let seconds = max(
+                    Self.minimumRefreshInterval,
+                    Double(ClaudeUsageMapper.parseRetryAfterSeconds(response, now: now) ?? 0)
+                )
+                rateLimitedUntil = now.addingTimeInterval(seconds)
+                nextFetchAt = rateLimitedUntil
+                throw MuseUsageError.requestFailed(429)
             }
-            guard (200..<300).contains(status) else {
-                throw MuseUsageError.requestFailed(status)
+            guard (200..<300).contains(response.statusCode) else {
+                throw MuseUsageError.requestFailed(response.statusCode)
             }
             let mapped = try MuseUsageMapper.map(response.body)
-            lastGood = (mapped, now, auth.accessToken)
+            let snapshot = ProviderSnapshot.make(
+                provider: provider, plan: mapped.plan, lines: mapped.lines,
+                refreshedAt: mapped.observedAt.map { min($0, now) } ?? now
+            )
+            lastGood = snapshot
+            cachedSubscription = snapshot
             rateLimitedUntil = nil
-            return ProviderSnapshot.make(
-                provider: provider,
-                plan: mapped.plan,
-                lines: mapped.lines,
-                refreshedAt: now
-            )
+            return snapshot
         } catch {
-            return ProviderSnapshot.error(provider: provider, error: error)
+            AppLog.warn(LogTag.auth("muse"), "dashboard usage unavailable: \(error.localizedDescription)")
+            if let authError = error as? MuseAuthError {
+                // Never show a previous browser account's meters after logout or an unreadable login.
+                if authError == .sessionExpired {
+                    lastGood = nil
+                } else {
+                    clearSubscription()
+                }
+                if authError == .keychainConnectRequired {
+                    return ProviderSnapshot.connectPrompt(provider: provider, error: authError)
+                }
+                let snapshot = ProviderSnapshot.error(provider: provider, error: authError)
+                cachedSubscription = snapshot
+                return snapshot
+            }
+            let snapshot: ProviderSnapshot
+            if var stale = lastGood {
+                stale.warning = "Last reported usage: " + error.localizedDescription
+                stale.warningAction = .wait
+                stale.loginRequired = nil
+                snapshot = stale
+            } else {
+                snapshot = ProviderSnapshot.error(provider: provider, error: error)
+            }
+            cachedSubscription = snapshot
+            return snapshot
         }
     }
 
-    private func rateLimitedSnapshot(retryAfterSeconds: Int) -> ProviderSnapshot {
-        if let lastGood {
-            return ProviderSnapshot.make(
-                provider: provider,
-                plan: lastGood.usage.plan,
-                lines: lastGood.usage.lines,
-                refreshedAt: lastGood.refreshedAt,
-                warning: rateLimitedWarning(retryAfterSeconds: retryAfterSeconds),
-                warningAction: .wait,
-                loginRequired: nil
-            )
-        }
-        return ProviderSnapshot.error(provider: provider, error: MuseUsageError.requestFailed(429))
+    private func clearSubscription() {
+        sessionToken = nil
+        lastGood = nil
+        cachedSubscription = nil
+        nextFetchAt = nil
+        rateLimitedUntil = nil
     }
 
-    /// Attach local journals onto whatever the mint path produced. Spend still loads when meters
+    /// Attach local journals onto whatever the dashboard read produced. Spend still loads when meters
     /// cannot (Connect, 429 with no last-good, expired session) as long as the logs have usage.
     private func finishing(
         _ snapshot: ProviderSnapshot,
@@ -223,7 +212,7 @@ final class MuseProvider: ProviderRuntime {
         let warning: String?
         let warningAction: ProviderSnapshot.WarningAction?
         if lostMeters, rateLimited {
-            warning = "Updates blocked by Meta. Be patient — manual refreshes will make it worse."
+            warning = "Meta dashboard updates are temporarily rate limited. Runway will retry after the cooldown."
             warningAction = .wait
         } else if lostMeters {
             warning = isConnectPrompt
@@ -249,21 +238,6 @@ final class MuseProvider: ProviderRuntime {
             warningIsConnectPrompt: isConnectPrompt ? true : snapshot.warningIsConnectPrompt,
             loginRequired: snapshot.loginRequired
         )
-    }
-
-    private func rateLimitedWarning(retryAfterSeconds: Int) -> String {
-        let minutes = max(1, Int(ceil(Double(retryAfterSeconds) / 60)))
-        return "Updates blocked by Meta. Be patient — manual refreshes will make it worse. Retrying in ~\(minutes)m."
-    }
-
-    private func retryAfterSeconds(from response: HTTPResponse) -> Int {
-        if let raw = response.header("retry-after")?.trimmingCharacters(in: .whitespacesAndNewlines),
-           let seconds = Int(raw),
-           seconds > 0
-        {
-            return min(seconds, 60 * 60)
-        }
-        return Int(Self.rateLimitCooldown)
     }
 
     private func museErrorText(_ snapshot: ProviderSnapshot) -> String? {
