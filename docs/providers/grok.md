@@ -37,6 +37,8 @@ Each period is one tile showing cost and tokens together (`$4.08 · 1.2M tokens`
 
 The "Rate Limit Resets" row comes from a best-effort `POST https://grok.com/prod_mc_billing.ConsumerUiSvc/GetRemainingResets` (gRPC-web, same Grok CLI OAuth token). That is the Settings → Usage "Reset Available" card. Each still-valid token has an id and a `validity_end`. Hover the value for a timeline of those expiries, soonest first, the same popover Codex uses but read-only. Runway never redeems a Grok reset. If that RPC fails, the row is omitted rather than shown as `0 available`. A successful empty list reads `0 available`.
 
+Enable **Reset Expiry Reminders** in [Notifications settings](../settings.md#reset-expiry-reminders) for reminders 48 hours, 24 hours, 2 hours, 1 hour, and 15 minutes before a known token expiry. Each reminder replaces the previous one for that expiry. Use the reset on grok.com before it expires.
+
 When Weekly is Always Visible and exhausted, the dashboard replaces its bar with **Usage Exhausted** and a live countdown plus the reset date and time, and temporarily hides the other Always Visible bars until a refresh reports available usage. On Demand rows and saved settings are preserved; independent model pools affect only their own session bar. See [Dashboard](../dashboard.md) for details.
 
 If this account is pinned and its login becomes unavailable, its menu-bar icon stays visible but faded, with no usage values, until a refresh confirms a usable login. See [Menu Bar](../menu-bar.md#login-unavailable).

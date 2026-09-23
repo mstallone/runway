@@ -70,6 +70,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             self.statusItemController = StatusItemController(container: container, updater: self.updater)
             // Starts background update checks (release build only; dormant under preview/`swift run`).
             self.updater.start()
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--preview-reset-notification") {
+                await AppNotifications.shared.previewResetExpiryNotification()
+            }
+            #endif
         }
     }
 

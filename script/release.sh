@@ -167,6 +167,7 @@ cat >"$APP_CONTENTS/Info.plist" <<PLIST
   <key>CFBundleIconName</key><string>AppIcon</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>LSUIElement</key><true/>
+  <key>NSUserNotificationAlertStyle</key><string>alert</string>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>SUFeedURL</key><string>$FEED_URL</string>

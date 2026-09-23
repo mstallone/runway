@@ -1,9 +1,8 @@
 import Foundation
 import Observation
 
-/// User preferences for quota pace notifications: the three per-milestone triggers (no master switch —
-/// turn all three off to silence). All default OFF; the app requests notification authorization the
-/// first time a trigger is turned on, so a fresh install stays quiet until the user opts in.
+/// User preferences for quota pace and reset-credit expiry notifications. All default OFF;
+/// the app requests authorization the first time a trigger is turned on.
 ///
 /// Persisted in `UserDefaults` (each key independently, with an unset key defaulting to `false`).
 /// `@Observable` lets the Settings toggles and `WidgetDataStore` evaluation read live values.
@@ -15,6 +14,14 @@ final class NotificationSettingsStore {
     private static let underTenKey = "runway.notifications.underTenPercent"
     private static let healthyToCloseKey = "runway.notifications.healthyToClose"
     private static let closeToRunningOutKey = "runway.notifications.closeToRunningOut"
+    private static let resetExpiryKey = "runway.notifications.resetExpiryReminders"
+
+    var resetExpiryReminders: Bool {
+        didSet { defaults.set(resetExpiryReminders, forKey: Self.resetExpiryKey) }
+    }
+
+    /// Transient delivery/storage failure, shown in Settings alongside the permission controls.
+    var resetReminderError: String?
 
     /// Alert the first time a metric drops under 10% remaining for the period.
     var underTenPercent: Bool {
@@ -36,6 +43,7 @@ final class NotificationSettingsStore {
         self.underTenPercent = defaults.bool(forKey: Self.underTenKey, default: false)
         self.healthyToClose = defaults.bool(forKey: Self.healthyToCloseKey, default: false)
         self.closeToRunningOut = defaults.bool(forKey: Self.closeToRunningOutKey, default: false)
+        self.resetExpiryReminders = defaults.bool(forKey: Self.resetExpiryKey, default: false)
     }
 
     /// The per-milestone toggles as the pure logic consumes them.
@@ -49,6 +57,6 @@ final class NotificationSettingsStore {
 
     /// True when at least one trigger is on — used to decide whether to request authorization (when the
     /// first trigger is turned on) and whether the Settings permission notice should show. Turning all
-    /// three off silences everything.
-    var anyEnabled: Bool { underTenPercent || healthyToClose || closeToRunningOut }
+    /// triggers off silences everything.
+    var anyEnabled: Bool { underTenPercent || healthyToClose || closeToRunningOut || resetExpiryReminders }
 }

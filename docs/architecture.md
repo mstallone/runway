@@ -51,6 +51,12 @@ Muse subscription meters use the Meta developer dashboard’s teams/subscription
 
 Refresh runs on a timer in `AppContainer`. Each pass respects the cache, so the app only hits the network once a snapshot has expired.
 
+Reset-credit reminders have a separate 30-second loop, also woken by observable data and settings changes. `ResetExpiryNotificationMonitor` reads enabled providers' local expiry data through `WidgetDataStore`; it never fetches usage. It rechecks eligibility after asynchronous permission and delivery calls. `ResetExpiryNotificationEvaluator` persists each delivered milestone per provider card and expiry in local UserDefaults. `AppNotifications` checks live authorization for each delivery and lets macOS replace the previous reminder using a stable identifier, preserving the old alert if adding its replacement fails. `NotificationDeliveryClient` makes this system boundary injectable for tests. The loop runs with the popover closed and is cancelled when the container is released. macOS controls persistent alert style; see [Notifications](settings.md#notifications).
+
+To preview a reset notification, build with `CONFIG=debug ./script/build_and_run.sh build`, then launch with `open -n dist/Runway.app --args --preview-reset-notification`. This debug-only action sends a labeled sample through the normal notification path without changing preferences or real-credit history.
+
+Reminder identities use whole-second expiry timestamps to match the snapshot cache's precision across restarts. Credits sharing that timestamp form one group. A changed count withdraws the old alert while retaining its milestone history. New alerts wait for a successful provider refresh each launch; cached credits only retain existing reminders until revalidation. Keys use the metric's card ID and the existing launch-resolved account identity, when known. Moving or resolving an account can start new reminder history; the reminder loop does not discover or migrate accounts.
+
 Providers with spend tiles carry a history scope beside their export descriptors. Machine-local sources can be summed across device records. Account-wide sources such as Cursor cannot. `WidgetDataStore` re-renders only the spend rows from the union and leaves quota and error state local.
 
 ## The AppKit bridge
