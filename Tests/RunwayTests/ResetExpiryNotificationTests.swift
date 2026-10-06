@@ -4,12 +4,10 @@ import XCTest
 @MainActor
 final class ResetExpiryNotificationTests: XCTestCase {
     private let expiry = Date(timeIntervalSince1970: 2_000_000_000)
-    private var suite: String!
     private var defaults: UserDefaults!
 
     override func setUp() async throws {
-        suite = "ResetExpiryNotificationTests.\(UUID().uuidString)"
-        defaults = UserDefaults(testSuiteName: suite)!
+        defaults = UserDefaults(testSuiteName: "ResetExpiryNotificationTests.\(UUID().uuidString)")!
     }
 
     private func metric(key: String = "codex:account-a") -> ResetExpiryNotificationEvaluator.Metric {

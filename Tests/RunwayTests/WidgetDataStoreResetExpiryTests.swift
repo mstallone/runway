@@ -5,12 +5,10 @@ import XCTest
 @MainActor
 final class WidgetDataStoreResetExpiryTests: XCTestCase {
     private let expiry = Date(timeIntervalSince1970: 2_000_000_000)
-    private var suite: String!
     private var defaults: UserDefaults!
 
     override func setUp() async throws {
-        suite = "WidgetDataStoreResetExpiryTests.\(UUID().uuidString)"
-        defaults = UserDefaults(testSuiteName: suite)!
+        defaults = UserDefaults(testSuiteName: "WidgetDataStoreResetExpiryTests.\(UUID().uuidString)")!
     }
 
     private final class Runtime: ProviderRuntime {
