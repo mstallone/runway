@@ -6,7 +6,7 @@ extension ClaudeUsageMapper {
     /// Claude snapshot is recomputed locally (spend tiles, trend) or is a notice. Add a label here when
     /// `mapUsageResponse` gains a row, or that row drops out of the launch-cached limits below.
     static let liveLimitLabels: Set<String> = [
-        "Session", "Weekly", "Sonnet", "Fable", "Extra usage spent", "Rate Limit Resets"
+        "Session", "Weekly", "Sonnet", "Fable", "Extra usage spent"
     ]
 }
 
@@ -73,44 +73,28 @@ struct ClaudeLiveUsageCache {
     ///   on the highest-priority stored login only, never on a fallback, Desktop, or environment
     ///   candidate), and the state file read with these credentials must still name that account.
     ///
-    /// Only the live-limit lines are reused: spend tiles are recomputed by the provider and an old
-    /// notice is not replayed. A window whose reset has passed is dropped rather than shown with its
-    /// pre-reset value, and so is any reset grant past its deadline.
+    /// Only live-limit windows whose reset is still ahead are reused, so nothing outlives its own
+    /// window: a row with no reset time (Extra Usage, a Session that has not started) is never
+    /// carried, and a window whose reset has passed is dropped rather than shown with its pre-reset
+    /// value. Spend tiles are recomputed by the provider and an old notice is not replayed. The
+    /// result keeps the cached snapshot's own time, never the time of the 429.
     func launchCachedUsage(for state: ClaudeCredentialState, now: Date) -> ClaudeMappedUsage? {
         guard let launchSnapshot,
               state.stateFileIdentityKey == launchSnapshot.identityKey
         else { return nil }
-        let lines = Self.currentLiveLimits(in: launchSnapshot.snapshot, now: now)
-        guard !lines.isEmpty else { return nil }
-        return ClaudeMappedUsage(plan: launchSnapshot.snapshot.plan, lines: lines)
-    }
-
-    static func currentLiveLimits(in snapshot: ProviderSnapshot, now: Date) -> [MetricLine] {
-        snapshot.lines.compactMap { line -> MetricLine? in
-            guard ClaudeUsageMapper.liveLimitLabels.contains(line.label) else { return nil }
-            switch line {
-            case .progress(_, _, _, _, let resetsAt?, _, _) where resetsAt <= now:
-                return nil
-            case .values(let label, let values, let colorHex, let expiriesAt, let unknownModels, let breakdown)
-                where expiriesAt.contains { $0 <= now }:
-                // Grants past their deadline are gone; grants without a known deadline still count.
-                let elapsed = expiriesAt.count { $0 <= now }
-                return .values(
-                    label: label,
-                    values: values.map { value in
-                        var value = value
-                        if value.kind == .count { value.number = max(0, value.number - Double(elapsed)) }
-                        return value
-                    },
-                    colorHex: colorHex,
-                    expiriesAt: expiriesAt.filter { $0 > now },
-                    unknownModels: unknownModels,
-                    modelBreakdown: breakdown
-                )
-            default:
-                return line
-            }
+        let lines = launchSnapshot.snapshot.lines.filter { line in
+            guard ClaudeUsageMapper.liveLimitLabels.contains(line.label),
+                  case .progress(_, _, _, _, let resetsAt?, _, _) = line
+            else { return false }
+            return resetsAt > now
         }
+        guard !lines.isEmpty else { return nil }
+        return ClaudeMappedUsage(
+            plan: launchSnapshot.snapshot.plan,
+            lines: lines,
+            limitsFetchedAt: launchSnapshot.snapshot.refreshedAt,
+            limitsIdentityKey: launchSnapshot.identityKey
+        )
     }
 
     private static func fingerprint(_ credentials: ClaudeOAuth) -> Data {

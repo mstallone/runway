@@ -7,98 +7,7 @@ import XCTest
 /// and snapshot cache, one "launch" at a time, and pin the account gate that decides when the cached
 /// limits may stand in.
 @MainActor
-final class ClaudeLaunchSnapshotTests: XCTestCase {
-    private func makeDefaults(_ name: String) -> UserDefaults {
-        let suiteName = "ClaudeLaunchSnapshotTests.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(testSuiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return defaults
-    }
-
-    private func makeFiles() -> FakeFiles {
-        FakeFiles([
-            Fixture.credentialsPath: Fixture.credentials(),
-            Fixture.statePath: Fixture.stateFile()
-        ])
-    }
-
-    /// What the previous session left on disk for the Claude card.
-    private func seedCache(
-        _ defaults: UserDefaults,
-        lines: [MetricLine] = [
-            .progress(label: "Session", used: 25, limit: 100, format: .percent, resetsAt: Fixture.future),
-            .progress(label: "Weekly", used: 40, limit: 100, format: .percent, resetsAt: Fixture.future)
-        ],
-        warning: String? = nil,
-        stamp: String? = Fixture.identityKey
-    ) {
-        ProviderSnapshotCache(userDefaults: defaults).store(
-            ProviderSnapshot(
-                providerID: "claude",
-                displayName: "Claude",
-                plan: "Pro",
-                lines: lines,
-                refreshedAt: Fixture.now.addingTimeInterval(-3600),
-                warning: warning
-            ),
-            producedByIdentityKey: stamp
-        )
-    }
-
-    /// One app launch: a fresh provider (no in-memory last-good usage), a fresh cache instance over
-    /// the same defaults, and a store that paints from it — exactly what `AppContainer` assembles.
-    private func launch(
-        defaults: UserDefaults,
-        files: FakeFiles,
-        keychain: KeychainReading = FakeKeychain(),
-        http: HTTPClient,
-        identityKeys: [String: String] = ["claude": Fixture.identityKey],
-        logHome: URL? = nil
-    ) -> WidgetDataStore {
-        let provider = ClaudeProvider(
-            authStore: ClaudeAuthStore(
-                environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
-                files: files,
-                keychain: keychain,
-                now: { Fixture.now }
-            ),
-            usageClient: ClaudeUsageClient(httpClient: http),
-            logUsageScanner: ClaudeLogFixture.scanner(home: logHome),
-            now: { Fixture.now },
-            pricing: { TestPricing.bundled }
-        )
-        return WidgetDataStore(
-            registry: WidgetRegistry.from([provider]),
-            providers: [provider],
-            cache: ProviderSnapshotCache(userDefaults: defaults, now: { Fixture.now }),
-            defaults: defaults,
-            now: { Fixture.now },
-            providerIdentityKeys: identityKeys
-        )
-    }
-
-    private func used(_ snapshot: ProviderSnapshot?, _ label: String) -> Double? {
-        guard case .progress(_, let used, _, _, _, _, _)? = snapshot?.line(label: label) else { return nil }
-        return used
-    }
-
-    private func badgeText(_ snapshot: ProviderSnapshot?, _ label: String) -> String? {
-        guard case .badge(_, let text, _, _)? = snapshot?.line(label: label) else { return nil }
-        return text
-    }
-
-    private func values(_ snapshot: ProviderSnapshot?, _ label: String) -> [MetricValue]? {
-        guard case .values(_, let values, _, _, _, _)? = snapshot?.line(label: label) else { return nil }
-        return values
-    }
-
-    private func assertBareBadge(_ snapshot: ProviderSnapshot?, file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertEqual(badgeText(snapshot, "Status")?.hasPrefix("Rate limited"), true, file: file, line: line)
-        XCTAssertNil(snapshot?.line(label: "Session"), file: file, line: line)
-        XCTAssertNil(snapshot?.line(label: "Weekly"), file: file, line: line)
-        XCTAssertEqual(snapshot?.warning?.hasPrefix("Updates blocked by Anthropic"), true, file: file, line: line)
-    }
-
+final class ClaudeLaunchSnapshotTests: ClaudeLaunchSnapshotTestCase {
     // MARK: - The fix
 
     func testFirst429AfterRelaunchKeepsCachedLimitsUnderTheRateLimitNotice() async throws {
@@ -106,8 +15,8 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
         // The cached entry is itself a rate-limited snapshot from the previous session, with spend
         // tiles: only its live limits may come back, never its notice or its tiles.
         seedCache(defaults, lines: [
-            .progress(label: "Session", used: 25, limit: 100, format: .percent, resetsAt: Fixture.future),
-            .progress(label: "Weekly", used: 40, limit: 100, format: .percent, resetsAt: Fixture.future),
+            .progress(label: "Session", used: 25, limit: 100, format: .percent, resetsAt: ClaudeLaunchFixture.future),
+            .progress(label: "Weekly", used: 40, limit: 100, format: .percent, resetsAt: ClaudeLaunchFixture.future),
             .text(label: "Note", value: "Live usage rate limited - retry in ~3m"),
             .values(label: "Today", values: [MetricValue(number: 999, kind: .dollars, estimated: true)])
         ], warning: "Updates blocked by Anthropic. Stale.")
@@ -116,7 +25,7 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
                 timestamp: "2026-02-20T16:00:00.000Z", input: 100, output: 50, costUSD: 0.25
             )
         ])
-        let http = FakeHTTPClient(response: Fixture.rateLimited)
+        let http = FakeHTTPClient(response: ClaudeLaunchFixture.rateLimited)
         let store = launch(defaults: defaults, files: makeFiles(), http: http, logHome: logHome)
         XCTAssertEqual(used(store.snapshots["claude"], "Session"), 25, "launch paints the cached limits")
 
@@ -134,6 +43,7 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
             "Updates blocked by Anthropic. Be patient — manual refreshes will make it worse. Retrying in ~10m."
         )
         XCTAssertEqual(snapshot?.resolvedWarningAction, .wait)
+        XCTAssertEqual(snapshot?.refreshedAt, ClaudeLaunchFixture.now.addingTimeInterval(-3600), "the limits' own time, not the 429's")
         // Spend is rescanned from this Mac's logs, never copied from the cached entry.
         XCTAssertEqual(values(snapshot, "Today"), [
             MetricValue(number: 0.25, kind: .dollars, estimated: true),
@@ -144,7 +54,7 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
         // The next launch still finds usable limits on disk, under the same account stamp.
         let reread = ProviderSnapshotCache(userDefaults: defaults)
         XCTAssertEqual(used(reread.loadSnapshots(providerIDs: ["claude"])["claude"], "Session"), 25)
-        XCTAssertEqual(reread.producedByIdentityKey(providerID: "claude"), Fixture.identityKey)
+        XCTAssertEqual(reread.producedByIdentityKey(providerID: "claude"), ClaudeLaunchFixture.identityKey)
     }
 
     // MARK: - The gate
@@ -152,7 +62,7 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
     func testEntryStampedByAnotherAccountFallsBackToTheBareBadge() async {
         let defaults = makeDefaults("mismatch")
         seedCache(defaults, stamp: "acct-other|org-1")
-        let store = launch(defaults: defaults, files: makeFiles(), http: FakeHTTPClient(response: Fixture.rateLimited))
+        let store = launch(defaults: defaults, files: makeFiles(), http: FakeHTTPClient(response: ClaudeLaunchFixture.rateLimited))
         XCTAssertNil(store.snapshots["claude"], "the swap guard already refuses to paint it")
 
         await store.refresh(providerID: "claude")
@@ -163,7 +73,7 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
     func testUnstampedEntryFallsBackToTheBareBadge() async {
         let defaults = makeDefaults("unstamped")
         seedCache(defaults, stamp: nil)
-        let store = launch(defaults: defaults, files: makeFiles(), http: FakeHTTPClient(response: Fixture.rateLimited))
+        let store = launch(defaults: defaults, files: makeFiles(), http: FakeHTTPClient(response: ClaudeLaunchFixture.rateLimited))
 
         await store.refresh(providerID: "claude")
 
@@ -177,7 +87,7 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
         let store = launch(
             defaults: defaults,
             files: makeFiles(),
-            http: FakeHTTPClient(response: Fixture.rateLimited),
+            http: FakeHTTPClient(response: ClaudeLaunchFixture.rateLimited),
             identityKeys: [:]
         )
         XCTAssertEqual(used(store.snapshots["claude"], "Session"), 25, "an unresolved card still paints its cache")
@@ -191,15 +101,15 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
         let defaults = makeDefaults("relogin")
         seedCache(defaults)
         let files = makeFiles()
-        let store = launch(defaults: defaults, files: files, http: FakeHTTPClient(response: Fixture.rateLimited))
+        let store = launch(defaults: defaults, files: files, http: FakeHTTPClient(response: ClaudeLaunchFixture.rateLimited))
         // `claude /login` as another account between the launch account pass and the first refresh.
-        files.files[Fixture.statePath] = Fixture.stateFile(account: "ACCT-B")
+        files.files[ClaudeLaunchFixture.statePath] = ClaudeLaunchFixture.stateFile(account: "ACCT-B")
 
         await store.refresh(providerID: "claude")
         assertBareBadge(store.snapshots["claude"])
 
         // Even if the state file reads as the old account again, the dropped limits do not return.
-        files.files[Fixture.statePath] = Fixture.stateFile()
+        files.files[ClaudeLaunchFixture.statePath] = ClaudeLaunchFixture.stateFile()
         await store.refresh(providerID: "claude", force: true)
         assertBareBadge(store.snapshots["claude"])
     }
@@ -211,15 +121,15 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
         seedCache(defaults)
         let keychain = ServiceKeychain()
         let files = makeFiles()
-        files.files[Fixture.credentialsPath] = Fixture.credentials(accessToken: "file-token")
+        files.files[ClaudeLaunchFixture.credentialsPath] = ClaudeLaunchFixture.credentials(accessToken: "file-token")
         let service = ClaudeAuthStore(
             environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]), files: files, keychain: keychain
         ).keychainServiceCandidates().first!
-        keychain.currentUserValues[service] = Fixture.credentials(accessToken: "keychain-token")
+        keychain.currentUserValues[service] = ClaudeLaunchFixture.credentials(accessToken: "keychain-token")
         let http = RoutingHTTPClient { request in
             request.headers["Authorization"] == "Bearer keychain-token"
                 ? HTTPResponse(statusCode: 401, headers: [:], body: Data())
-                : Fixture.rateLimited
+                : ClaudeLaunchFixture.rateLimited
         }
         let store = launch(defaults: defaults, files: files, keychain: keychain, http: http)
 
@@ -233,8 +143,8 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
         let defaults = makeDefaults("discard")
         seedCache(defaults)
         let files = makeFiles()
-        let calls = Counter()
-        let http = RoutingHTTPClient { _ in calls.next() == 1 ? Fixture.usage(session: 60) : Fixture.rateLimited }
+        let calls = ClaudeLaunchCounter()
+        let http = RoutingHTTPClient { _ in calls.next() == 1 ? ClaudeLaunchFixture.usage(session: 60) : ClaudeLaunchFixture.rateLimited }
         let store = launch(defaults: defaults, files: files, http: http)
 
         await store.refresh(providerID: "claude")
@@ -246,7 +156,7 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
         XCTAssertNil(store.snapshots["claude"]?.line(label: "Weekly"))
 
         // A rotated token clears last-good usage; the launch cache must not resurface behind it.
-        files.files[Fixture.credentialsPath] = Fixture.credentials(accessToken: "rotated")
+        files.files[ClaudeLaunchFixture.credentialsPath] = ClaudeLaunchFixture.credentials(accessToken: "rotated")
         await store.refresh(providerID: "claude", force: true)
         assertBareBadge(store.snapshots["claude"])
     }
@@ -256,10 +166,10 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
     func testWindowPastItsResetIsDropped() async {
         let defaults = makeDefaults("expired-window")
         seedCache(defaults, lines: [
-            .progress(label: "Session", used: 90, limit: 100, format: .percent, resetsAt: Fixture.now.addingTimeInterval(-60)),
-            .progress(label: "Weekly", used: 40, limit: 100, format: .percent, resetsAt: Fixture.future)
+            .progress(label: "Session", used: 90, limit: 100, format: .percent, resetsAt: ClaudeLaunchFixture.now.addingTimeInterval(-60)),
+            .progress(label: "Weekly", used: 40, limit: 100, format: .percent, resetsAt: ClaudeLaunchFixture.future)
         ])
-        let store = launch(defaults: defaults, files: makeFiles(), http: FakeHTTPClient(response: Fixture.rateLimited))
+        let store = launch(defaults: defaults, files: makeFiles(), http: FakeHTTPClient(response: ClaudeLaunchFixture.rateLimited))
 
         await store.refresh(providerID: "claude")
 
@@ -271,39 +181,39 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
     func testEveryWindowPastItsResetFallsBackToTheBareBadge() async {
         let defaults = makeDefaults("all-expired")
         seedCache(defaults, lines: [
-            .progress(label: "Session", used: 90, limit: 100, format: .percent, resetsAt: Fixture.now.addingTimeInterval(-60))
+            .progress(label: "Session", used: 90, limit: 100, format: .percent, resetsAt: ClaudeLaunchFixture.now.addingTimeInterval(-60))
         ])
-        let store = launch(defaults: defaults, files: makeFiles(), http: FakeHTTPClient(response: Fixture.rateLimited))
+        let store = launch(defaults: defaults, files: makeFiles(), http: FakeHTTPClient(response: ClaudeLaunchFixture.rateLimited))
 
         await store.refresh(providerID: "claude")
 
         assertBareBadge(store.snapshots["claude"])
     }
 
-    func testResetGrantsPastTheirDeadlineAreDropped() {
-        let past = Fixture.now.addingTimeInterval(-60)
-        let soon = Fixture.now.addingTimeInterval(3600)
-        func cached(_ count: Double, _ expiries: [Date]) -> ProviderSnapshot {
-            ProviderSnapshot(providerID: "claude", displayName: "Claude", lines: [.values(
-                label: "Rate Limit Resets",
-                values: [MetricValue(number: count, kind: .count, label: "available")],
-                expiriesAt: expiries
-            )])
-        }
+    func testRowsWithoutAResetTimeAreNeverCarried() async {
+        // Nothing bounds a row with no reset: an unstarted Session and Extra Usage (capped or not)
+        // would otherwise ride every later 429 until a fetch succeeds.
+        let defaults = makeDefaults("no-reset")
+        seedCache(defaults, lines: [
+            .progress(label: "Session", used: 0, limit: 100, format: .percent),
+            .progress(label: "Weekly", used: 40, limit: 100, format: .percent, resetsAt: ClaudeLaunchFixture.future),
+            .progress(label: "Extra usage spent", used: 50, limit: 100, format: .dollars)
+        ])
+        let store = launch(defaults: defaults, files: makeFiles(), http: FakeHTTPClient(response: ClaudeLaunchFixture.rateLimited))
+        await store.refresh(providerID: "claude")
+        XCTAssertEqual(
+            store.snapshots["claude"]?.lines.map(\.label).filter(ClaudeUsageMapper.liveLimitLabels.contains),
+            ["Weekly"]
+        )
 
-        // Three grants, one known deadline passed: two remain, one of them without a deadline.
-        XCTAssertEqual(
-            ClaudeLiveUsageCache.currentLiveLimits(in: cached(3, [past, soon]), now: Fixture.now),
-            [.values(
-                label: "Rate Limit Resets",
-                values: [MetricValue(number: 2, kind: .count, label: "available")],
-                expiriesAt: [soon]
-            )]
-        )
-        XCTAssertEqual(
-            ClaudeLiveUsageCache.currentLiveLimits(in: cached(2, [past, past]), now: Fixture.now),
-            [.values(label: "Rate Limit Resets", values: [MetricValue(number: 0, kind: .count, label: "available")])]
-        )
+        let uncapped = makeDefaults("no-reset-uncapped")
+        seedCache(uncapped, lines: [
+            .values(label: "Extra usage spent", values: [MetricValue(number: 50, kind: .dollars)])
+        ])
+        let second = launch(defaults: uncapped, files: makeFiles(), http: FakeHTTPClient(response: ClaudeLaunchFixture.rateLimited))
+        await second.refresh(providerID: "claude")
+        assertBareBadge(second.snapshots["claude"])
+        XCTAssertNil(second.snapshots["claude"]?.line(label: "Extra usage spent"))
     }
 
     /// Every row the live endpoint can produce must be a known live-limit label, or that row would
@@ -324,7 +234,7 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
     private func state(
         accessToken: String = "token",
         source: ClaudeCredentialState.Source = .file,
-        identityKey: String? = Fixture.identityKey
+        identityKey: String? = ClaudeLaunchFixture.identityKey
     ) -> ClaudeCredentialState {
         ClaudeCredentialState(
             oauth: ClaudeOAuth(accessToken: accessToken, refreshToken: "refresh-\(accessToken)"),
@@ -338,9 +248,9 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
         var cache = ClaudeLiveUsageCache()
         cache.holdLaunchSnapshot(
             ProviderSnapshot(providerID: "claude", displayName: "Claude", lines: [
-                .progress(label: "Session", used: 25, limit: 100, format: .percent, resetsAt: Fixture.future)
+                .progress(label: "Session", used: 25, limit: 100, format: .percent, resetsAt: ClaudeLaunchFixture.future)
             ]),
-            producedByIdentityKey: Fixture.identityKey
+            producedByIdentityKey: ClaudeLaunchFixture.identityKey
         )
         return cache
     }
@@ -352,7 +262,7 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
         cache.activate(for: state(accessToken: "old"))
         cache.activate(for: state(accessToken: "rotated"))
 
-        XCTAssertEqual(cache.launchCachedUsage(for: state(accessToken: "rotated"), now: Fixture.now)?.lines.map(\.label), ["Session"])
+        XCTAssertEqual(cache.launchCachedUsage(for: state(accessToken: "rotated"), now: ClaudeLaunchFixture.now)?.lines.map(\.label), ["Session"])
     }
 
     func testLoginWithoutStateFileIdentityNeverGetsTheCachedLimits() {
@@ -361,9 +271,9 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
         let desktop = state(source: .desktop, identityKey: nil)
         cache.activate(for: desktop)
 
-        XCTAssertNil(cache.launchCachedUsage(for: desktop, now: Fixture.now))
+        XCTAssertNil(cache.launchCachedUsage(for: desktop, now: ClaudeLaunchFixture.now))
         // Unknown is not a login change: the described login can still use the cache afterwards.
-        XCTAssertNotNil(cache.launchCachedUsage(for: state(), now: Fixture.now))
+        XCTAssertNotNil(cache.launchCachedUsage(for: state(), now: ClaudeLaunchFixture.now))
     }
 
     func testStateFileIdentityRidesOnlyOnTheHighestPriorityStoredLogin() {
@@ -372,62 +282,43 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
         let store = ClaudeAuthStore(
             environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]), files: files, keychain: keychain
         )
-        XCTAssertEqual(store.loadCredentialSet().candidates.map(\.stateFileIdentityKey), [Fixture.identityKey])
+        XCTAssertEqual(store.loadCredentialSet().candidates.map(\.stateFileIdentityKey), [ClaudeLaunchFixture.identityKey])
 
-        keychain.currentUserValues[store.keychainServiceCandidates().first!] = Fixture.credentials(accessToken: "keychain-token")
+        keychain.currentUserValues[store.keychainServiceCandidates().first!] = ClaudeLaunchFixture.credentials(accessToken: "keychain-token")
         let candidates = store.loadCredentialSet().candidates
         XCTAssertEqual(candidates.map(\.oauth.accessToken), ["keychain-token", "token"])
-        XCTAssertEqual(candidates.map(\.stateFileIdentityKey), [Fixture.identityKey, nil])
+        XCTAssertEqual(candidates.map(\.stateFileIdentityKey), [ClaudeLaunchFixture.identityKey, nil])
+    }
+
+    func testBorrowedDefaultHomeKeychainItemCarriesNoIdentity() {
+        // `CLAUDE_CONFIG_DIR` with no keychain item of its own falls back to the default home's
+        // item, which that dir's state file does not describe.
+        let files = FakeFiles([ClaudeLaunchFixture.statePath: ClaudeLaunchFixture.stateFile()])
+        let keychain = ServiceKeychain()
+        let store = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]), files: files, keychain: keychain
+        )
+        let services = store.keychainServiceCandidates()
+        XCTAssertEqual(services.count, 2)
+        keychain.currentUserValues[services[1]] = ClaudeLaunchFixture.credentials(accessToken: "default-home")
+        XCTAssertEqual(store.loadCredentialSet().candidates.map(\.stateFileIdentityKey), [nil])
+
+        keychain.currentUserValues[services[0]] = ClaudeLaunchFixture.credentials(accessToken: "own")
+        XCTAssertEqual(store.loadCredentialSet().candidates.first?.stateFileIdentityKey, ClaudeLaunchFixture.identityKey)
     }
 
     func testConfigDirCardReadsItsOwnStateFileIdentity() {
         let store = ClaudeAuthStore(
             environment: FakeEnvironment(),
             files: FakeFiles([
-                "/Users/dev/.claude-work/.credentials.json": Fixture.credentials(),
-                "/Users/dev/.claude-work/.claude.json": Fixture.stateFile(account: "ACCT-WORK"),
-                "/Users/dev/.claude.json": Fixture.stateFile()
+                "/Users/dev/.claude-work/.credentials.json": ClaudeLaunchFixture.credentials(),
+                "/Users/dev/.claude-work/.claude.json": ClaudeLaunchFixture.stateFile(account: "ACCT-WORK"),
+                "/Users/dev/.claude.json": ClaudeLaunchFixture.stateFile()
             ]),
             keychain: FakeKeychain(),
             scope: .configDir(path: "/Users/dev/.claude-work", keychainLiteral: "/Users/dev/.claude-work")
         )
 
         XCTAssertEqual(store.loadCredentialSet().candidates.map(\.stateFileIdentityKey), ["acct-work|org-1"])
-    }
-}
-
-/// Fixture values, outside the main-actor test class so the fakes' `@Sendable` closures can read them.
-private enum Fixture {
-    static let now = RunwayISO8601.date(from: "2026-02-20T16:00:00.000Z")!
-    static let future = RunwayISO8601.date(from: "2099-01-01T00:00:00.000Z")!
-    static let identityKey = "acct-a|org-1"
-    static let credentialsPath = "/tmp/claude/.credentials.json"
-    static let statePath = "/tmp/claude/.claude.json"
-    static let rateLimited = HTTPResponse(statusCode: 429, headers: ["retry-after": "600"], body: Data())
-
-    static func credentials(accessToken: String = "token") -> String {
-        #"{"claudeAiOauth":{"accessToken":"\#(accessToken)","refreshToken":"refresh-\#(accessToken)","subscriptionType":"pro","scopes":["user:profile"]}}"#
-    }
-
-    static func stateFile(account: String = "ACCT-A") -> String {
-        #"{"oauthAccount":{"accountUuid":"\#(account)","organizationUuid":"ORG-1"}}"#
-    }
-
-    static func usage(session: Double) -> HTTPResponse {
-        HTTPResponse(
-            statusCode: 200,
-            headers: [:],
-            body: Data(#"{"five_hour":{"utilization":\#(session),"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8)
-        )
-    }
-}
-
-private final class Counter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var value = 0
-    func next() -> Int {
-        lock.lock(); defer { lock.unlock() }
-        value += 1
-        return value
     }
 }

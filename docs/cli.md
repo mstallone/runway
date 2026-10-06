@@ -8,7 +8,7 @@ runway codex           # one provider, refreshing when its cache is stale
 runway codex --force   # refresh through the shared provider engine, cache, print, exit
 ```
 
-The command and the app share the same providers, auth stores, pricing, refresh coordinator, and snapshot cache. A normal read reuses snapshots less than five minutes old and refreshes missing or stale ones. `--force` skips that freshness check and writes successful results to the same cache.
+The command and the app share the same providers, auth stores, pricing, refresh coordinator, and snapshot cache. A normal read reuses snapshots checked less than five minutes ago and refreshes missing or stale ones. While Anthropic rate-limits Claude, a read can return limits whose `fetchedAt` is older than that; the command still asks at most once per five minutes. `--force` skips that freshness check and writes successful results to the same cache.
 
 `--force` is not a full substitute for the app's manual refresh. Nobody is watching a terminal command, so it never opens a macOS Keychain approval dialog. It also cannot inherit one: `runway` is a separate executable with its own signature, and macOS grants Keychain access per binary. A provider whose credential lives only in a protected Keychain item still works through the snapshot the app writes, within its five-minute freshness window. A forced or stale read of that provider reports it as unavailable. Credentials never appear in the output.
 

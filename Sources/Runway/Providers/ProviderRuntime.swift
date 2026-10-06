@@ -61,10 +61,17 @@ protocol ProviderRuntime: AnyObject {
     /// whose in-memory fallback state does not survive a relaunch can hold it for its first degraded
     /// refresh. The snapshot is this Mac's own cached result, never a peer's.
     func adoptLaunchSnapshot(_ snapshot: ProviderSnapshot, producedByIdentityKey identityKey: String)
+
+    /// The account identity the provider's local evidence named for the account-bound values in the
+    /// snapshot `refresh()` just returned, in the launch account pass's key format. `nil` means no
+    /// evidence, and `WidgetDataStore` then stamps the cache entry with the card's launch identity.
+    /// Read once, right after `refresh()` returns. Never persisted or synced.
+    var snapshotAccountIdentityKey: String? { get }
 }
 
 extension ProviderRuntime {
     func adoptLaunchSnapshot(_ snapshot: ProviderSnapshot, producedByIdentityKey identityKey: String) {}
+    var snapshotAccountIdentityKey: String? { nil }
 
     /// 150s default: above Kimi's full OAuth retry budget (~93s plus loading and the usage
     /// request), Cursor's sequential probe (up to ~130s when the usage export runs to its

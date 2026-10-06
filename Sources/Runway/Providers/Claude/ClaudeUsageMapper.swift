@@ -10,6 +10,12 @@ struct ClaudeMappedUsage: Equatable, Sendable {
     /// notice is the one that must stay `.wait`: it tells the user manual refreshes make things worse,
     /// so the header triangle it drives must not offer one.
     var warningAction: ProviderSnapshot.WarningAction = .refresh
+    /// When the live-limit lines were fetched, and which account Claude Code's state file named for
+    /// the login that fetched them. Set by the provider on a live result and carried with it when
+    /// that result is served again through a rate limit, so the snapshot keeps the limits' real age
+    /// and account. `nil` on a result with no carried limits.
+    var limitsFetchedAt: Date? = nil
+    var limitsIdentityKey: String? = nil
 }
 
 enum ClaudeUsageMapper {

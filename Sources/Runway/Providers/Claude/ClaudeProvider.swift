@@ -33,6 +33,7 @@ final class ClaudeProvider: ProviderRuntime {
     /// Last-good live usage, the rate-limit cooldown, and the launch-cached limits that stand in
     /// for last-good usage on a relaunch's first 429.
     private var liveUsageCache = ClaudeLiveUsageCache()
+    private(set) var snapshotAccountIdentityKey: String?
 
     init(
         provider: Provider = ClaudeProvider.makeProvider(),
@@ -84,7 +85,8 @@ final class ClaudeProvider: ProviderRuntime {
     }
 
     func refresh() async -> ProviderSnapshot {
-        await refresh(forceDesktopFallback: false, previousFallbackError: nil)
+        snapshotAccountIdentityKey = nil
+        return await refresh(forceDesktopFallback: false, previousFallbackError: nil)
     }
 
     private func refresh(
@@ -281,6 +283,7 @@ final class ClaudeProvider: ProviderRuntime {
         switch authStore.liveUsageAvailability(state) {
         case .available:
             mapped = try await fetchLiveUsage(state: state)
+            snapshotAccountIdentityKey = mapped.limitsIdentityKey
             // A rate-limited fetch rides its "Updates blocked by Anthropic" notice on the mapped usage so
             // it reaches the header triangle even when the badge/note lines aren't in the user's layout.
             warning = mapped.warning
@@ -360,7 +363,9 @@ final class ClaudeProvider: ProviderRuntime {
             provider: provider,
             plan: mapped.plan,
             lines: mapped.lines,
-            refreshedAt: now(),
+            // Limits carried through a rate limit keep the time they were fetched, so the card's
+            // Outdated tag and every export report their real age.
+            refreshedAt: mapped.limitsFetchedAt ?? now(),
             usageHistory: usageHistory,
             warning: warning,
             warningAction: warningAction,
@@ -428,7 +433,9 @@ final class ClaudeProvider: ProviderRuntime {
             return rateLimitedSnapshot(state: state, retryAfterSeconds: retryAfterSeconds, cooldownActive: false)
         }
 
-        let mapped = try ClaudeUsageMapper.mapUsageResponse(response, credentials: state.displayOAuth, now: now())
+        var mapped = try ClaudeUsageMapper.mapUsageResponse(response, credentials: state.displayOAuth, now: now())
+        mapped.limitsFetchedAt = now()
+        mapped.limitsIdentityKey = state.stateFileIdentityKey
         liveUsageCache.recordLiveUsage(mapped)
         return mapped
     }

@@ -621,11 +621,22 @@ final class WidgetDataStore {
         }
         localSnapshots[providerID] = snapshot
         providersRefreshedThisLaunch.insert(providerID)
-        // Stamp the write with the card's launch-resolved account identity; nil (no stamp) for
-        // non-account providers and for cards whose identity didn't resolve this launch.
+        // Stamp the write with the account that produced it: the one the provider's own local
+        // evidence named for this refresh when it reports one (a login can change while the app
+        // runs), else the card's launch-resolved identity. nil (no stamp) for non-account providers
+        // and for cards whose identity didn't resolve this launch.
+        //
+        // A snapshot whose notice says to wait (Claude's rate limit) can carry values dated when
+        // they were really fetched. Its freshness counts from this check instead, or every reader
+        // with no in-memory cooldown (each one-shot CLI run) would ask again at once, which is the
+        // one thing the notice says not to do.
+        let launchIdentityKey = providerIdentityKeys[providerID]
         cache.store(
             snapshot,
-            producedByIdentityKey: providerIdentityKeys[providerID],
+            producedByIdentityKey: launchIdentityKey == nil
+                ? nil
+                : provider.snapshotAccountIdentityKey ?? launchIdentityKey,
+            checkedAt: snapshot.resolvedWarningAction == .wait ? now() : nil,
             persist: snapshotRebuildDeferrals == 0
         )
         requestSnapshotRebuild()
