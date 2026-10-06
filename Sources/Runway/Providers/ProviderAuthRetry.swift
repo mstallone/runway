@@ -20,7 +20,7 @@ enum ProviderAuthRetry {
 
     /// Triage a response that should carry a usable body: a 401/403 means the token went bad (throw
     /// `authExpired`), any other non-2xx is a request failure (throw `requestFailed(status)`), and a
-    /// 2xx returns without throwing. Used by the Claude, Codex and Grok mappers and `CursorProvider`.
+    /// 2xx returns without throwing.
     nonisolated static func requireSuccess(
         _ response: HTTPResponse,
         authExpired: Error,
