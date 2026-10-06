@@ -103,6 +103,17 @@ final class GrokLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(merged.modelUsage?.daily.first?.models.map(\.model), ["grok-4.6-build"])
     }
 
+    func testCorruptHugeLegacyTokenCountIsClampedInsteadOfTrapping() {
+        // `Int(Double)` traps above `Int.max`; one corrupt row must not take the app down.
+        let log = """
+        {"ts":"2026-06-10T09:00:00.000Z","pid":1e30,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1e30,"cached_prompt_tokens":1e31,"completion_tokens":0,"reasoning_tokens":0}}
+        """
+
+        let usage = GrokLogUsageScanner.parse(log, since: since, pricing: TestPricing.bundled)
+
+        XCTAssertEqual(usage.series.daily.first?.totalTokens, 1_000_000_000_000_000)
+    }
+
     func testAttributesTokensToPerProcessModelAndPrices() {
         // pid 100 is on grok-build, pid 200 on grok-composer-2.5-fast; each token row prices against
         // its own process's current model.

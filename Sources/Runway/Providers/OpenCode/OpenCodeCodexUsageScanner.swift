@@ -123,11 +123,11 @@ struct OpenCodeCodexUsageScanner: Sendable {
                   // left behind before a user switched the current credential to OAuth.
                   ProviderParse.number(values[1]) == 0
             else { return nil }
-            let input = clampedTokens(values[4])
-            let cacheRead = clampedTokens(values[5])
-            let cacheWrite = clampedTokens(values[6])
-            let output = clampedTokens(values[7])
-            let reasoning = clampedTokens(values[8])
+            let input = ProviderParse.clampedTokenCount(values[4])
+            let cacheRead = ProviderParse.clampedTokenCount(values[5])
+            let cacheWrite = ProviderParse.clampedTokenCount(values[6])
+            let output = ProviderParse.clampedTokenCount(values[7])
+            let reasoning = ProviderParse.clampedTokenCount(values[8])
             let tokens = TokenBreakdown(
                 input: input,
                 cacheWrite5m: cacheWrite,
@@ -140,7 +140,7 @@ struct OpenCodeCodexUsageScanner: Sendable {
                 model: ((values[3] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
                 tokens: tokens,
                 // OpenCode's own total is only a fallback: the parsed buckets are what gets priced.
-                reportedTotalTokens: tokens.totalTokens > 0 ? tokens.totalTokens : clampedTokens(values[2])
+                reportedTotalTokens: tokens.totalTokens > 0 ? tokens.totalTokens : ProviderParse.clampedTokenCount(values[2])
             )
         }
     }
@@ -165,10 +165,6 @@ struct OpenCodeCodexUsageScanner: Sendable {
             }
         }
         return withoutID + byID.values
-    }
-
-    private static func clampedTokens(_ value: Any) -> Int {
-        Int(min(max(ProviderParse.number(value) ?? 0, 0), 1_000_000_000_000_000))
     }
 
     static func dataSQL(cutoffMs: Int) -> String {

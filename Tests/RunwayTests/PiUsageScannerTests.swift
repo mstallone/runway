@@ -57,6 +57,15 @@ final class PiUsageScannerTests: XCTestCase {
         XCTAssertEqual(entry?.tokens.output, 50)
     }
 
+    func testCorruptHugeTokenCountIsClampedInsteadOfTrapping() {
+        // `Int(Double)` traps above `Int.max`; one corrupt line must not take the app down.
+        let json = #"{"type":"message","id":"m1","timestamp":"2026-07-12T10:00:00.000Z","message":{"role":"assistant","provider":"anthropic","model":"claude-opus-4-8","usage":{"input":1e30,"output":-5,"totalTokens":1e30}}}"#
+        let entry = PiUsageScanner.parseLine(Data(json.utf8))
+        XCTAssertEqual(entry?.tokens.input, 1_000_000_000_000_000)
+        XCTAssertEqual(entry?.tokens.output, 0)
+        XCTAssertEqual(entry?.reportedTotalTokens, 1_000_000_000_000_000)
+    }
+
     func testSplitsCacheWriteBucketsBy1hPortion() {
         let entry = PiUsageScanner.parseLine(line(cacheWrite: 1000, cacheWrite1h: 400))
         XCTAssertEqual(entry?.tokens.cacheWrite1h, 400)

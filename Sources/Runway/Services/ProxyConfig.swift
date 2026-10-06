@@ -32,27 +32,42 @@ struct ProxyConfig: Equatable, Sendable {
     static let configPath = "~/.runway/config.json"
 
     /// The app-wide proxy, read from disk exactly once (first use).
-    static let current: ProxyConfig? = load(
-        text: try? String(
-            contentsOfFile: NSString(string: configPath).expandingTildeInPath,
-            encoding: .utf8
-        )
-    )
+    static let current: ProxyConfig? = load(text: readConfigText())
+
+    /// The config file's text. A missing file is the normal case and stays silent; one that exists
+    /// but can't be read is logged, because the user's traffic then goes direct.
+    private static func readConfigText() -> String? {
+        let path = NSString(string: configPath).expandingTildeInPath
+        guard FileManager.default.fileExists(atPath: path) else { return nil }
+        do {
+            return try String(contentsOfFile: path, encoding: .utf8)
+        } catch {
+            AppLog.warn(.config, "proxy off: couldn't read \(configPath): \(error.localizedDescription)")
+            return nil
+        }
+    }
 
     /// Parses config-file text. `nil` unless `proxy.enabled == true` with a valid socks5/http/https
-    /// URL — the silent-disable behavior docs/proxy.md documents.
+    /// URL. A missing or disabled proxy is silent; a config that can't be parsed, or an enabled
+    /// proxy whose URL is rejected, is logged (never the URL itself, which may carry a password).
     static func load(text: String?) -> ProxyConfig? {
-        guard let text,
-              let data = text.data(using: .utf8),
-              let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let proxy = root["proxy"] as? [String: Any],
-              proxy["enabled"] as? Bool == true,
-              let urlString = proxy["url"] as? String,
+        guard let text else { return nil }
+        guard let data = text.data(using: .utf8),
+              let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        else {
+            AppLog.warn(.config, "proxy off: \(configPath) is not valid JSON")
+            return nil
+        }
+        guard let proxy = root["proxy"] as? [String: Any], proxy["enabled"] as? Bool == true else { return nil }
+        guard let urlString = proxy["url"] as? String,
               let url = URL(string: urlString),
               let schemeRaw = url.scheme?.lowercased(),
               let scheme = Scheme(rawValue: schemeRaw),
               let host = url.host(), !host.isEmpty
-        else { return nil }
+        else {
+            AppLog.warn(.config, "proxy off: proxy.enabled is true but proxy.url is missing or not a socks5, http or https URL")
+            return nil
+        }
 
         return ProxyConfig(
             scheme: scheme,

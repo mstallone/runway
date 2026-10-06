@@ -153,7 +153,12 @@ struct ClaudeTokenRenewal: Sendable {
             case .missing, .unavailable: return nil
             }
         case .file(let path):
-            return try? files.readTextIfPresent(path)
+            do {
+                return try files.readTextIfPresent(path)
+            } catch {
+                AppLog.warn(LogTag.auth("claude"), "token renewal skipped: couldn't re-read the credentials file: \(error.localizedDescription)")
+                return nil
+            }
         }
     }
 

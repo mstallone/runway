@@ -114,14 +114,14 @@ actor PiUsageScanner {
               let usage = message["usage"] as? [String: Any]
         else { return nil }
 
-        let cacheWrite = Int(ProviderParse.number(usage["cacheWrite"]) ?? 0)
-        let cacheWrite1h = Int(ProviderParse.number(usage["cacheWrite1h"]) ?? 0)
+        let cacheWrite = ProviderParse.clampedTokenCount(usage["cacheWrite"])
+        let cacheWrite1h = ProviderParse.clampedTokenCount(usage["cacheWrite1h"])
         let tokens = TokenBreakdown(
-            input: Int(ProviderParse.number(usage["input"]) ?? 0),
+            input: ProviderParse.clampedTokenCount(usage["input"]),
             cacheWrite5m: max(cacheWrite - cacheWrite1h, 0),
             cacheWrite1h: cacheWrite1h,
-            cacheRead: Int(ProviderParse.number(usage["cacheRead"]) ?? 0),
-            output: Int(ProviderParse.number(usage["output"]) ?? 0)
+            cacheRead: ProviderParse.clampedTokenCount(usage["cacheRead"]),
+            output: ProviderParse.clampedTokenCount(usage["output"])
         )
 
         let carriedCost = (usage["cost"] as? [String: Any]).flatMap { ProviderParse.number($0["total"]) }
@@ -132,7 +132,7 @@ actor PiUsageScanner {
             model: (message["model"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
             carriedCost: carriedCost,
             tokens: tokens,
-            reportedTotalTokens: Int(ProviderParse.number(usage["totalTokens"]) ?? 0)
+            reportedTotalTokens: ProviderParse.clampedTokenCount(usage["totalTokens"])
         )
     }
 

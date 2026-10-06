@@ -109,7 +109,12 @@ enum LocalUsageAPI {
     }
 
     private static func encode(_ value: some Encodable) -> Data {
-        (try? JSONEncoder().encode(value)) ?? Data("[]".utf8)
+        do {
+            return try JSONEncoder().encode(value)
+        } catch {
+            AppLog.error(.localAPI, "usage response could not be encoded; serving an empty list: \(error.localizedDescription)")
+            return Data("[]".utf8)
+        }
     }
 
     // MARK: - Wire types (the documented public shape, distinct from the internal cache Codable)

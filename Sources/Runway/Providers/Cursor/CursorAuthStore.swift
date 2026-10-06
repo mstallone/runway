@@ -259,9 +259,20 @@ struct CursorAuthStore: Sendable {
     private func readStateValues(_ keys: [String]) -> [String: String] {
         let list = keys.map { "'\(Self.sqlEscaped($0))'" }.joined(separator: ", ")
         let sql = "SELECT json_group_object(key, value) FROM ItemTable WHERE key IN (\(list));"
-        guard let raw = try? sqlite.queryValue(path: Self.stateDBPath, sql: sql),
-              let object = try? JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: String]
-        else { return [:] }
+        let raw: String?
+        do {
+            raw = try sqlite.queryValue(path: Self.stateDBPath, sql: sql)
+        } catch {
+            // A missing database returns nil above; a throw is a real failure (locked database,
+            // `sqlite3` timeout) that would otherwise read as "not logged in".
+            AppLog.warn(LogTag.auth("cursor"), "couldn't read Cursor's state database: \(error.localizedDescription)")
+            return [:]
+        }
+        guard let raw else { return [:] }
+        guard let object = try? JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: String] else {
+            AppLog.warn(LogTag.auth("cursor"), "Cursor's state database returned an unexpected shape")
+            return [:]
+        }
         var values: [String: String] = [:]
         for (key, value) in object {
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)

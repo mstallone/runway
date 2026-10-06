@@ -93,6 +93,21 @@ enum ProviderParse {
         return try? JSONDecoder().decode(type, from: data)
     }
 
+    /// A whole, non-negative count that fits an `Int`, or nil. `Int(Double)` traps above `Int.max`,
+    /// so every count read from a log or an API goes through here or `clampedTokenCount`.
+    static func nonnegativeInt(_ value: Any?) -> Int? {
+        guard let number = number(value),
+              number >= 0, number <= Double(Int.max), number.rounded(.towardZero) == number
+        else { return nil }
+        return Int(number)
+    }
+
+    /// A token count clamped to a safe range: missing, non-numeric and negative values read as 0,
+    /// and a corrupt, absurdly large one stops at 1e15 (far above any real total).
+    static func clampedTokenCount(_ value: Any?) -> Int {
+        Int(min(max(number(value) ?? 0, 0), 1e15))
+    }
+
     /// Decode a JWT's payload (the middle dot-separated segment) as a JSON object. Base64url is
     /// translated to standard base64 and padded before decoding.
     static func jwtPayload(_ token: String) -> [String: Any]? {

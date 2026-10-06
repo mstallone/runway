@@ -150,9 +150,7 @@ struct OpenCodeUsageScanner: Sendable {
                   let cost = ProviderParse.number(entry[1]), cost >= 0,
                   entry[4] is String
             else { continue }
-            // Clamp before the Int conversion so a corrupt, absurdly large token count can't trap
-            // (Int(Double) crashes above Int.max). 1e15 is far above any real token total.
-            let tokens = Int(min(max(ProviderParse.number(entry[2]) ?? 0, 0), 1e15))
+            let tokens = ProviderParse.clampedTokenCount(entry[2])
             let model = (entry[3] as? String) ?? ""
             rows.append(Row(ms: ms, cost: cost, tokens: tokens, model: model))
         }
