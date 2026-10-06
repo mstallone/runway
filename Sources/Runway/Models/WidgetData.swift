@@ -39,7 +39,7 @@ struct WidgetData: Hashable {
     /// column reveals the resets popover on hover (a timeline of each credit's expiry, or an empty
     /// state when none are available) and lights up like the spend rows — so it stays reachable even
     /// at "0 available", where `expiriesAt` is empty. Off for every other row. Codex can claim from
-    /// that popover; Grok is list-only.
+    /// that popover; Claude and Grok are list-only.
     var showsResetExpiries: Bool = false
     /// Names of models this period's spend used that the pricing sources can't price. Their usage is
     /// left out of the displayed total, so the period's figures can be understated.

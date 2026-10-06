@@ -33,6 +33,7 @@ enum ClaudeUsageMapper {
         appendUsageWindow(body["seven_day_sonnet"], label: "Sonnet", periodDurationMs: weeklyPeriodMs, to: &lines)
         appendScopedWeeklyLimit(body["limits"], modelName: "Fable", label: "Fable", to: &lines)
         appendExtraUsage(body["extra_usage"], to: &lines)
+        appendResetGrants(body["cedar_ember"], now: now, to: &lines)
 
         return ClaudeMappedUsage(
             plan: formatPlan(subscriptionType: credentials.subscriptionType, rateLimitTier: credentials.rateLimitTier),
@@ -179,6 +180,57 @@ enum ClaudeUsageMapper {
             // No monthly cap: an unbounded spend, carried raw so it formats through `MetricFormatter`
             // (compact like the spend tiles, e.g. "$1.2K spent") instead of a baked full-currency string.
             lines.append(.values(label: "Extra usage spent", values: [MetricValue(number: used, kind: .dollars)]))
+        }
+    }
+
+    static let resetGrantsLabel = "Rate Limit Resets"
+
+    /// Usage-limit reset grants from the `cedar_ember` block (e.g. a model launch's "one usage-limit
+    /// reset for Pro and Max"), shown read-only like Codex's and Grok's reset rows: the row reads
+    /// "N available" and each remaining reset's grant deadline (`ends_at`) rides along in `expiriesAt`
+    /// for the resets popover and the expiry reminders. A grant with several resets left contributes
+    /// one expiry per reset. Grants already past their deadline or with none left are skipped. An
+    /// ineligible account (`eligible: false`) reads "0 available"; a missing or `null` block (plans
+    /// outside the program) emits no row. Paused grants still count: they are owned, just not usable
+    /// this instant.
+    private static func appendResetGrants(_ value: Any?, now: Date, to lines: inout [MetricLine]) {
+        guard let object = value as? [String: Any] else { return }
+        var count = 0
+        var expiries: [Date] = []
+        if object["eligible"] as? Bool == true {
+            for case let grant as [String: Any] in object["grants"] as? [Any] ?? [] {
+                guard let left = ProviderParse.number(grant["resets_left"]), left >= 1 else { continue }
+                let resets = Int(left.rounded(.down))
+                let endsAt = resetDate(grant["ends_at"])
+                if let endsAt, endsAt <= now { continue }
+                count += resets
+                if let endsAt { expiries += Array(repeating: endsAt, count: resets) }
+            }
+        }
+        lines.append(resetGrantsLine(count: count, expiries: expiries.sorted()))
+    }
+
+    private static func resetGrantsLine(count: Int, expiries: [Date]) -> MetricLine {
+        .values(
+            label: resetGrantsLabel,
+            values: [MetricValue(number: Double(count), kind: .count, label: "available")],
+            expiriesAt: expiries
+        )
+    }
+
+    /// Last-good usage can be served for a whole rate-limit cooldown, long enough for a grant to pass
+    /// its deadline. Drop the resets that lapsed since the fetch (count and expiry together) so a
+    /// stale row never offers a reset Anthropic no longer honors. Resets without a deadline carry no
+    /// expiry and are untouched, as is every other line.
+    static func droppingLapsedResetGrants(from lines: [MetricLine], now: Date) -> [MetricLine] {
+        lines.map { line in
+            guard case .values(let label, let values, _, let expiries, _, _) = line,
+                  label == resetGrantsLabel,
+                  let count = values.first?.number
+            else { return line }
+            let live = expiries.filter { $0 > now }
+            guard live.count != expiries.count else { return line }
+            return resetGrantsLine(count: max(0, Int(count) - (expiries.count - live.count)), expiries: live)
         }
     }
 

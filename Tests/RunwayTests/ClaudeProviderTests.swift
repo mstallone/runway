@@ -966,7 +966,7 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertEqual(values(snapshot.lines, "Today"),
                        [MetricValue(number: 0.25, kind: .dollars, estimated: true),
                         MetricValue(number: 150, kind: .count, label: "tokens")])
-        XCTAssertTrue(httpClient.requests.contains { $0.url.absoluteString == "https://api.anthropic.com/api/oauth/usage" })
+        XCTAssertTrue(httpClient.requests.contains { $0.url.absoluteString == "https://api.anthropic.com/api/oauth/usage?cedar_ember=1" })
     }
 
     func testInferenceOnlyScopeSurfacesReloginWarningAndSkipsUsageCallButKeepsSpendTiles() async throws {
@@ -1009,7 +1009,7 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertNil(badge(snapshot.lines, "Error"))
         XCTAssertNil(snapshot.line(label: "Session"))
         // The usage endpoint was never called — that's the whole point of the scope gate.
-        XCTAssertFalse(httpClient.requests.contains { $0.url.absoluteString.hasSuffix("/api/oauth/usage") })
+        XCTAssertFalse(httpClient.requests.contains { $0.url.path.hasSuffix("/api/oauth/usage") })
         // Local spend tiles are unaffected and still load.
         XCTAssertNotNil(values(snapshot.lines, "Today"))
         XCTAssertEqual(snapshot.plan, "Max 5x")
@@ -1198,7 +1198,7 @@ final class ClaudeProviderTests: XCTestCase {
         let clock = TestClock(t0)
         let usageCalls = CallCounter()
         let httpClient = RoutingHTTPClient { request in
-            guard request.url.absoluteString.hasSuffix("/api/oauth/usage") else {
+            guard request.url.path.hasSuffix("/api/oauth/usage") else {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data())
             }
             if usageCalls.next() == 1 {
@@ -1249,7 +1249,7 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertEqual(Self.progress(third.lines, "Session")?.used, 25)
         XCTAssertEqual(third.warning?.hasPrefix("Updates blocked by Anthropic"), true)
         XCTAssertEqual(third.resolvedWarningAction, .wait)
-        XCTAssertEqual(httpClient.requests.filter { $0.url.absoluteString.hasSuffix("/api/oauth/usage") }.count, 2)
+        XCTAssertEqual(httpClient.requests.filter { $0.url.path.hasSuffix("/api/oauth/usage") }.count, 2)
     }
 
     func testRateLimitedSnapshotPicksUpTierChangeFromStateFile() async {
@@ -1260,7 +1260,7 @@ final class ClaudeProviderTests: XCTestCase {
         let clock = TestClock(t0)
         let usageCalls = CallCounter()
         let httpClient = RoutingHTTPClient { request in
-            guard request.url.absoluteString.hasSuffix("/api/oauth/usage") else {
+            guard request.url.path.hasSuffix("/api/oauth/usage") else {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data())
             }
             if usageCalls.next() == 1 {
