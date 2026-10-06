@@ -1039,19 +1039,21 @@ final class CodexLogUsageScannerTests: XCTestCase {
 
     func testScanPrefersActiveSessionsCopyOverArchivedDuplicate() async throws {
         let day = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-3600))
-        let content = CodexLogFixture.tokenCount(
-            timestamp: day, last: CodexLogFixture.usage(input: 100, output: 50), model: "gpt-5.2"
-        )
+        // Same relative path in both dirs = the same session archived. The copies carry different
+        // events here so event-level dedup cannot hide a second parse: only the discovery rule
+        // keeps the total at the active copy's 150.
         let home = try CodexLogFixture.makeHome(files: [
-            "sessions/rollout-a.jsonl": content,
-            "archived_sessions/rollout-a.jsonl": content
+            "sessions/rollout-a.jsonl": CodexLogFixture.tokenCount(
+                timestamp: day, last: CodexLogFixture.usage(input: 100, output: 50), model: "gpt-5.2"
+            ),
+            "archived_sessions/rollout-a.jsonl": CodexLogFixture.tokenCount(
+                timestamp: day, last: CodexLogFixture.usage(input: 30, output: 20), model: "gpt-5.2"
+            )
         ])
         let scanner = CodexLogFixture.scanner(home: home)
 
         let scan = await scanner.scan(pricing: fixedRates())
 
-        // Same relative path in both dirs = the same session archived; identical events dedupe
-        // anyway, but the discovery-level rule keeps it to one parse.
         XCTAssertEqual(scan?.series.daily.reduce(0) { $0 + $1.totalTokens }, 150)
     }
 
