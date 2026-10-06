@@ -28,7 +28,7 @@ Automatic refreshes never request the keychain secrets. After launch or a creden
 
 ## The spend tiles
 
-Today, Yesterday, Last 30 Days, and Usage Trend come from Cursor's usage export. Runway uses the exported token counts and the shared model pricing to estimate cost locally. Cursor's export can arrive late, so the newest figures can lag current activity. Runway leaves malformed rows out instead of counting them as zero. A failed download, invalid export schema, or broken CSV leaves spend history unavailable for that refresh. Each failure is recorded in the log without the exported usage data. Cursor's pricing table does not list the Grok Bot rows, so Runway prices default mode at Grok 4.6 Fast rates and automation and computer-use modes at Grok 4.6 rates.
+Today, Yesterday, Last 30 Days, and Usage Trend come from Cursor's usage export. Runway uses the exported token counts and the shared model pricing to estimate cost locally. Cursor's export can arrive late, so the newest figures can lag current activity. Runway leaves malformed rows out instead of counting them as zero. A failed download, an export that takes longer than 60 seconds, invalid export schema, or broken CSV leaves spend history unavailable for that refresh. Live plan usage still updates. Each failure is recorded in the log without the exported usage data. Cursor's pricing table does not list the Grok Bot rows, so Runway prices default mode at Grok 4.6 Fast rates and automation and computer-use modes at Grok 4.6 rates.
 
 ## Troubleshooting
 

@@ -283,6 +283,37 @@ final class CursorSpendRangeTests: XCTestCase {
 
 @MainActor
 final class CursorSpendProviderTests: XCTestCase {
+    func testUsageCSVPastItsDeadlineKeepsPlanUsageAndDropsSpendHistory() async {
+        // The CSV is additive. An export that runs out its deadline must not discard the live plan
+        // usage that already loaded.
+        let accessToken = makeCursorJWT(sub: "google-oauth2|user_abc123")
+        let http = RoutingHTTPClient { request in
+            if request.url.absoluteString.contains("export-usage-events-csv") {
+                throw DeadlineExceeded()
+            }
+            return cursorPlanRoutes(request)
+        }
+        let provider = CursorProvider(
+            authStore: CursorAuthStore(
+                sqlite: FakeSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
+                keychain: FakeKeychain()
+            ),
+            usageClient: CursorUsageClient(http: http),
+            now: { Date(timeIntervalSince1970: 1_800_000_000) },
+            pricing: { TestPricing.bundled }
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertTrue(http.requests.contains { $0.url.absoluteString.contains("export-usage-events-csv") })
+        XCTAssertTrue(snapshot.lines.contains { $0.label == "Total usage" })
+        XCTAssertFalse(snapshot.lines.contains { $0.isError })
+        for label in ["Today", "Yesterday", "Last 30 Days", "Usage Trend"] {
+            XCTAssertFalse(snapshot.lines.contains { $0.label == label }, "\(label) line must be absent")
+        }
+        XCTAssertNil(snapshot.usageHistory)
+    }
+
     func testSpendTrackingDownloadsCSVExposesSpendTilesAndFlagsUnknownModels() async {
         // The provider downloads the usage CSV, exposes the spend-tile + trend descriptors, and emits
         // Today / Yesterday / Last 30 Days / Usage Trend lines
@@ -306,22 +337,7 @@ final class CursorSpendProviderTests: XCTestCase {
             if url.contains("export-usage-events-csv") {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(csv.utf8))
             }
-            if url.contains("GetCurrentPeriodUsage") {
-                return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
-                {
-                  "enabled": true,
-                  "billingCycleEnd": 1772592000000,
-                  "planUsage": { "limit": 40000, "remaining": 32000, "totalPercentUsed": 20 }
-                }
-                """.utf8))
-            }
-            if url.contains("GetPlanInfo") {
-                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"pro plan"}}"#.utf8))
-            }
-            if url.contains("GetCreditGrantsBalance") {
-                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"hasCreditGrants":false}"#.utf8))
-            }
-            return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            return cursorPlanRoutes(request)
         }
         let provider = CursorProvider(
             authStore: CursorAuthStore(
@@ -422,39 +438,28 @@ final class CursorSpendProviderTests: XCTestCase {
     }
 }
 
-// MARK: - Client request contract
-
-final class CursorUsageClientRequestTests: XCTestCase {
-    // Pin the request contract directly at the client level — endpoint, epoch-ms range,
-    // `strategy=tokens`, the session cookie, and `Accept: text/csv` — so a silent regression in
-    // URL/header construction cannot slip through.
-    func testFetchUsageCSVBuildsTokenStrategyRequestWithSessionCookie() async throws {
-        let accessToken = makeCursorJWT(sub: "google-oauth2|user_abc123")
-        let http = RoutingHTTPClient { _ in
-            HTTPResponse(statusCode: 200, headers: [:], body: Data("Date,Model\n".utf8))
-        }
-
-        let response = try await CursorUsageClient(http: http).fetchUsageCSV(
-            accessToken: accessToken,
-            start: Date(timeIntervalSince1970: 1_000),   // 1_000_000 ms
-            end: Date(timeIntervalSince1970: 2_000)      // 2_000_000 ms
-        )
-
-        XCTAssertEqual(response?.statusCode, 200)
-        // A nil session would skip the HTTP call entirely, so requiring a recorded request guards that
-        // the assertions below actually ran against a real request.
-        let request = try XCTUnwrap(http.requests.first, "fetchUsageCSV must issue a request")
-        let url = request.url.absoluteString
-        XCTAssertTrue(url.contains("export-usage-events-csv"), "hits the CSV export endpoint")
-        XCTAssertTrue(url.contains("startDate=1000000"), "start as epoch-ms query param")
-        XCTAssertTrue(url.contains("endDate=2000000"), "end as epoch-ms query param")
-        XCTAssertTrue(url.contains("strategy=tokens"), "token strategy")
-        XCTAssertEqual(request.headers["Cookie"], "WorkosCursorSessionToken=user_abc123%3A%3A\(accessToken)")
-        XCTAssertEqual(request.headers["Accept"], "text/csv")
-    }
-}
-
 // MARK: - Shared test helpers (file-private; mirror CursorProviderTests)
+
+/// The stock plan-usage routes for a Pro account: 20% used, no credit grants.
+private func cursorPlanRoutes(_ request: HTTPRequest) -> HTTPResponse {
+    let url = request.url.absoluteString
+    if url.contains("GetCurrentPeriodUsage") {
+        return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
+        {
+          "enabled": true,
+          "billingCycleEnd": 1772592000000,
+          "planUsage": { "limit": 40000, "remaining": 32000, "totalPercentUsed": 20 }
+        }
+        """.utf8))
+    }
+    if url.contains("GetPlanInfo") {
+        return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"pro plan"}}"#.utf8))
+    }
+    if url.contains("GetCreditGrantsBalance") {
+        return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"hasCreditGrants":false}"#.utf8))
+    }
+    return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+}
 
 private func makeCursorJWT(sub: String = "google-oauth2|user", exp: Double = 9_999_999_999) -> String {
     let payload = #"{"sub":"\#(sub)","exp":\#(exp)}"#

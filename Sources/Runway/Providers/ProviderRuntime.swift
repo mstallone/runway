@@ -58,7 +58,8 @@ protocol ProviderRuntime: AnyObject {
 
 extension ProviderRuntime {
     /// 150s default: above Kimi's full OAuth retry budget (~93s plus loading and the usage
-    /// request), Cursor's sequential probe (~70s), and Codex's claim probe (~45s).
+    /// request), Cursor's sequential probe (up to ~130s when the usage export runs to its
+    /// deadline), and Codex's claim probe (~45s).
     var refreshTimeout: TimeInterval { WidgetDataStore.defaultProviderRefreshTimeout }
 }
 
