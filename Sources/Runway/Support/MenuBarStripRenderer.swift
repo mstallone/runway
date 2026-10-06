@@ -31,16 +31,10 @@ enum MenuBarStripRenderer {
         presentation: MenuBarStripPresentation?
     )?
 
-    /// The strip image for the given content and style, or `nil` when the content renders nothing
-    /// in that style (caller falls back to the app icon). Memoized: equal inputs return the
-    /// previously rendered instance.
-    static func image(for content: MenuBarContent, style: MenuBarStyle) -> NSImage? {
-        presentation(for: content, style: style)?.image
-    }
-
-    /// The flattened strip image and its Text-only account tooltip regions. Bars deliberately carry
-    /// no regions: they flatten metrics across providers and therefore have no segment-to-account
-    /// geometry to label.
+    /// The flattened strip image and its Text-only account tooltip regions, or `nil` when the
+    /// content renders nothing in that style (caller falls back to the app icon). Memoized: equal
+    /// inputs return the previously rendered instance. Bars deliberately carry no regions: they
+    /// flatten metrics across providers and therefore have no segment-to-account geometry to label.
     static func presentation(for content: MenuBarContent, style: MenuBarStyle) -> MenuBarStripPresentation? {
         if let lastRender, lastRender.style == style,
            lastRender.content.isRenderEquivalent(to: content, style: style)
@@ -69,10 +63,6 @@ enum MenuBarStripRenderer {
     /// glyph's normalization inset would otherwise ship as transparent margins, widening the status
     /// item past its artwork (the menu bar already pads every item, so baked-in margins read as an
     /// extra-large gap next to neighboring items).
-    static func textImage(for content: MenuBarContent) -> NSImage? {
-        textPresentation(for: content)?.image
-    }
-
     private static func textPresentation(for content: MenuBarContent) -> MenuBarStripPresentation? {
         guard !content.isEmpty else { return nil }
         let renderer = ImageRenderer(content: MenuBarTextStrip(content: content))

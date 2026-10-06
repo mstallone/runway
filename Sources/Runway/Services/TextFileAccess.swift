@@ -14,10 +14,6 @@ protocol TextFileAccessing: Sendable {
     /// Remove the file at `path`. A missing file is not an error — the caller wants the key gone, and
     /// it already is. Used by the in-app API-key editor's Remove / Clear-override actions.
     func remove(_ path: String) throws
-    /// Create the directory that will contain `path` (with intermediates). Writes land in a temp
-    /// file beside the destination, so a first-ever file in a not-yet-existing folder (Grok's
-    /// `memory/MEMORY.md`) needs this before the write.
-    func ensureParentDirectory(for path: String) throws
     /// Atomically create `path` with `text` only when nothing exists there yet; returns false when
     /// the destination already exists (that content stands — creating means "make the file
     /// exist"). The local accessor publishes with an exclusive rename, so a file another process
@@ -131,7 +127,10 @@ struct LocalTextFileAccessor: TextFileAccessing {
         try FileManager.default.removeItem(atPath: expanded)
     }
 
-    func ensureParentDirectory(for path: String) throws {
+    /// Create the directory that will contain `path` (with intermediates). Writes land in a temp
+    /// file beside the destination, so a first-ever file in a not-yet-existing folder (Grok's
+    /// `memory/MEMORY.md`) needs this before the write.
+    private func ensureParentDirectory(for path: String) throws {
         try FileManager.default.createDirectory(
             atPath: (expandHome(path) as NSString).deletingLastPathComponent,
             withIntermediateDirectories: true

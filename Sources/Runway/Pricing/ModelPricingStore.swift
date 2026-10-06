@@ -32,7 +32,6 @@ actor ModelPricingStore {
     private let http: any HTTPClient
     private let cacheDirectory: URL
     private let now: @Sendable () -> Date
-    private let sourceURLs: [SourceID: URL]
     private let bundledData: @Sendable (String) -> Data?
 
     private var loaded = false
@@ -44,13 +43,11 @@ actor ModelPricingStore {
         http: any HTTPClient = URLSessionHTTPClient(),
         cacheDirectory: URL? = nil,
         now: @escaping @Sendable () -> Date = Date.init,
-        sourceURLs: [SourceID: URL] = ModelPricingStore.defaultSourceURLs,
         bundledData: @escaping @Sendable (String) -> Data? = ModelPricingStore.bundledResourceData
     ) {
         self.http = http
         self.cacheDirectory = cacheDirectory ?? Self.defaultCacheDirectory
         self.now = now
-        self.sourceURLs = sourceURLs
         self.bundledData = bundledData
     }
 
@@ -241,7 +238,7 @@ actor ModelPricingStore {
 
     /// Fetches one source and updates its cache file. Returns true when new data was stored.
     private func fetch(_ source: SourceID) async -> Bool {
-        guard let url = sourceURLs[source] else { return false }
+        guard let url = Self.defaultSourceURLs[source] else { return false }
         var state = sourceStates[source] ?? SourceState()
         var request = HTTPRequest(method: "GET", url: url, timeout: 30)
         if let etag = state.etag {
