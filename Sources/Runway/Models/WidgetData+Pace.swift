@@ -97,7 +97,7 @@ extension WidgetData {
 
     /// Trailing text on the bounded primary row, reset-display-mode aware. Priority mirrors
     /// `boundedSubtitle`, but a concrete reset honors `resetDisplayMode` (relative ⟷ absolute).
-    /// Claude and Antigravity session rows show "Not started" while the rolling window has not begun.
+    /// Session-window rows show "Not started" while the rolling window has not begun.
     func boundedTrailingText(now: Date = Date()) -> String? {
         guard hasData else { return Self.noDataSubtitle }
         if let subtitleOverride { return subtitleOverride }
@@ -110,19 +110,39 @@ extension WidgetData {
         return boundedSubtitle // period cadence / dollar limit / count suffix — nothing to flip
     }
 
-    /// Claude and Antigravity session meters only: a "Not started" state for the current window
-    /// when nothing has been spent in it yet. Driven by frozen usage (`used == 0`), not a window-timing
-    /// read — the `resetsAt - now ≈ full period` test is only valid the instant the snapshot is captured,
-    /// then drifts every second until the next refresh, which split the headline from the label (headline
-    /// "100% left" while the label fell back to "Resets in 5h"). Usage is the stable, snapshot-consistent
-    /// signal: providers that report 0 utilization directly remain at 0, and Antigravity's mapper rounds
-    /// its fraction-derived percent (so a pool under ~0.5% used also reads 0). Codex percentages are
-    /// preserved verbatim, so a reported 1% is not treated as "Not started."
-    /// Still gated on `now < resetsAt`: once the reset has passed the snapshot is stale, so we drop the
-    /// "Not started" claim and let the row fall back to the normal "Resets soon"/countdown formatting.
+    /// How a session-window meter tells a not-yet-started window from an in-flight one.
+    enum SessionStartSignal: Hashable {
+        /// Zero usage with a reset still ahead is the fresh signal: the provider reports a reset instant
+        /// even for an untouched window, so `used == 0` is what marks it as fresh. Providers that report
+        /// 0 utilization directly remain at 0, and Antigravity's mapper rounds its fraction-derived
+        /// percent (so a pool under ~0.5% used also reads 0).
+        case zeroUsage
+        /// A missing reset date is the fresh signal: by the time a row carries a reset instant, the
+        /// window has started. Zero usage is NOT trusted here. OpenCode reports whole percents, so an
+        /// in-flight window under 1% also reads 0; `OpenCodeUsageMapper` drops the placeholder reset
+        /// OpenCode reports for an untouched window, so the reset date is what tells the two apart.
+        case missingResetDate
+    }
+
+    /// Session meters only: a "Not started" state for the current window when nothing has been spent
+    /// in it yet, detected through the descriptor's `sessionStartSignal`. Both signals read frozen
+    /// snapshot fields, not a window-timing read — the `resetsAt - now ≈ full period` test is only valid
+    /// the instant the snapshot is captured, then drifts every second until the next refresh, which
+    /// split the headline from the label (headline "100% left" while the label fell back to "Resets in
+    /// 5h"). Codex percentages are preserved verbatim and its rows carry no signal, so a reported 1% is
+    /// not treated as "Not started."
+    /// `.zeroUsage` is additionally gated on `now < resetsAt`: once the reset has passed the snapshot is
+    /// stale, so we drop the "Not started" claim and let the row fall back to the normal "Resets
+    /// soon"/countdown formatting.
     func isFreshSessionWindow(now: Date = Date()) -> Bool {
-        guard isSessionWindow, hasData, limit != nil, let resetsAt, used <= 0 else { return false }
-        return now < resetsAt
+        guard let sessionStartSignal, hasData, limit != nil, used <= 0 else { return false }
+        switch sessionStartSignal {
+        case .zeroUsage:
+            guard let resetsAt else { return false }
+            return now < resetsAt
+        case .missingResetDate:
+            return resetsAt == nil
+        }
     }
 
     /// True when the bounded primary row's trailing text is a concrete reset countdown (so the row makes

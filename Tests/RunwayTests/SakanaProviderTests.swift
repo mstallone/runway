@@ -288,7 +288,7 @@ final class SakanaProviderTests: XCTestCase {
             descriptors.flatMap(\.limitResources).map(\.key),
             ["session", "weekly"]
         )
-        XCTAssertTrue(descriptors[0].sample.isSessionWindow)
+        XCTAssertEqual(descriptors[0].sample.sessionStartSignal, .zeroUsage)
         XCTAssertEqual(descriptors[2].historyResource?.scope, .machineLocal)
         XCTAssertEqual(descriptors[2].historyResource?.estimatedCost, true)
         XCTAssertTrue(descriptors[3...].allSatisfy(\.isSpendTile))

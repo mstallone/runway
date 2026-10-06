@@ -51,7 +51,7 @@ final class MuseProvider: ProviderRuntime {
                 provider: provider,
                 title: "Five-Hour Usage",
                 metricLabel: "Five-Hour Usage",
-                isSessionWindow: true
+                sessionStartSignal: .zeroUsage
             )
             .exportingLimit("session", unit: "percent"),
             .percent(
