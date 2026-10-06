@@ -16,6 +16,7 @@ extension CodexLogUsageScanner {
         var model: String
         var pricingModel: String?
         var isFast: Bool
+        var isUltrafast: Bool
     }
 
     private enum PricingResolution {
@@ -27,10 +28,12 @@ extension CodexLogUsageScanner {
         var rates: ModelRates
         var rateModel: String
         var fastTier: Bool
+        var ultrafastTier: Bool
 
         func cost(for event: Event) -> Double {
             CodexLogUsageScanner.cost(
-                rates: rates, event: event, model: rateModel, fastTier: fastTier
+                rates: rates, event: event, model: rateModel, fastTier: fastTier,
+                ultrafastTier: ultrafastTier
             )
         }
     }
@@ -61,7 +64,8 @@ extension CodexLogUsageScanner {
 
             let day = dayKeys.key(for: event.timestamp)
             let contextKey = PricingContextKey(
-                model: event.model, pricingModel: event.pricingModel, isFast: event.isFast
+                model: event.model, pricingModel: event.pricingModel, isFast: event.isFast,
+                isUltrafast: event.isUltrafast
             )
             let resolution: PricingResolution
             if let cached = pricingContexts[contextKey] {
@@ -71,6 +75,7 @@ extension CodexLogUsageScanner {
                     rawModel: event.model,
                     pricingModel: event.pricingModel,
                     isFast: event.isFast,
+                    isUltrafast: event.isUltrafast,
                     pricing: pricing
                 )
                 pricingContexts[contextKey] = resolution
@@ -98,6 +103,7 @@ extension CodexLogUsageScanner {
         rawModel: String,
         pricingModel: String?,
         isFast: Bool,
+        isUltrafast: Bool,
         pricing: ModelPricing
     ) -> PricingResolution {
         // The breakdown, unknown-model warning, and hover panel share the measured slug. Rates
@@ -114,19 +120,24 @@ extension CodexLogUsageScanner {
         // the Codex multiplier exactly once through the unscaled base rates. Native events without
         // a `-fast` slug still honor the session's recorded priority flag.
         let appliesCodexFastTier = resolution.isFastAlias ? resolution.hasBaseRates : isFast
+        // Ultrafast replaces the fast multiplier, so it needs the same unscaled base rates.
+        let appliesUltrafastTier = isUltrafast && (!resolution.isFastAlias || resolution.hasBaseRates)
         return .priced(
             model: model,
             context: EventPricingContext(
                 rates: rates,
                 rateModel: resolution.rateModel,
-                fastTier: appliesCodexFastTier
+                fastTier: appliesCodexFastTier,
+                ultrafastTier: appliesUltrafastTier
             )
         )
     }
 
     /// Native rollout events count cached tokens inside `input`; the shared estimator takes disjoint
     /// buckets, so the cached portion is subtracted here rather than in `CodexUsagePricing`.
-    static func cost(rates: ModelRates, event: Event, model: String, fastTier: Bool) -> Double {
+    static func cost(
+        rates: ModelRates, event: Event, model: String, fastTier: Bool, ultrafastTier: Bool = false
+    ) -> Double {
         CodexUsagePricing.cost(
             rates: rates,
             tokens: TokenBreakdown(
@@ -135,7 +146,8 @@ extension CodexLogUsageScanner {
                 output: event.output
             ),
             model: model,
-            fastTier: fastTier
+            fastTier: fastTier,
+            ultrafastTier: ultrafastTier
         )
     }
 }

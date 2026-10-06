@@ -30,7 +30,8 @@ import Foundation
 ///   session logs) count once.
 /// - Cost per event: `(input - cached) x input rate + cached x cache-read rate + output x output
 ///   rate`, all x the model's Codex priority multiplier when the session ran on the fast/priority
-///   service tier. The tier is tracked per session from `thread_settings_applied` lines — never from
+///   service tier, or its Ultrafast multiplier (6x, GPT-6 Astra only; other models bill Ultrafast at
+///   their fast rate). The tier is tracked per session from `thread_settings_applied` lines — never from
 ///   the current `config.toml`, which would retroactively reprice the whole history when toggled.
 ///   Events with no recorded tier price at standard rates. Supported GPT-5.4/5.5/5.6/GPT-6 requests above
 ///   272k input tokens use OpenAI's higher rates for the whole request, via `CodexUsagePricing`.
@@ -65,8 +66,9 @@ actor CodexLogUsageScanner {
     }
 
     /// One turn's token usage, normalized from a `token_count` line (deltas already applied).
-    /// `isFast` records whether the session was on the fast/priority service tier when the turn
-    /// ran, tracked from the session's own log; absent tier metadata means standard.
+    /// `isFast` and `isUltrafast` record whether the session was on the fast/priority or the
+    /// Ultrafast service tier when the turn ran, tracked from the session's own log; absent tier
+    /// metadata means standard.
     /// `pricingModel` is the dated GPT fallback used only for auto-review cost; nil when `model`
     /// is already the rate key.
     struct Event: Codable, Sendable, Equatable {
@@ -79,13 +81,14 @@ actor CodexLogUsageScanner {
         var reasoning: Int
         var total: Int
         var isFast: Bool = false
+        var isUltrafast: Bool = false
     }
 
     /// Multi-account cards that resolve the same Codex homes share this actor and parse each rollout
     /// once. The version is the parser schema version; bump it when `Event` semantics change.
     private static let sharedScanner = IncrementalJSONLScanner<Event>(
         logTag: LogTag.plugin("codex"),
-        persistence: JSONLScanCachePersistence(namespace: "codex", schemaVersion: 2)
+        persistence: JSONLScanCachePersistence(namespace: "codex", schemaVersion: 3)
     )
 
     static func flushPersistentCacheWrites() async {
@@ -224,6 +227,7 @@ actor CodexLogUsageScanner {
         var previousTotals: RawUsage?
         var currentModel: String?
         var currentTierIsFast = false
+        var currentTierIsUltrafast = false
         var sawSessionMeta = false
         /// Non-nil while inside a child session's replayed parent history.
         var replayGate: ChildReplayGate?
@@ -320,6 +324,7 @@ actor CodexLogUsageScanner {
                payload?["type"] as? String == "thread_settings_applied" {
                 if let tier = serviceTier(in: payload) {
                     state.currentTierIsFast = tier == "fast" || tier == "priority"
+                    state.currentTierIsUltrafast = tier == "ultrafast"
                 }
                 continue
             }
@@ -381,14 +386,15 @@ actor CodexLogUsageScanner {
                 output: usage.output,
                 reasoning: usage.reasoning,
                 total: usage.total,
-                isFast: state.currentTierIsFast
+                isFast: state.currentTierIsFast,
+                isUltrafast: state.currentTierIsUltrafast
             ))
         }
         return events
     }
 
     /// The `service_tier` a `thread_settings_applied` payload carries in `thread_settings`
-    /// (tolerating a top-level spelling), e.g. `"default"`, `"fast"`, or `"priority"`.
+    /// (tolerating a top-level spelling), e.g. `"default"`, `"fast"`, `"priority"`, or `"ultrafast"`.
     private static func serviceTier(in payload: [String: Any]?) -> String? {
         guard let payload else { return nil }
         let settings = payload["thread_settings"] as? [String: Any]
