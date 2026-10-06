@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 @MainActor
@@ -31,15 +30,9 @@ final class ClaudeProvider: ProviderRuntime {
     /// unrecoverable chain doesn't get a token-endpoint call every 5-minute cycle.
     private var tokenRenewalCooldownUntil: [String: Date] = [:]
 
-    /// Last successful live-usage result and a rate-limit cooldown, carried across refreshes (the provider
-    /// is a long-lived singleton). `/api/oauth/usage` rate-limits aggressively, so on a 429 we serve the
-    /// last-good bars with a staleness note instead of blanking the dashboard, and skip the live call
-    /// entirely until the cooldown expires so we don't keep hammering an endpoint that's already limiting
-    /// us.
-    private var cachedCredentialFingerprint: Data?
-    private var lastGoodUsage: ClaudeMappedUsage?
-    private var rateLimitedUntil: Date?
-    private static let rateLimitCooldown: TimeInterval = 5 * 60
+    /// Last-good live usage, the rate-limit cooldown, and the launch-cached limits that stand in
+    /// for last-good usage on a relaunch's first 429.
+    private var liveUsageCache = ClaudeLiveUsageCache()
 
     init(
         provider: Provider = ClaudeProvider.makeProvider(),
@@ -78,6 +71,10 @@ final class ClaudeProvider: ProviderRuntime {
                     sourceNote: "From your Claude usage history (estimated)"
                 )
         ] + WidgetDescriptor.spendTiles(provider: provider)
+    }
+
+    func adoptLaunchSnapshot(_ snapshot: ProviderSnapshot, producedByIdentityKey identityKey: String) {
+        liveUsageCache.holdLaunchSnapshot(snapshot, producedByIdentityKey: identityKey)
     }
 
     func hasLocalCredentials() async -> Bool {
@@ -381,13 +378,16 @@ final class ClaudeProvider: ProviderRuntime {
         state: ClaudeCredentialState,
         allowRenewal: Bool = true
     ) async throws -> ClaudeMappedUsage {
-        activateLiveUsageCache(for: state.oauth)
+        liveUsageCache.activate(for: state)
 
         // Inside an active rate-limit cooldown, skip the live call and serve the last-good usage so a
         // constantly-limited endpoint doesn't blank the dashboard (and we don't pile on more 429s).
-        if let until = rateLimitedUntil, now() < until {
-            AppLog.info(LogTag.plugin("claude"), "rate-limited (cooldown active, serving \(lastGoodUsage == nil ? "badge" : "last-good usage"))")
-            return rateLimitedSnapshot(credentials: state.displayOAuth, retryAfterSeconds: Int(until.timeIntervalSince(now()).rounded(.up)))
+        if let until = liveUsageCache.rateLimitedUntil, now() < until {
+            return rateLimitedSnapshot(
+                state: state,
+                retryAfterSeconds: Int(until.timeIntervalSince(now()).rounded(.up)),
+                cooldownActive: true
+            )
         }
 
         // An expired stamp means the call below is doomed. Renew it first when the guards allow;
@@ -422,14 +422,14 @@ final class ClaudeProvider: ProviderRuntime {
         // than a bare badge.
         if response.statusCode == 429 {
             let retryAfterSeconds = ClaudeUsageMapper.parseRetryAfterSeconds(response, now: now())
-            rateLimitedUntil = now().addingTimeInterval(TimeInterval(retryAfterSeconds ?? Int(Self.rateLimitCooldown)))
-            AppLog.info(LogTag.plugin("claude"), "rate-limited (serving \(lastGoodUsage == nil ? "badge" : "last-good usage"))")
-            return rateLimitedSnapshot(credentials: state.displayOAuth, retryAfterSeconds: retryAfterSeconds)
+            liveUsageCache.startCooldown(until: now().addingTimeInterval(
+                TimeInterval(retryAfterSeconds ?? Int(ClaudeLiveUsageCache.rateLimitCooldown))
+            ))
+            return rateLimitedSnapshot(state: state, retryAfterSeconds: retryAfterSeconds, cooldownActive: false)
         }
 
         let mapped = try ClaudeUsageMapper.mapUsageResponse(response, credentials: state.displayOAuth, now: now())
-        lastGoodUsage = mapped
-        rateLimitedUntil = nil
+        liveUsageCache.recordLiveUsage(mapped)
         return mapped
     }
 
@@ -468,12 +468,23 @@ final class ClaudeProvider: ProviderRuntime {
         }
     }
 
-    /// Last-good usage with an appended staleness note when we have it; otherwise the plain rate-limited
-    /// badge (no successful fetch yet this run). `lastGoodUsage` only ever holds a clean `mapUsageResponse`
-    /// result (never a rate-limited snapshot), so the note is never duplicated and no stale spend tiles
-    /// ride along — the provider appends those fresh after this returns.
-    private func rateLimitedSnapshot(credentials: ClaudeOAuth, retryAfterSeconds: Int?) -> ClaudeMappedUsage {
-        guard var mapped = lastGoodUsage else {
+    /// Last-good usage with an appended staleness note when we have it; before the first successful
+    /// fetch of this run, the launch-cached limits when their account gate passes (see
+    /// `ClaudeLiveUsageCache.launchCachedUsage`); otherwise the plain rate-limited badge. Both sources
+    /// hold only clean live-limit lines (never a rate-limited snapshot), so the note is never
+    /// duplicated and no stale spend tiles ride along — the provider appends those fresh after this
+    /// returns.
+    private func rateLimitedSnapshot(
+        state: ClaudeCredentialState,
+        retryAfterSeconds: Int?,
+        cooldownActive: Bool
+    ) -> ClaudeMappedUsage {
+        let credentials = state.displayOAuth
+        let lastGood = liveUsageCache.lastGoodUsage
+        let fallback = lastGood ?? liveUsageCache.launchCachedUsage(for: state, now: now())
+        let serving = lastGood != nil ? "last-good usage" : fallback != nil ? "launch-cached limits" : "badge"
+        AppLog.info(LogTag.plugin("claude"), "rate-limited (\(cooldownActive ? "cooldown active, " : "")serving \(serving))")
+        guard var mapped = fallback else {
             return ClaudeUsageMapper.rateLimitedUsage(credentials: credentials, retryAfterSeconds: retryAfterSeconds)
         }
         // The cached mapping's plan is from fetch time; the tier can change during a long cooldown,
@@ -488,24 +499,6 @@ final class ClaudeProvider: ProviderRuntime {
         // its warning must carry `.wait` with it or the triangle stays clickable on stale bars.
         mapped.warningAction = .wait
         return mapped
-    }
-
-    /// Cache state belongs to the complete access + refresh credential pair. A login change therefore
-    /// clears both last-good usage and cooldown, even when the two accounts share an access token.
-    private func activateLiveUsageCache(for credentials: ClaudeOAuth) {
-        let fingerprint = Self.credentialFingerprint(credentials)
-        guard cachedCredentialFingerprint != fingerprint else { return }
-        cachedCredentialFingerprint = fingerprint
-        lastGoodUsage = nil
-        rateLimitedUntil = nil
-    }
-
-    private static func credentialFingerprint(_ credentials: ClaudeOAuth) -> Data {
-        let access = Data((credentials.accessToken ?? "").utf8)
-        let refresh = Data((credentials.refreshToken ?? "").utf8)
-        var pair = Data(SHA256.hash(data: access))
-        pair.append(contentsOf: SHA256.hash(data: refresh))
-        return Data(SHA256.hash(data: pair))
     }
 
 }

@@ -222,6 +222,15 @@ final class WidgetDataStore {
             }
         self.localSnapshots = loaded
         self.snapshots = loaded
+        // Only an entry the card's current account provably produced may seed a provider's fallback
+        // state: stamp present AND equal. The paint above is more lenient (an unresolved card keeps
+        // its cache); a provider may keep serving what it is handed, so this is not.
+        for (cardID, snapshot) in loaded {
+            guard let identityKey = providerIdentityKeys[cardID],
+                  cache.producedByIdentityKey(providerID: cardID) == identityKey
+            else { continue }
+            providersByID[cardID]?.adoptLaunchSnapshot(snapshot, producedByIdentityKey: identityKey)
+        }
     }
 
     /// Refresh every enabled provider, concurrently — one slow provider never delays the rest.

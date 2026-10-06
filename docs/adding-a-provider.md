@@ -14,6 +14,8 @@ Runway never asks the user to paste a token. If the provider's own CLI or app is
 
 Besides `refresh()`, every provider implements `hasLocalCredentials()`: a cheap, local-only check (files, keychain, never the network) for whether credentials exist. A fresh install calls it once to turn on the providers the user has (`FirstRunSeeder`). Existing installs call it once on the first launch after your provider ships (`NewProviderSeeder`). See [Which Providers Are On](provider-enablement.md). Check the same credential sources `refresh()` reads, and run blocking loads via `loadOffMainActor`.
 
+`adoptLaunchSnapshot(_:producedByIdentityKey:)` is optional. `WidgetDataStore` calls it once at launch with the provider's cached snapshot, and only when that entry is marked with the account the card resolved to. Implement it only if the provider keeps fallback state in memory that a relaunch loses (Claude does, for rate limits), and only reuse the snapshot for a login you can tie to that account.
+
 ## The metric contract
 
 `refresh()` returns a `ProviderSnapshot` whose `lines` are `MetricLine` values. Pick the case by the shape of the number:

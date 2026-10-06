@@ -170,6 +170,14 @@ struct ProviderSnapshotCache {
         return false
     }
 
+    /// The account identity stamped on this provider's stored entry, `nil` when there is no entry
+    /// or it is unstamped.
+    func producedByIdentityKey(providerID: String) -> String? {
+        let payload = loadPayload()
+        guard payload.snapshots[providerID] != nil else { return nil }
+        return payload.producedByIdentityKeys[providerID]
+    }
+
     private func loadPayload() -> Payload {
         if let mirror = memo.withLock({ $0 }) { return mirror }
         // First access only: decode the persisted blob once, then mirror it. (Decoding outside the
