@@ -11,9 +11,24 @@ Tracks your Claude subscription limits using the login you already have from Cla
 | Sonnet | Separate weekly Sonnet limit (plan-dependent) |
 | Fable | Separate weekly Fable limit (model-scoped window from the `limits` array) |
 | Extra Usage | Extra-usage credits spent against your monthly cap |
+| Rate Limit Resets | One-off usage-limit resets Anthropic grants (for example, a reset for Pro and Max when a model launches), shown as a count (`1 available`) with a colored dot for the soonest deadline. Hover the value for a timeline of each reset's deadline |
 | Today / Yesterday / Last 30 Days | Local spend, as cost, tokens, or both (see below) |
 
 When Claude reports your plan name, Runway shows it in the provider's header. Runway prefers the current plan and tier in Claude Code's state file over the copies stored at sign-in, so an upgrade or downgrade shows up without signing in again.
+
+## Rate limit resets
+
+Anthropic occasionally grants free usage-limit resets, for example one reset for Pro and Max subscribers when a new model launches. Using one refills your session and weekly limits right away.
+
+The Rate Limit Resets row counts the resets you have left (`1 available`) with a colored dot for the soonest deadline: blue beyond a week, yellow within a week, red within 48 hours. Hover the value for a timeline of those resets, soonest first: a numbered color dot, the exact deadline, and the countdown. This is the same popover Codex and Grok use. A grant with several resets left shows one entry per reset, all with the same deadline. A reset whose grant has no deadline still counts but has no date to show. A paused grant still counts. Grants past their deadline, or with no resets left, are not counted.
+
+Accounts outside the program read `0 available`, and the popover says `You have no rate limit resets`. If Anthropic does not report the program at all for your plan, the row reads **No data**.
+
+The row is on by default and sits behind the caret, above Usage Trend. It is not pinned to the menu bar.
+
+Runway only shows your resets. It never spends one. To use a reset, run `/rate-limit-options` in Claude Code, or accept it when Claude Code offers it at a usage limit.
+
+Enable **Reset Expiry Reminders** in [Notifications settings](../settings.md#reset-expiry-reminders) for reminders 48 hours, 24 hours, 2 hours, 1 hour, and 15 minutes before a known deadline. Resets sharing a deadline share one reminder showing their count.
 
 ## Where credentials come from
 
@@ -71,12 +86,12 @@ In the [CLI](../cli.md) and [local API](../local-http-api.md), extra cards appea
 - **"Claude Desktop login is stale"** (amber warning): open Claude Desktop so it can renew the login, then refresh.
 - **"Claude login needs renewal"** (amber warning): every stored login has an expired or revoked token, and Runway's own renewal could not recover it (usually the refresh token itself is revoked). Open Claude Code, then refresh. The spend tiles keep working.
 - **"Re-login for live usage"** (amber warning): your saved login can authenticate for inference but cannot read your subscription limits, because it lacks `user:profile` access (an inference-only token from `claude setup-token`). Run `claude` and sign in again with your Claude account, then refresh. The spend tiles keep working.
-- **"Updates blocked by Anthropic"** (amber warning): the usage API is throttling Runway. It keeps the last values, shows when it will retry, and backs off. The kept values show their real last-updated time, so the card is tagged **Outdated** once they are more than about ten minutes old. A different login starts with a fresh cache and cooldown. This is the one header warning you cannot click to refresh, because manual refreshes extend the block. See [Rate limits right after launch](#rate-limits-right-after-launch) for what a relaunch keeps.
+- **"Updates blocked by Anthropic"** (amber warning): the usage API is throttling Runway. It keeps the last values, shows when it will retry, and backs off. The kept values show their real last-updated time, so the card is tagged **Outdated** once they are more than about ten minutes old. A reset whose deadline passes while the last values are showing drops out of Rate Limit Resets. A different login starts with a fresh cache and cooldown. This is the one header warning you cannot click to refresh, because manual refreshes extend the block. See [Rate limits right after launch](#rate-limits-right-after-launch) for what a relaunch keeps.
 - **Spend tiles show "No data"**: Runway found no Claude Code logs in the last 30 days. If your logs live somewhere custom, set `CLAUDE_CONFIG_DIR` so both Claude Code and Runway look in the same place.
 
 ## Under the hood
 
-`GET https://api.anthropic.com/api/oauth/usage` with the selected OAuth token. An already-expired token gets one guarded renewal at the token endpoint (`POST https://platform.claude.com/v1/oauth/token`, Claude Code's own public client), with the rotated credential written back to its store. If a token is expired or revoked and renewal declines, Runway tries the next credential source, and when none is left it shows the renewal notice over the local spend tiles.
+`GET https://api.anthropic.com/api/oauth/usage?cedar_ember=1` with the selected OAuth token. The `cedar_ember=1` flag asks for the reset grants (`cedar_ember` is the name of that block in the response), the same way Claude Code does. The request identifies itself with Claude Code's `claude-cli/<version> (external, cli)` User-Agent, because Anthropic reports the grants only to a client it recognizes as Claude Code and answers other clients as ineligible. No other request changes, and no extra request is made for the resets. An already-expired token gets one guarded renewal at the token endpoint (`POST https://platform.claude.com/v1/oauth/token`, Claude Code's own public client), with the rotated credential written back to its store. If a token is expired or revoked and renewal declines, Runway tries the next credential source, and when none is left it shows the renewal notice over the local spend tiles.
 
 When the 5-hour session window has no usage yet, the Session row shows **Not started**. Hover it for an explanation.
 
@@ -92,7 +107,7 @@ The values Runway keeps during a rate limit live in memory, so a relaunch starts
 
 Runway does not ask Anthropic which account a token belongs to, so these checks use only files already on your Mac. They show that the state file has not changed since the snapshot was saved, not that the token belongs to that account. A Claude Desktop login, a login tried after another one was rejected, a `CLAUDE_CONFIG_DIR` home borrowing the default home's Keychain item, a card whose account could not be read at launch, and a snapshot with no account mark all get the plain rate-limit status with no limits. If the state file names a different account, the saved limits are dropped until the next launch.
 
-Only limit windows with a reset time still in the future are kept (Session, Weekly, Sonnet, Fable). Extra Usage and a Session that has not started have no reset time, so they are not kept and read "No data" until a fetch succeeds. A kept window disappears once its reset time passes. Spend tiles are always recomputed from local logs. The first successful fetch replaces the saved limits.
+Only limit windows with a reset time still in the future are kept (Session, Weekly, Sonnet, Fable). Extra Usage and a Session that has not started have no reset time, so they are not kept and read "No data" until a fetch succeeds. A kept window disappears once its reset time passes.
 
 Kept limits keep the time they were last fetched. The card's **Outdated** tag, the local API and CLI `fetchedAt`, and the iCloud snapshot all report that time, however many relaunches and rate limits happen in between.
 

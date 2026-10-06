@@ -9,7 +9,7 @@ enum DefaultLayout {
     static let metricIDs: [String] = [
         "antigravity.geminiPro", "antigravity.geminiWeekly", "antigravity.claude", "antigravity.claudeWeekly",
 
-        "claude.session", "claude.weekly", "claude.fable", "claude.trend",
+        "claude.session", "claude.weekly", "claude.fable", "claude.rateLimitResets", "claude.trend",
         "claude.today", "claude.yesterday", "claude.last30",
 
         "codex.weekly", "codex.rateLimitResets", "codex.trend",
@@ -105,8 +105,9 @@ enum DefaultLayout {
         // Antigravity: the Gemini pool pair (5h + weekly) stays above the fold; the non-Gemini
         // (Claude) pool pair sits below the caret.
         "antigravity.claude", "antigravity.claudeWeekly",
-        // Claude: Session, Weekly, and Fable stay above the fold; local history sits below the caret.
-        "claude.trend", "claude.today", "claude.yesterday", "claude.last30",
+        // Claude: Session, Weekly, and Fable stay above the fold; reset grants and local history sit
+        // below the caret, matching Codex and Grok.
+        "claude.rateLimitResets", "claude.trend", "claude.today", "claude.yesterday", "claude.last30",
         // Codex: Weekly stays above the fold; reset details and local history sit below the caret.
         "codex.rateLimitResets", "codex.trend", "codex.today", "codex.yesterday", "codex.last30",
         // Cursor: Total / Cursor Models / Other Models stay above the fold; Grok Bot sits above

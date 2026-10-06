@@ -68,6 +68,10 @@ final class ClaudeProvider: ProviderRuntime {
                 .exportingLimit("fable", unit: "percent"),
             .boundedDollars(id: "\(provider.id).extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100, valueWord: "spent")
                 .exportingLimit("extraUsage", unit: "usd", source: .progressOrValue(kind: .dollars)),
+            // Anthropic's one-off usage-limit reset grants (`cedar_ember`), shown read-only in the same
+            // resets popover as Codex and Grok. Seeded On Demand and unpinned in `DefaultLayout`.
+            .values(id: "\(provider.id).rateLimitResets", provider: provider, title: "Rate Limit Resets", metricLabel: ClaudeUsageMapper.resetGrantsLabel, traySuffix: "resets", showsResetExpiries: true)
+                .exportingLimit("rateLimitResets", kind: .balance, unit: "resets", source: .value(kind: .count, label: "available")),
             .usageTrend(provider: provider)
                 .exportingHistory(
                     scope: .machineLocal,

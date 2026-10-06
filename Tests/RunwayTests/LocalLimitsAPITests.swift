@@ -223,7 +223,7 @@ final class LocalLimitsAPITests: XCTestCase {
             Set(descriptors.flatMap(\.limitResources).map(\.key))
         }
         let expected: [String: Set<String>] = [
-            "claude": ["session", "weekly", "sonnet", "fable", "extraUsage"],
+            "claude": ["session", "weekly", "sonnet", "fable", "extraUsage", "rateLimitResets"],
             "codex": ["session", "weekly", "spark", "sparkWeekly", "credits", "creditValue", "rateLimitResets"],
             "cursor": ["totalUsage", "autoUsage", "apiUsage", "grokBot", "onDemand", "requests", "credits"],
             "antigravity": ["geminiSession", "geminiWeekly", "nonGeminiSession", "nonGeminiWeekly"],

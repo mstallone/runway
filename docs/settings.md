@@ -50,7 +50,7 @@ Runway can send a macOS notification when a metric runs low, its pace gets worse
 | Almost Out | On / Off | Alerts when a metric crosses under 10% remaining, including balances without a reset window. |
 | Cutting It Close | On / Off | Alerts when a metric is projected to finish the period close to its limit. |
 | Will Run Out | On / Off | Alerts when a metric is projected to run out before it resets. |
-| Reset Expiry Reminders | On / Off | Reminds you before unused Codex and Grok reset credits expire: 48 hours, 24 hours, 2 hours, 1 hour, and 15 minutes. |
+| Reset Expiry Reminders | On / Off | Reminds you before unused Claude, Codex, and Grok resets expire: 48 hours, 24 hours, 2 hours, 1 hour, and 15 minutes. |
 
 Pace alerts fire on a new crossing or when pace worsens, then stay quiet while that condition is unchanged. A quota already in a bad state when Runway launches sets the baseline without alerting. If it recovers and later worsens again, the alert fires again. A new reset period also clears the reset-based history. **Almost Out** uses only the remaining share, so it also works for balances without a reset window. **Cutting It Close** and **Will Run Out** need a reset window. Metrics whose data cannot be read never alert. Turn all four settings off to silence everything. Several alerts at once stack into one grouped banner.
 

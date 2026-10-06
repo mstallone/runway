@@ -48,7 +48,7 @@ struct NotificationsSettingsPane: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, density.controlRowPadding)
-                SettingsCaption("Remind me before unused Codex and Grok resets expire: 48 hours, 24 hours, 2 hours, 1 hour, and 15 minutes. Each reminder replaces the previous one for that reset.")
+                SettingsCaption("Remind me before unused Claude, Codex, and Grok resets expire: 48 hours, 24 hours, 2 hours, 1 hour, and 15 minutes. Each reminder replaces the previous one for that reset.")
                 if notifications.resetExpiryReminders {
                     SettingsCaption("To keep notifications onscreen until dismissed, choose Alerts for Runway in System Settings → Notifications.")
                     if let error = notifications.resetReminderError {

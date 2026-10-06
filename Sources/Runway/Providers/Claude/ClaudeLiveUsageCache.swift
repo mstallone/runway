@@ -89,6 +89,7 @@ struct ClaudeLiveUsageCache {
             subscriptionType: credentials.subscriptionType,
             rateLimitTier: credentials.rateLimitTier
         )
+        mapped.lines = ClaudeUsageMapper.droppingLapsedResetGrants(from: mapped.lines, now: now)
         mapped.lines.append(ClaudeUsageMapper.rateLimitedNote(retryAfterSeconds: retryAfterSeconds))
         mapped.warning = ClaudeUsageMapper.rateLimitedWarning(retryAfterSeconds: retryAfterSeconds)
         // Last-good usage is a clean fetch, so its action is `.refresh`; the rate-limit notice replacing
