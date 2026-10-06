@@ -24,6 +24,8 @@ Use OpenCode as usual. Runway reads the `opencode-go` API key from OpenCode's lo
 
 Go meters are percents from `GET https://opencode.ai/zen/go/v1/usage`, OpenCode's own accounting. Each spend tile shows cost and tokens together (`$4.08 · 1.2M tokens`). Those dollars come from the per-message cost OpenCode records for its hosted gateways on this Mac, so they can be lower than account-wide Go usage. A period with no recorded local usage reads "No data". Codex usage that goes through OpenCode's ChatGPT OAuth login is attributed to the Codex card, not these spend tiles. No log data leaves your Mac.
 
+While the rolling 5-hour session window has no usage in it, the Session row shows **Not started**. Hover it for an explanation. Once the window is running, the row shows the countdown to its reset. That includes a session that has used less than 1%, which still reads 0% because OpenCode reports whole percents.
+
 ## Troubleshooting
 
 - **No Session / Weekly / Monthly meters**: those are Go-plan windows. You see them when you are logged into OpenCode Go (`opencode-go` in `auth.json`) and the key has an active subscription. Zen-only users see the spend tiles instead.
@@ -35,7 +37,7 @@ Go meters are percents from `GET https://opencode.ai/zen/go/v1/usage`, OpenCode'
 
 ## Under the hood
 
-Go windows: `GET https://opencode.ai/zen/go/v1/usage` with the `opencode-go` key as `Authorization: Bearer …`. The response is `{ usage: { rolling, weekly, monthly } }`, each with `percent` and `resetsAt`. A 401 is a rejected key. A 403 `EntitlementError` means no Go subscription.
+Go windows: `GET https://opencode.ai/zen/go/v1/usage` with the `opencode-go` key as `Authorization: Bearer …`. The response is `{ usage: { rolling, weekly, monthly } }`, each with `percent` and `resetsAt`. A rolling window without a valid `resetsAt` is treated as an invalid response. A weekly or monthly window without one keeps its meter, shows no countdown, and logs a warning. For an untouched rolling window OpenCode reports a placeholder `resetsAt` one full period (5 hours) after the request. Runway drops that placeholder when the reported usage is 0 and the reset is within 2 seconds of a full period from the response's `Date` header, which is what makes the Session row read "Not started". When the response has no usable `Date` header, Runway uses its own clock instead and accepts a reset that is a full period from any moment between sending the request and receiving the response (plus the same 2 seconds). A session that starts inside that margin (2 seconds with the header, the length of the request without it) can read "Not started" until the next refresh. Weekly and monthly resets are always kept. A 401 is a rejected key. A 403 `EntitlementError` means no Go subscription.
 
 Spend tiles and trend: assistant-message `cost` and token fields from every `opencode*.db` in the data directory. OpenCode partitions its database by release channel (stable is `opencode.db`, the preview line is `opencode-next.db`), so all channels are combined. Both `opencode-go` (Go) and `opencode` (Zen) count. Read-only.
 

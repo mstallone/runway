@@ -282,7 +282,7 @@ enum ClaudeUsageMapper {
 
 }
 
-private enum HTTPDateFormatter {
+enum HTTPDateFormatter {
     static func date(from value: String) -> Date? {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
