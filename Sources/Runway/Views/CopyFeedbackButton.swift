@@ -14,6 +14,10 @@ struct CopyFeedbackButton: View {
     /// lingering checkmark keeps its room until it fades.
     var onPresenceChange: ((Bool) -> Void)?
 
+    /// The pointer target, and the compact layout slot the button occupies inside it.
+    static let hitSize: CGFloat = 28
+    static let slotWidth: CGFloat = 16
+
     @State private var copied = false
     @State private var resetTask: Task<Void, Never>?
 
@@ -35,14 +39,14 @@ struct CopyFeedbackButton: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(copied ? Color.green : Color.secondary)
                 .symbolEffect(.bounce, value: copied)
-                .frame(width: 28, height: 28)
+                .frame(width: Self.hitSize, height: Self.hitSize)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        // Preserve the header's compact 16pt layout slot while the button's 28pt hit rectangle extends
-        // around it. The visible glyph therefore aligns with the old provider-mark position instead of
-        // being pushed inward by the larger interaction target.
-        .padding(-6)
+        // Preserve the header's compact layout slot while the button's larger hit rectangle extends
+        // around it, so the visible glyph sits at the header's edge instead of being pushed inward by
+        // the interaction target.
+        .padding(-(Self.hitSize - Self.slotWidth) / 2)
         .opacity(isPresent ? 1 : 0)
         .allowsHitTesting(isPresent)
         .animation(.easeOut(duration: 0.12), value: isRevealed)

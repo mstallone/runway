@@ -81,8 +81,6 @@ struct WidgetGroupedListView: View {
             onWarningRefresh: canRefreshNotice ? { refreshProvider(group.provider.id) } : nil,
             onCopyScreenshot: { shareCard(group) }
         )
-        // Keep the provider mark and hover-revealed copy control aligned with the card's content edges.
-        .padding(.horizontal, 8)
         .highPriorityGesture(providerDragGesture(for: group))
         .contextMenu {
             let name = container.displayName(for: group.provider)
