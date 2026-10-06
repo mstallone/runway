@@ -11,7 +11,7 @@ Tracks Grok Build credit usage using the login from the Grok CLI.
 | Rate Limit Resets | Banked usage-limit reset tokens, shown as a count (`1 available`) with a colored dot for the soonest expiry. Hover the value for a timeline of each token's expiry |
 | Today / Yesterday / Last 30 Days | Local cost and tokens estimated from Grok CLI session activity |
 
-When Grok reports your subscription tier, Runway shows it beside the provider name.
+When Grok reports your subscription tier, Runway shows it in the provider's header.
 
 The weekly shared pool is the limit Grok enforces for unified-billing accounts. The old monthly credits meter is no longer shown. Accounts not yet migrated to unified billing have no weekly pool, so the Weekly tile reads "No data".
 
