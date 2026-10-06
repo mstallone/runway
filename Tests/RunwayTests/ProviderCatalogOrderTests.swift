@@ -15,4 +15,15 @@ final class ProviderCatalogOrderTests: XCTestCase {
             "opencode", "openrouter", "sakana", "zai"
         ])
     }
+
+    func testEveryDefaultLayoutIDNamesAShippingMetric() {
+        // `LayoutStore` silently drops default IDs the registry doesn't know, so a typo here would
+        // otherwise just make a metric quietly miss its default.
+        let defaults = UserDefaults(suiteName: "ProviderCatalogOrderTests.\(UUID().uuidString)")!
+        let shipping = Set(ProviderCatalog.make(defaults: defaults).flatMap { $0.widgetDescriptors.map(\.id) })
+
+        XCTAssertEqual(DefaultLayout.metricIDs.filter { !shipping.contains($0) }, [])
+        XCTAssertEqual(DefaultLayout.pinnedMetricIDs.filter { !shipping.contains($0) }, [])
+        XCTAssertEqual(DefaultLayout.expandedMetricIDs.filter { !shipping.contains($0) }, [])
+    }
 }

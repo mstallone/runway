@@ -91,7 +91,6 @@ struct ReorderLiftPreview: View {
         // preview keeps the compact notice and any available rows; its controls are inert.
         VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
             ProviderSectionHeader(provider: provider, plan: plan)
-                .padding(.horizontal, 8)
 
             DashboardMetricCard {
                 if let errorMessage {

@@ -267,8 +267,6 @@ private struct FailingAntigravityKeychain: KeychainReading {
     func readGenericPassword(service: String) throws -> String? {
         throw FailingAntigravityKeychainError.unreadable
     }
-
-    func writeGenericPassword(service: String, value: String) throws {}
 }
 
 private enum FailingAntigravityKeychainError: Error {

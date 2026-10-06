@@ -49,7 +49,7 @@ For Claude, Codex, Cursor, Grok, Muse, OpenCode, and Sakana Fugu spend rows, hov
 
 **When usage cannot load**, unavailable bars become one compact message with the reason and a **Refresh** button. This includes login or fetch failures reported as warnings while local spend still loads. Any available usage, cached values, and local spend stay visible in their saved positions; empty rows are hidden until data returns. If none of the selected metrics have data, the message replaces all of them. On Demand metrics and quick links stay behind the caret, even when account filtering removes every Always Visible metric. The notice keeps the card visible without promoting those rows; saved settings do not change. A Keychain login awaiting approval offers **Connect** instead; already-approved logins load silently. Notices that ask you to wait, such as a provider rate limit, offer no Refresh button. Manual refreshes can show a macOS permission prompt; background refreshes never do. If all bars still have last-good data, a later failure keeps them on screen and the header notice explains the error (see [Refreshing](refreshing.md)).
 
-**Long card names** (like `Claude — matt@example.com`) get the full header line. If a name still does not fit, hovering the header scrolls it once to its end and holds there.
+The plan name sits at the right end of the header. **Long card names** (like `Claude — matt@example.com`) get the rest of the header line. If a name still does not fit, hovering the header, anywhere but the plan name, scrolls it once to its end and holds there.
 
 With [iCloud Sync](icloud-sync.md) on, the machine-local providers' spend rows, trends, warnings, and model breakdowns are rebuilt from all synced Macs. Cursor is unchanged because its export is already account-wide. Quotas, plans, balances, and provider errors always describe this Mac's refresh.
 
@@ -67,6 +67,7 @@ Provider headers: **Hide \<provider\>** (turns the whole provider off; turn it b
 
 Copy a branded PNG of one provider's usage to your clipboard:
 
+- Hover the plan name at the right end of a provider header and click the copy button that appears. On a card with no plan, hover the right end of the header.
 - Right-click a provider header and choose **Share Screenshot**.
 - Open the footer's **gear** menu and choose **Share Screenshot** ▸ *\<provider\>*. The submenu lists every provider on the dashboard.
 

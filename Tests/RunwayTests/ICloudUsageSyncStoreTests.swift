@@ -337,15 +337,6 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
         try await waitUntil { !sync.isSyncing }
     }
 
-    private func makeDataStore(_ defaults: UserDefaults) -> WidgetDataStore {
-        WidgetDataStore(
-            registry: WidgetRegistry(providers: [], descriptors: []),
-            providers: [],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
-            defaults: defaults
-        )
-    }
-
     private func makeDefaults(_ name: String) -> UserDefaults {
         let defaults = makeFreshDefaults(name)
         // Sync is on by default; these tests exercise the enable transition, so start disabled.
@@ -384,6 +375,8 @@ final class MemoryDeviceIDStore: ICloudDeviceIDStoring, @unchecked Sendable {
     func writeDeviceID(_ deviceID: String) throws {
         self.deviceID = deviceID
     }
+
+    func migrateLegacyDeviceID(allowInteraction: Bool) throws -> String? { nil }
 }
 
 actor RecordingUsageCloudStore: UsageCloudStoring {

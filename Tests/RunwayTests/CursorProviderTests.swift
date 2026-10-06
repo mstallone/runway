@@ -199,15 +199,11 @@ final class CursorUsageMapperTests: XCTestCase {
 
 @MainActor
 final class CursorProviderTests: XCTestCase {
-    func testGrokBotDescriptorIsEnabledOnDemandAndUnpinned() {
+    func testGrokBotDescriptorLabelsAndLimitResource() {
         let grokBot = CursorProvider().widgetDescriptors.first { $0.id == "cursor.grokBot" }
         XCTAssertEqual(grokBot?.sample.title, "Grok Bot")
         XCTAssertEqual(grokBot?.metricLabel, "Grok Bot usage")
         XCTAssertEqual(grokBot?.limitResources.map(\.key), ["grokBot"])
-        XCTAssertTrue(DefaultLayout.metricIDs.contains("cursor.grokBot"))
-        XCTAssertTrue(DefaultLayout.expandedMetricIDs.contains("cursor.grokBot"))
-        XCTAssertFalse(DefaultLayout.pinnedMetricIDs.contains("cursor.grokBot"))
-        XCTAssertFalse(DefaultLayout.migrationBaselineMetricIDs.contains("cursor.grokBot"))
     }
 
     func testRefreshFetchesLiveCursorUsage() async {

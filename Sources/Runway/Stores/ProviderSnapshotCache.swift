@@ -149,13 +149,6 @@ struct ProviderSnapshotCache {
         save(loadPayload())
     }
 
-    /// The account identity stamped when this provider's entry was stored, or `nil` when the entry is
-    /// absent or was written without one. Launch filtering compares this against the card's current
-    /// identity before showing a cached snapshot for an account-aware card (see `WidgetDataStore.init`).
-    func producedByIdentityKey(providerID: String) -> String? {
-        loadPayload().producedByIdentityKeys[providerID]
-    }
-
     /// Whether this provider's stored entry cannot be attributed to its current runtime source.
     /// A resolved identity requires an exact stamp match. A source that cannot inherit a previous
     /// account rejects any stamp but accepts an unstamped snapshot it produced itself. An unresolved

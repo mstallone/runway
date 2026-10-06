@@ -19,7 +19,7 @@ Runway adapts the card to the account instead of showing every Copilot metric as
 - **Individual free plans** show Chat and Completions.
 - **Business and Enterprise seats** show AI Credits Used and Additional Spend, plus your own Credits count when the seat reports one.
 
-Metrics GitHub does not expose for the current account type are hidden. The applicable usage rows are Always Visible. None of the organization metrics are pinned to the menu bar by default. Percentage meters show percent used and, when the response includes one, a countdown to the next reset. The plan name (Pro, Business, Free) shows next to the provider.
+Metrics GitHub does not expose for the current account type are hidden. The applicable usage rows are Always Visible. None of the organization metrics are pinned to the menu bar by default. Percentage meters show percent used and, when the response includes one, a countdown to the next reset. The plan name (Pro, Business, Free) shows in the provider's header.
 
 Since June 2026 GitHub Copilot bills all plans by AI credits:
 

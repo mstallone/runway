@@ -13,7 +13,7 @@ Tracks your Claude subscription limits using the login you already have from Cla
 | Extra Usage | Extra-usage credits spent against your monthly cap |
 | Today / Yesterday / Last 30 Days | Local spend, as cost, tokens, or both (see below) |
 
-When Claude reports your plan name, Runway shows it beside the provider name. Runway prefers the current plan and tier in Claude Code's state file over the copies stored at sign-in, so an upgrade or downgrade shows up without signing in again.
+When Claude reports your plan name, Runway shows it in the provider's header. Runway prefers the current plan and tier in Claude Code's state file over the copies stored at sign-in, so an upgrade or downgrade shows up without signing in again.
 
 ## Where credentials come from
 
