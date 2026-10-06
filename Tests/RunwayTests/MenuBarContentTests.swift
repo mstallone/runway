@@ -27,8 +27,8 @@ final class MenuBarContentTests: XCTestCase {
         XCTAssertFalse(exhausted.isRenderEquivalent(to: restored, style: .text))
         XCTAssertFalse(exhausted.isRenderEquivalent(to: restored, style: .bars))
         let iconOnly = MenuBarContentBuilder.build(groups: [group("a", weekly)], data: { $0.sample })
-        XCTAssertNotNil(MenuBarStripRenderer.image(for: iconOnly, style: .text))
-        XCTAssertNotNil(MenuBarStripRenderer.image(for: iconOnly, style: .bars))
+        XCTAssertNotNil(MenuBarStripRenderer.presentation(for: iconOnly, style: .text)?.image)
+        XCTAssertNotNil(MenuBarStripRenderer.presentation(for: iconOnly, style: .bars)?.image)
     }
 
     func testIndependentPoolDoesNotDimUsablePinnedPool() {
@@ -56,8 +56,8 @@ final class MenuBarContentTests: XCTestCase {
             XCTAssertTrue(content.groups[0].metrics.isEmpty)
             XCTAssertTrue(content.bars.isEmpty)
             XCTAssertTrue(content.accessibilityText.contains("Login Required"))
-            XCTAssertNotNil(MenuBarStripRenderer.image(for: content, style: .text))
-            XCTAssertNotNil(MenuBarStripRenderer.image(for: content, style: .bars))
+            XCTAssertNotNil(MenuBarStripRenderer.presentation(for: content, style: .text)?.image)
+            XCTAssertNotNil(MenuBarStripRenderer.presentation(for: content, style: .bars)?.image)
         }
         XCTAssertTrue(MenuBarContentBuilder.build(groups: [], data: { $0.sample },
                                                   loginRequired: { _ in true }).isEmpty)

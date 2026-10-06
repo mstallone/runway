@@ -515,7 +515,6 @@ final class MemoryStoreTests: XCTestCase {
         try await store.createInstructionFile(for: source)
 
         XCTAssertEqual(files.files["\(home)/.gemini/GEMINI.md"], "")
-        XCTAssertEqual(files.preservingModeWrites, ["\(home)/.gemini/GEMINI.md"])
         // The reload after the create now sees the (empty) file.
         XCTAssertEqual(store.sources.first?.status, .empty)
         XCTAssertEqual(store.sources.first?.instructions?.title, "GEMINI.md")

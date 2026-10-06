@@ -259,7 +259,6 @@ struct DashboardView: View {
             // screen.
             .onChange(of: layout.screen) {
                 reorderLift = nil
-                layout.cancelDrag()
                 // The switched-away screen used to unmount here, and hover UI dismissal rode its
                 // rows' `onDisappear`. A parked page never disappears, so dismiss explicitly — a
                 // Usage Trend hover detail (or a tooltip) left open at switch time would otherwise
@@ -559,7 +558,6 @@ struct DashboardView: View {
         // (When the screen assignment above changed anything, the slide onChange's hidden walk has
         // already done this; this covers closing from the dashboard with a parked Customize.)
         pages = []
-        layout.cancelDrag()
         // A "Copied to clipboard" pill mid-countdown would otherwise reappear stale on the next open,
         // since the layout store survives the popover and only the timer clears it.
         layout.clearShareConfirmation()

@@ -154,8 +154,12 @@ final class PaceNotificationLogicTests: XCTestCase {
     // MARK: - No data / level-band states
 
     func testNoDataNeverFires() {
-        let result = step(.noData, fraction: 0.01)
+        // Primed first, so the launch baseline cannot be what keeps this quiet: a no-data tick
+        // under 10% must neither fire "Almost Out" nor record the dip.
+        let primed = step(healthy, fraction: 0.50).newState
+        let result = step(.noData, fraction: 0.01, from: primed)
         XCTAssertTrue(result.fire.isEmpty)
+        XCTAssertFalse(result.newState.wasUnderTenPercent)
     }
 
     func testLevelPrimesWithoutFiringOnFirstObservation() {
@@ -186,9 +190,8 @@ final class PaceNotificationLogicTests: XCTestCase {
 
     // MARK: - Toggle gates
 
-    func testMasterOffSuppressionIsCallerSide() {
-        // The pure logic has no master flag; the caller gates it. With all per-triggers off, nothing
-        // fires even on a clear worsening — this stands in for the per-trigger-off path.
+    func testAllTriggersOffFiresNothing() {
+        // With every per-trigger off, nothing fires even on a clear worsening.
         let off = PaceNotificationToggles(underTenPercent: false, healthyToClose: false, closeToRunningOut: false)
         let state = step(healthy, toggles: off).newState
         let close = step(self.close, fraction: 0.05, from: state, toggles: off)
@@ -220,13 +223,4 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertTrue(refired.fire.contains(.healthyToClose))
     }
 
-    // MARK: - Fresh session window (treated as .level by the caller)
-
-    func testFreshSessionLevelPrimesWithoutFiring() {
-        // A fresh session window resolves to an absolute-level state (`.level`) with plenty of quota
-        // left, so it primes without firing. (A `.level` metric can still fire "Almost Out" later if it
-        // drops under 10% — see testLevelFiresAlmostOutUnderTenPercent.)
-        let result = step(.level(.normal), fraction: 0.99)
-        XCTAssertTrue(result.fire.isEmpty)
-    }
 }

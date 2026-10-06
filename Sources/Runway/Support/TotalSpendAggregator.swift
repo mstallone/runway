@@ -110,13 +110,6 @@ struct TotalSpend: Equatable {
     let period: TotalSpendPeriod
     let slices: [TotalSpendSlice]
 
-    var totalUSD: Double { slices.reduce(0) { $0 + $1.amountUSD } }
-    var totalTokens: Double { slices.reduce(0) { $0 + $1.tokenCount } }
-    /// The combined number is an estimate as soon as any contributor's dollars are imputed locally.
-    var isEstimated: Bool { slices.contains(where: \.estimated) }
-    /// Raw storage empty — no provider had dollars or tokens for the period.
-    var isEmpty: Bool { slices.isEmpty }
-
     /// Filters, ranks, and computes the center value for the title menu's selected metric.
     func projection(for metric: TotalSpendMetric) -> TotalSpendProjection {
         let included: [(slice: TotalSpendSlice, display: Double)] = slices.compactMap { slice in
