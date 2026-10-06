@@ -160,7 +160,7 @@ struct ProviderAccountAssembly {
 
     /// The main-actor half: group the scans' findings, reconcile the account registry, and build
     /// the per-card identity map plus the extra-card build plans.
-    static func assemble(
+    private static func assemble(
         readout: DiscoveryReadout,
         accountsStore: ProviderAccountsStore,
         codexKeychain: (any KeychainReading)?

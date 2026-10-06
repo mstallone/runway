@@ -189,9 +189,7 @@ final class CursorProvider: ProviderRuntime {
         guard let usage = ProviderParse.jsonObject(usageResponse.body) else {
             throw CursorUsageError.invalidResponse
         }
-        let currentToken = accessToken
-
-        let (planName, planInfoUnavailable) = await fetchPlanName(accessToken: currentToken)
+        let (planName, planInfoUnavailable) = await fetchPlanName(accessToken: accessToken)
         let fallback = CursorUsageMapper.shouldUseRequestBasedFallback(
             usage: usage,
             planName: planName,
@@ -199,39 +197,39 @@ final class CursorProvider: ProviderRuntime {
         )
         if fallback.shouldFallback {
             var mapped = try await usageSummaryAndRequestResult(
-                accessToken: currentToken,
+                accessToken: accessToken,
                 planName: planName,
                 unavailableMessage: fallback.message
             )
-            await appendGrokBotUsage(to: &mapped.lines, accessToken: currentToken)
-            let history = await appendSpendLines(to: &mapped.lines, accessToken: currentToken)
+            await appendGrokBotUsage(to: &mapped.lines, accessToken: accessToken)
+            let history = await appendSpendLines(to: &mapped.lines, accessToken: accessToken)
             return snapshot(mapped, usageHistory: history)
         }
 
         if shouldTryGenericRequestFallback(usage: usage, planName: planName) {
             do {
                 var mapped = try await requestBasedResult(
-                    accessToken: currentToken,
+                    accessToken: accessToken,
                     planName: planName,
                     unavailableMessage: "Cursor request-based usage data unavailable. Try again later."
                 )
-                await appendGrokBotUsage(to: &mapped.lines, accessToken: currentToken)
+                await appendGrokBotUsage(to: &mapped.lines, accessToken: accessToken)
                 return snapshot(mapped)
             } catch {
                 AppLog.warn(LogTag.plugin("cursor"), "optional request-based usage fallback failed")
             }
         }
 
-        let creditGrants = await fetchCreditGrants(accessToken: currentToken)
-        let stripeBalanceCents = await fetchStripeBalanceCents(accessToken: currentToken)
+        let creditGrants = await fetchCreditGrants(accessToken: accessToken)
+        let stripeBalanceCents = await fetchStripeBalanceCents(accessToken: accessToken)
         var mapped = try CursorUsageMapper.mapUsage(
             usage: usage,
             planName: planName,
             creditGrants: creditGrants,
             stripeBalanceCents: stripeBalanceCents
         )
-        await appendGrokBotUsage(to: &mapped.lines, accessToken: currentToken)
-        let history = await appendSpendLines(to: &mapped.lines, accessToken: currentToken)
+        await appendGrokBotUsage(to: &mapped.lines, accessToken: accessToken)
+        let history = await appendSpendLines(to: &mapped.lines, accessToken: accessToken)
         return snapshot(mapped, usageHistory: history)
     }
 

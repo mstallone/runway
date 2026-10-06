@@ -21,6 +21,17 @@ actor ModelPricingStore {
         case litellm
         case modelsDev = "models_dev"
         case supplement
+
+        var url: URL {
+            switch self {
+            case .litellm:
+                URL(string: "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json")!
+            case .modelsDev:
+                URL(string: "https://models.dev/api.json")!
+            case .supplement:
+                URL(string: "https://mstallone.github.io/runway/pricing_supplement.json")!
+            }
+        }
     }
 
     private struct SourceState: Codable {
@@ -50,12 +61,6 @@ actor ModelPricingStore {
         self.now = now
         self.bundledData = bundledData
     }
-
-    static let defaultSourceURLs: [SourceID: URL] = [
-        .litellm: URL(string: "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json")!,
-        .modelsDev: URL(string: "https://models.dev/api.json")!,
-        .supplement: URL(string: "https://mstallone.github.io/runway/pricing_supplement.json")!
-    ]
 
     private static var defaultCacheDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -100,8 +105,8 @@ actor ModelPricingStore {
     private func rebuildPricing() {
         pricing = ModelPricing(
             supplement: loadSupplement(),
-            primary: loadCatalog(.litellm, parse: PricingCatalogCodecs.catalogFromCompact),
-            secondary: loadCatalog(.modelsDev, parse: PricingCatalogCodecs.catalogFromCompact)
+            primary: loadCatalog(.litellm),
+            secondary: loadCatalog(.modelsDev)
         )
     }
 
@@ -188,7 +193,7 @@ actor ModelPricingStore {
 
     /// A catalog is the bundled snapshot with the fetched cache merged on top — cached entries win,
     /// but snapshot-only models survive if the live feed ever drops them.
-    private func loadCatalog(_ source: SourceID, parse: (Data) throws -> PricingCatalog) -> PricingCatalog {
+    private func loadCatalog(_ source: SourceID) -> PricingCatalog {
         var catalog = PricingCatalog()
         let resourceName = source == .litellm ? "pricing_litellm_snapshot" : "pricing_models_dev_snapshot"
         if let bundled = bundledData(resourceName) {
@@ -202,7 +207,7 @@ actor ModelPricingStore {
         }
         if let cached = readCache(source) {
             do {
-                catalog = catalog.merging(try parse(cached))
+                catalog = catalog.merging(try PricingCatalogCodecs.catalogFromCompact(cached))
             } catch {
                 AppLog.warn("pricing", "cached \(source.rawValue) catalog unreadable, using bundled: \(error.localizedDescription)")
             }
@@ -238,9 +243,8 @@ actor ModelPricingStore {
 
     /// Fetches one source and updates its cache file. Returns true when new data was stored.
     private func fetch(_ source: SourceID) async -> Bool {
-        guard let url = Self.defaultSourceURLs[source] else { return false }
         var state = sourceStates[source] ?? SourceState()
-        var request = HTTPRequest(method: "GET", url: url, timeout: 30)
+        var request = HTTPRequest(method: "GET", url: source.url, timeout: 30)
         if let etag = state.etag {
             request.headers["If-None-Match"] = etag
         }

@@ -68,25 +68,17 @@ struct CopilotOrgBillingClient: Sendable {
     /// One page of enterprises visible to the token's user. Used for enterprise-direct seats that
     /// Copilot assigned with an empty organization list. When this GraphQL field is denied, the
     /// provider falls back to membership-derived slugs and this same REST usage endpoint.
-    func fetchViewerEnterprises(after cursor: String?, token: String) async throws -> HTTPResponse {
+    func fetchViewerEnterprises(token: String) async throws -> HTTPResponse {
         let query = """
-        query RunwayCopilotBillingEnterpriseSlugs($enterpriseCursor: String) {
+        query RunwayCopilotBillingEnterpriseSlugs {
           viewer {
-            enterprises(first: 100, after: $enterpriseCursor) {
+            enterprises(first: 100) {
               nodes { slug }
-              pageInfo {
-                hasNextPage
-                endCursor
-              }
             }
           }
         }
         """
-        var variables: [String: Any] = [:]
-        if let cursor {
-            variables["enterpriseCursor"] = cursor
-        }
-        return try await sendGraphQL(query: query, variables: variables, token: token)
+        return try await sendGraphQL(query: query, variables: [:], token: token)
     }
 
     /// One page of enterprises visible to the token's user, with each enterprise's organizations

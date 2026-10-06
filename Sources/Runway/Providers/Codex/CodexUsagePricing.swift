@@ -100,10 +100,6 @@ enum CodexUsagePricing {
         return effective
     }
 
-    static func priorityMultiplier(for model: String, rates: ModelRates) -> Double {
-        priorityMultiplier(base: datedBaseModel(model), rates: rates)
-    }
-
     private static func priorityMultiplier(base: String, rates: ModelRates) -> Double {
         switch base {
         case "gpt-5.5", "gpt-5.5-pro": return 2.5

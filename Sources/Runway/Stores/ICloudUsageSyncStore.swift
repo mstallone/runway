@@ -452,13 +452,12 @@ final class ICloudUsageSyncStore {
 
     private static func resolveDeviceID(
         defaults: UserDefaults,
-        store: any ICloudDeviceIDStoring,
-        allowLegacyInteraction: Bool = false
+        store: any ICloudDeviceIDStoring
     ) -> DeviceIdentityResolution {
         let identity = resolveDeviceID(
             savedDeviceID: defaults.string(forKey: deviceIDKey),
             store: store,
-            allowLegacyInteraction: allowLegacyInteraction
+            allowLegacyInteraction: false
         )
         if !identity.isProvisional {
             defaults.set(identity.id, forKey: deviceIDKey)

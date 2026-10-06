@@ -1,5 +1,4 @@
 import Foundation
-import Security
 
 /// Renews an expired Claude OAuth token the way the legacy edition did — and the way CodexBar's
 /// desync bug (steipete/CodexBar#1161) proved it must be done: by writing the rotated credential

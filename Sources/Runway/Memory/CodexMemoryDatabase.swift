@@ -5,10 +5,6 @@ struct CodexMemoryRow: Equatable, Sendable {
     var threadID: String
     var rawMemory: String
     var rolloutSummary: String?
-    var rolloutSlug: String?
-    var generatedAt: String?
-    var usageCount: Int?
-    var lastUsage: String?
 }
 
 /// Read-only view of a Codex home's `memories_1.sqlite`.
@@ -28,7 +24,7 @@ struct CodexMemoryDatabase: Sendable {
     /// missing database and an empty table both come back as an empty list.
     func listDocuments(dbPath: String) throws -> [MemoryDocument] {
         let sql = """
-        SELECT thread_id, rollout_slug, generated_at, usage_count, last_usage \
+        SELECT thread_id, rollout_slug, generated_at, usage_count \
         FROM stage1_outputs ORDER BY generated_at DESC LIMIT 500
         """
         guard let json = try sqlite.queryJSONRows(path: dbPath, sql: sql) else { return [] }
@@ -45,13 +41,13 @@ struct CodexMemoryDatabase: Sendable {
         }
     }
 
-    /// One memory's bodies plus metadata for the editor's read-only view.
+    /// One memory's bodies for the editor's read-only view.
     func loadRow(dbPath: String, threadID: String) throws -> CodexMemoryRow {
         // Single-quote doubling is the SQL string-literal escape; thread ids
         // are the only interpolated value.
         let escaped = threadID.replacingOccurrences(of: "'", with: "''")
         let sql = """
-        SELECT thread_id, raw_memory, rollout_summary, rollout_slug, generated_at, usage_count, last_usage \
+        SELECT thread_id, raw_memory, rollout_summary \
         FROM stage1_outputs WHERE thread_id = '\(escaped)' LIMIT 1
         """
         guard let json = try sqlite.queryJSONRows(path: dbPath, sql: sql),
@@ -61,11 +57,7 @@ struct CodexMemoryDatabase: Sendable {
         return CodexMemoryRow(
             threadID: row.threadID,
             rawMemory: row.rawMemory ?? "",
-            rolloutSummary: row.rolloutSummary,
-            rolloutSlug: row.rolloutSlug,
-            generatedAt: row.generatedAt,
-            usageCount: row.usageCount,
-            lastUsage: row.lastUsage
+            rolloutSummary: row.rolloutSummary
         )
     }
 
@@ -80,7 +72,6 @@ struct CodexMemoryDatabase: Sendable {
         var rolloutSlug: String?
         var generatedAt: String?
         var usageCount: Int?
-        var lastUsage: String?
 
         enum CodingKeys: String, CodingKey {
             case threadID = "thread_id"
@@ -89,7 +80,6 @@ struct CodexMemoryDatabase: Sendable {
             case rolloutSlug = "rollout_slug"
             case generatedAt = "generated_at"
             case usageCount = "usage_count"
-            case lastUsage = "last_usage"
         }
 
         init(from decoder: Decoder) throws {
@@ -100,7 +90,6 @@ struct CodexMemoryDatabase: Sendable {
             rolloutSlug = try container.decodeIfPresent(String.self, forKey: .rolloutSlug)
             generatedAt = try Self.timestamp(container, .generatedAt)
             usageCount = try Self.count(container, .usageCount)
-            lastUsage = try Self.timestamp(container, .lastUsage)
         }
 
         /// TEXT passes through; numeric unix seconds (or milliseconds) become an ISO-8601 string

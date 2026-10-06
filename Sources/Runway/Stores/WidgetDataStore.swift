@@ -923,9 +923,10 @@ final class WidgetDataStore {
 
     /// A snapshot that carries only error lines is a failed refresh; its message comes from the badge.
     private static func errorMessage(in snapshot: ProviderSnapshot) -> String? {
-        guard !snapshot.lines.isEmpty, snapshot.lines.allSatisfy(\.isError) else { return nil }
-        if case .badge(_, let text, _, _) = snapshot.lines[0] { return text }
-        return "Refresh failed"
+        guard snapshot.lines.allSatisfy(\.isError),
+              case .badge(_, let text, _, _) = snapshot.lines.first
+        else { return nil }
+        return text
     }
 
     func data(for descriptor: WidgetDescriptor) -> WidgetData {

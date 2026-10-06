@@ -87,11 +87,7 @@ final class CodexMemoryDatabaseTests: XCTestCase {
         XCTAssertEqual(row, CodexMemoryRow(
             threadID: "t1",
             rawMemory: "---\nname: X\n---\nbody",
-            rolloutSummary: "summary",
-            rolloutSlug: "slug",
-            generatedAt: "2026-07-30T12:34:56Z",
-            usageCount: 1,
-            lastUsage: "2026-08-01T09:00:00Z"
+            rolloutSummary: "summary"
         ))
         let sql = try XCTUnwrap(sqlite.lastSQL)
         XCTAssertTrue(sql.contains("raw_memory"))

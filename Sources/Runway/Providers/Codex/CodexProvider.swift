@@ -209,10 +209,8 @@ final class CodexProvider: ProviderRuntime {
         // A successful exact keyring candidate can now safely bind its home for the next launch's
         // attributes-only discovery pass.
         _ = authStore.recordSelectedIdentity(authState)
-        // The access token may have rotated during the usage fetch's refresh-and-retry; read the live one.
-        let currentToken = authState.auth.tokens?.accessToken ?? accessToken
         let resetCredits = await fetchResetCreditsBestEffort(
-            accessToken: currentToken,
+            accessToken: accessToken,
             accountID: authState.auth.tokens?.accountID
         )
         let mapped = try CodexUsageMapper.mapUsageResponse(response, resetCredits: resetCredits, now: now())

@@ -2,25 +2,10 @@ import Foundation
 
 enum UsageHistoryAggregator {
     /// Combines only providers explicitly declared machine-local. Account-wide histories such as
-    /// Cursor are left out even if a malformed or future file contains them.
-    static func merged(
-        localSnapshots: [String: ProviderSnapshot],
-        peerDocuments: [UsageHistoryDocument],
-        descriptors: [String: UsageHistoryDescriptor],
-        now: Date = Date()
-    ) -> [String: ProviderUsageHistory] {
-        var pairs: [(String, ProviderUsageHistory)] = []
-        for document in UsageHistoryDocument.newestByDevice(peerDocuments) {
-            for (providerID, history) in document.providers {
-                pairs.append((providerID, history))
-            }
-        }
-        return merged(localSnapshots: localSnapshots, peerHistories: pairs, descriptors: descriptors, now: now)
-    }
-
-    /// The identity-remapped variant: peers arrive as (LOCAL card id, history) pairs — see
-    /// `PeerHistoryRemapper` — so the same account merges into the same card regardless of which Mac
-    /// calls it the default and which shows it as an extra account card.
+    /// Cursor are left out even if a malformed or future file contains them. Peers arrive as
+    /// (LOCAL card id, history) pairs — see `PeerHistoryRemapper` — so the same account merges into
+    /// the same card regardless of which Mac calls it the default and which shows it as an extra
+    /// account card.
     static func merged(
         localSnapshots: [String: ProviderSnapshot],
         peerHistories: [(String, ProviderUsageHistory)],

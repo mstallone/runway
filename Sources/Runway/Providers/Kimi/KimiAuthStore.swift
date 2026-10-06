@@ -176,11 +176,8 @@ struct KimiAuthStore: Sendable {
         return override?.nilIfEmpty ?? Self.defaultHome
     }
 
-    func credentialPath(
-        homeDirectory: String? = nil,
-        credentialName: String = "kimi-code"
-    ) -> String {
-        let home = (homeDirectory ?? self.homeDirectory()).trimmingTrailingSlashes
+    private func credentialPath(homeDirectory: String, credentialName: String) -> String {
+        let home = homeDirectory.trimmingTrailingSlashes
         return "\(home)/credentials/\(credentialName).json"
     }
 

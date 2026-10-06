@@ -35,15 +35,12 @@ enum ProviderAuthRetry {
     ///   - attempt: performs the request with the given token; called at most twice.
     ///   - refreshAccessToken: returns a fresh access token or throws the provider's auth error.
     ///   - connectionFailed: thrown when `attempt` itself fails (transport, not status).
-    ///   - retriedConnectionFailed: optional distinct error for a transport failure on the retry
-    ///     (Cursor reports these separately); defaults to `connectionFailed`.
     ///   - authExpired: thrown when the retried request still comes back 401/403.
     static func fetch(
         token: String,
         attempt: (_ accessToken: String) async throws -> HTTPResponse,
         refreshAccessToken: () async throws -> String,
         connectionFailed: Error,
-        retriedConnectionFailed: Error? = nil,
         authExpired: Error
     ) async throws -> HTTPResponse {
         let response: HTTPResponse
@@ -61,7 +58,7 @@ enum ProviderAuthRetry {
         do {
             retried = try await attempt(refreshed)
         } catch {
-            throw retriedConnectionFailed ?? connectionFailed
+            throw connectionFailed
         }
         if isAuthFailure(retried) {
             AppLog.warn(.auth, "retry still unauthorized -> auth expired")

@@ -32,3 +32,22 @@ extension LayoutStore {
         notePinDenied(descriptorID, matching: { _ in true })
     }
 }
+
+/// Test-target-only entry point that takes whole peer documents. The app remaps peers to local
+/// card ids first (`PeerHistoryRemapper`) and calls the `peerHistories:` form.
+extension UsageHistoryAggregator {
+    static func merged(
+        localSnapshots: [String: ProviderSnapshot],
+        peerDocuments: [UsageHistoryDocument],
+        descriptors: [String: UsageHistoryDescriptor],
+        now: Date = Date()
+    ) -> [String: ProviderUsageHistory] {
+        var pairs: [(String, ProviderUsageHistory)] = []
+        for document in UsageHistoryDocument.newestByDevice(peerDocuments) {
+            for (providerID, history) in document.providers {
+                pairs.append((providerID, history))
+            }
+        }
+        return merged(localSnapshots: localSnapshots, peerHistories: pairs, descriptors: descriptors, now: now)
+    }
+}

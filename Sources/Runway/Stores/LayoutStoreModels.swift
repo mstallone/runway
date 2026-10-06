@@ -20,17 +20,6 @@ struct ProviderMetrics: Identifiable {
     let expandedMetrics: [WidgetDescriptor]
     var id: String { provider.id }
 
-    init(provider: Provider, alwaysShownMetrics: [WidgetDescriptor], expandedMetrics: [WidgetDescriptor]) {
-        self.provider = provider
-        self.alwaysShownMetrics = alwaysShownMetrics
-        self.expandedMetrics = expandedMetrics
-    }
-
-    /// Convenience for callers that don't partition (e.g. tests): everything is always-shown.
-    init(provider: Provider, metrics: [WidgetDescriptor]) {
-        self.init(provider: provider, alwaysShownMetrics: metrics, expandedMetrics: [])
-    }
-
     /// Every supported metric in custom order (always-shown first, then expanded).
     var metrics: [WidgetDescriptor] { alwaysShownMetrics + expandedMetrics }
 }
