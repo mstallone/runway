@@ -49,7 +49,7 @@ Methods other than `GET` and `OPTIONS` return **405**. Unknown routes return **4
   "providers": {
     "codex": {
       "displayName": "Codex",
-      "plan": "Pro 20x",
+      "plan": "Pro 200",
       "fetchedAt": "2026-07-13T01:39:30.000Z",
       "expiresAt": "2026-07-13T01:44:30.000Z",
       "stale": false,
