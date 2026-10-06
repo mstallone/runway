@@ -65,19 +65,28 @@ enum CodexUsagePricing {
     }
 
     /// Lower-level entry point for the native scanner, which resolves its own rates so it can carry
-    /// the per-event priority flag from the session log.
-    static func cost(rates: ModelRates, tokens: TokenBreakdown, model: String, fastTier: Bool) -> Double {
-        cost(prepared: Prepared(rates: adjusted(rates, model: model), fastTier: fastTier), tokens: tokens)
+    /// the per-event priority flag from the session log. Ultrafast is a separate tier with its own
+    /// multiplier where OpenAI publishes one; other models bill it at their fast rate.
+    static func cost(
+        rates: ModelRates, tokens: TokenBreakdown, model: String, fastTier: Bool, ultrafastTier: Bool = false
+    ) -> Double {
+        cost(
+            prepared: Prepared(
+                rates: adjusted(rates, model: model, ultrafastTier: ultrafastTier),
+                fastTier: fastTier || ultrafastTier
+            ),
+            tokens: tokens
+        )
     }
 
     /// Applies every model-derived Codex adjustment in one pass so the slug is normalized once.
-    private static func adjusted(_ rates: ModelRates, model: String) -> ModelRates {
+    private static func adjusted(_ rates: ModelRates, model: String, ultrafastTier: Bool = false) -> ModelRates {
         let base = datedBaseModel(model)
         var effective = rates
-        if let longContext = longContextRates(base: base) {
-            effective.inputAbove200kPerMillion = longContext.input
-            effective.outputAbove200kPerMillion = longContext.output
-            effective.cacheReadAbove200kPerMillion = longContext.cacheRead
+        if hasLongContextTier(base: base) {
+            effective.inputAbove200kPerMillion = rates.inputPerMillion * 2
+            effective.outputAbove200kPerMillion = rates.outputPerMillion * 1.5
+            effective.cacheReadAbove200kPerMillion = rates.cacheReadPerMillion * 2
             effective.longContextThresholdTokens = 272_000
         }
         // Either the model publishes no cache discount at all, or the catalog gave no explicit
@@ -86,7 +95,8 @@ enum CodexUsagePricing {
             effective.cacheReadPerMillion = effective.inputPerMillion
             effective.cacheReadAbove200kPerMillion = effective.inputAbove200kPerMillion
         }
-        effective.fastMultiplier = priorityMultiplier(base: base, rates: rates)
+        let priority = priorityMultiplier(base: base, rates: rates)
+        effective.fastMultiplier = ultrafastTier ? ultrafastMultiplier(base: base) ?? priority : priority
         return effective
     }
 
@@ -103,6 +113,12 @@ enum CodexUsagePricing {
         }
     }
 
+    /// OpenAI publishes Ultrafast rates for GPT-6 Astra only: 6x standard, at both context tiers
+    /// (developers.openai.com/api/docs/pricing).
+    private static func ultrafastMultiplier(base: String) -> Double? {
+        base == "gpt-6-astra" ? 6 : nil
+    }
+
     private static func hasNoCacheDiscount(base: String) -> Bool {
         switch base {
         case "gpt-5.4-pro", "gpt-5.5-pro": return true
@@ -110,18 +126,15 @@ enum CodexUsagePricing {
         }
     }
 
-    private static func longContextRates(base: String) -> (input: Double, output: Double, cacheRead: Double)? {
+    /// OpenAI bills these models' whole request at 2x input and cache read and 1.5x output once the
+    /// prompt passes 272k tokens (developers.openai.com/api/docs/pricing). The tier is derived from
+    /// the resolved base rates, so a repricing or promotion in the catalogs carries through.
+    private static func hasLongContextTier(base: String) -> Bool {
         switch base {
-        case "gpt-5.4": return (5, 22.5, 0.5)
-        case "gpt-5.4-pro": return (60, 270, 60)
-        case "gpt-5.5": return (10, 45, 1)
-        case "gpt-5.5-pro": return (60, 270, 60)
-        case "gpt-5.6-sol": return (10, 45, 1)
-        case "gpt-5.6-terra": return (4, 18, 0.4)
-        case "gpt-5.6-luna": return (0.4, 1.8, 0.04)
-        // Above 272k: 2x input and cache, 1.5x output (developers.openai.com/api/docs/models/gpt-6-astra).
-        case "gpt-6-astra": return (20, 75, 2)
-        default: return nil
+        case "gpt-5.4", "gpt-5.4-pro", "gpt-5.5", "gpt-5.5-pro",
+             "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+             "gpt-6-astra", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna": return true
+        default: return false
         }
     }
 
