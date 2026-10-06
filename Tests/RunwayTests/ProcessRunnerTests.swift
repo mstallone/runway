@@ -71,15 +71,18 @@ final class ProcessRunnerTests: XCTestCase {
         sleep 5;
         """
 
+        // The timeout must outlast perl's startup, the fork and the PID-file write: at 0.2s a loaded
+        // CI runner sometimes killed the tree before the descendant had recorded its PID. The
+        // processes sleep 5s, so they are still alive when a 1s timeout fires.
         XCTAssertThrowsError(try runner.run(
             executable: "/usr/bin/perl",
             arguments: ["-e", script],
             environment: ["RUNWAY_DESCENDANT_PID_PATH": pidFile.path],
-            timeout: 0.2
+            timeout: 1
         )) { error in
             XCTAssertEqual(
                 error as? ProcessRunnerError,
-                .timedOut(executable: "/usr/bin/perl", timeout: 0.2)
+                .timedOut(executable: "/usr/bin/perl", timeout: 1)
             )
         }
 
