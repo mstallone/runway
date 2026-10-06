@@ -12,8 +12,8 @@ final class LayoutStore {
 
     /// In-popover navigation (screen, Customize master/detail, screen-switch slide). Its own store so
     /// screen routing isn't tangled with layout state; the `screen`/`customizeProviderID`/
-    /// `screenSlide*` surface below forwards to it, so existing call sites are unchanged. Private so the
-    /// forwarding surface stays the ONLY spelling — two live paths to the same state invites drift.
+    /// `screenSlide*` surface below forwards to it. Private so the forwarding surface stays the ONLY
+    /// spelling — two live paths to the same state invites drift.
     private let navigation = PopoverNavigationStore()
 
     /// Which in-popover screen is showing. Drives the footer buttons, the Esc handler, and the

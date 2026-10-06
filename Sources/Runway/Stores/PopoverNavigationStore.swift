@@ -21,8 +21,7 @@ enum PopoverScreen: Hashable, Sendable {
 /// In-popover navigation: which screen is showing, the master/detail route inside Customize, and the
 /// horizontal screen-switch slide bookkeeping. Split out of `LayoutStore` (which owns the *layout* —
 /// enabled widgets, order, pins) so screen routing is its own concern; `LayoutStore` forwards its
-/// existing `screen`/`customizeProviderID`/`screenSlide*` surface to this store, so callers
-/// are unchanged.
+/// `screen`/`customizeProviderID`/`screenSlide*` surface to this store.
 @MainActor
 @Observable
 final class PopoverNavigationStore {
