@@ -27,14 +27,10 @@ final class WidgetDataStore {
     /// Monotonic clock for refresh durations, kept separate from wall time so a clock adjustment cannot
     /// produce a negative or wildly inflated provider timing. Tests inject exact ticks.
     private let monotonicNow: () -> TimeInterval
-    private let slowProviderRefreshThreshold: TimeInterval
-    /// Hard ceiling on one provider's `refresh()`, resolved per provider
-    /// (`ProviderRuntime.refreshTimeout` — a hung network call used to spin the footer's refresh
-    /// indicator forever, and the in-flight guard then blocked every later attempt). This stored
-    /// value is a test-only global override; `nil` in production.
-    private let providerRefreshTimeoutOverride: TimeInterval?
-    /// The protocol extension's default ceiling — see `ProviderRuntime.refreshTimeout` for the
-    /// budget rationale and when a provider should override it.
+    /// The protocol extension's default ceiling on one provider's `refresh()` — a hung network call
+    /// used to spin the footer's refresh indicator forever, and the in-flight guard then blocked
+    /// every later attempt. See `ProviderRuntime.refreshTimeout` for the budget rationale and when a
+    /// provider should override it.
     static let defaultProviderRefreshTimeout: TimeInterval = 150
     /// Manual hidden-account preparation gets the same hard ceiling as a normal provider refresh.
     /// A Keychain approval dialog may be ignored and Security.framework is synchronous underneath;
@@ -81,7 +77,7 @@ final class WidgetDataStore {
     /// 5-minute heartbeat always retries; it only suppresses the sub-interval re-probes a wake burst
     /// would cause. The manual `force` refresh (⌘R) always bypasses it.
     private static let failureRetryBackoff: TimeInterval = 60
-    static let defaultSlowProviderRefreshThreshold: TimeInterval = 10
+    private static let slowProviderRefreshThreshold: TimeInterval = 10
 
     /// Rendered snapshots consumed by every UI/API surface. Equal to `localSnapshots` when iCloud sync
     /// is off; machine-local history rows are rebuilt from the union while sync is on.
@@ -174,8 +170,6 @@ final class WidgetDataStore {
         orderedDescriptors: (@MainActor () -> [WidgetDescriptor])? = nil,
         now: @escaping () -> Date = Date.init,
         monotonicNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
-        slowProviderRefreshThreshold: TimeInterval = WidgetDataStore.defaultSlowProviderRefreshThreshold,
-        providerRefreshTimeout: TimeInterval? = nil,
         interactivePreparationTimeout: TimeInterval = WidgetDataStore.defaultInteractivePreparationTimeout,
         notificationSettings: (@MainActor () -> NotificationSettingsStore)? = nil,
         postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil,
@@ -183,10 +177,7 @@ final class WidgetDataStore {
         providersRejectingAccountStampedCache: Set<String> = [],
         resolveDisplayName: (@MainActor (String) -> String?)? = nil
     ) {
-        precondition(slowProviderRefreshThreshold >= 0)
-        if let providerRefreshTimeout { precondition(providerRefreshTimeout > 0) }
         precondition(interactivePreparationTimeout > 0)
-        self.providerRefreshTimeoutOverride = providerRefreshTimeout
         self.interactivePreparationTimeout = interactivePreparationTimeout
         self.registry = registry
         self.providersByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.provider.id, $0) })
@@ -196,7 +187,6 @@ final class WidgetDataStore {
         self.orderedDescriptors = orderedDescriptors ?? { registry.descriptors }
         self.now = now
         self.monotonicNow = monotonicNow
-        self.slowProviderRefreshThreshold = slowProviderRefreshThreshold
         self.notificationSettings = notificationSettings
         self.postNotification = postNotification
             ?? { idPrefix, title, subtitle, body in
@@ -507,9 +497,8 @@ final class WidgetDataStore {
         refreshingProviderIDs.insert(providerID)
         defer { refreshingProviderIDs.remove(providerID) }
         let start = monotonicNow()
-        // Each provider owns its ceiling (`ProviderRuntime.refreshTimeout`); the injected override
-        // exists for tests.
-        let refreshTimeout = providerRefreshTimeoutOverride ?? provider.refreshTimeout
+        // Each provider owns its ceiling (`ProviderRuntime.refreshTimeout`).
+        let refreshTimeout = provider.refreshTimeout
         // Bound the refresh with a true deadline race. `provider` is not Sendable, so both racers
         // are isolation-inheriting `Task`s (not a task group) and the continuation is resumed by
         // whichever finishes first — the deadline never `await`s the provider, so even a provider
@@ -568,10 +557,10 @@ final class WidgetDataStore {
             return .skipped
         }
         let durationMs = durationMilliseconds(since: start)
-        if TimeInterval(durationMs) >= slowProviderRefreshThreshold * 1000 {
+        if TimeInterval(durationMs) >= Self.slowProviderRefreshThreshold * 1000 {
             AppLog.warn(
                 .refresh,
-                "\(providerID) slow refresh (\(durationMs)ms, threshold=\(Int(slowProviderRefreshThreshold * 1000))ms)"
+                "\(providerID) slow refresh (\(durationMs)ms, threshold=\(Int(Self.slowProviderRefreshThreshold * 1000))ms)"
             )
         }
         if let message = Self.errorMessage(in: snapshot) {

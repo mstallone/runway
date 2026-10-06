@@ -498,21 +498,6 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         XCTAssertNil(scan)
     }
 
-    /// Manual parity harness against the real logs on this machine: prints per-day totals to compare
-    /// with `ccusage daily --json --offline`. Gated like the other live tests.
-    func testParityAgainstRealLocalLogs() async throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["RUNWAY_CLAUDE_PARITY"] == "1")
-        let scanner = ClaudeLogUsageScanner()
-        let result = await scanner.scan(now: Date(), pricing: TestPricing.bundled)
-        let scan = try XCTUnwrap(result)
-        for day in scan.series.daily.sorted(by: { $0.date < $1.date }) {
-            print("PARITY \(day.date) tokens=\(day.totalTokens) cost=\(day.costUSD.map { String(format: "%.4f", $0) } ?? "nil")")
-        }
-        if !scan.unknownModelsByDay.isEmpty {
-            print("PARITY unknown models: \(scan.unknownModelsByDay)")
-        }
-    }
-
     // MARK: - Cowork session roots
 
     func testScanSumsTerminalAndCoworkLogs() async throws {

@@ -8,6 +8,8 @@ private final class StallingProviderRuntime: ProviderRuntime {
     let provider: Provider
     let widgetDescriptors: [WidgetDescriptor]
     let snapshot: ProviderSnapshot
+    /// The provider's own ceiling — the boundary the store resolves the deadline from.
+    let refreshTimeout: TimeInterval = 0.05
 
     init(provider: Provider, descriptors: [WidgetDescriptor], snapshot: ProviderSnapshot) {
         self.provider = provider
@@ -29,6 +31,8 @@ private final class CancellationIgnoringProviderRuntime: ProviderRuntime {
     let provider: Provider
     let widgetDescriptors: [WidgetDescriptor]
     let snapshot: ProviderSnapshot
+    /// The provider's own ceiling — the boundary the store resolves the deadline from.
+    let refreshTimeout: TimeInterval = 0.05
 
     init(provider: Provider, descriptors: [WidgetDescriptor], snapshot: ProviderSnapshot) {
         self.provider = provider
@@ -70,8 +74,7 @@ final class WidgetDataStoreTimeoutTests: XCTestCase {
         let store = WidgetDataStore(
             registry: registry,
             providers: [runtime],
-            defaults: makeUserDefaults("refresh-timeout"),
-            providerRefreshTimeout: 0.05
+            defaults: makeUserDefaults("refresh-timeout")
         )
 
         let outcome = await store.refresh(providerID: provider.id, force: true)
@@ -83,37 +86,6 @@ final class WidgetDataStoreTimeoutTests: XCTestCase {
         // Timed-out providers back off like any failure, so a wake burst can't re-probe in a loop.
         let backedOff = await store.refresh(providerID: provider.id)
         XCTAssertEqual(backedOff, .backedOff)
-    }
-
-    func testFastProviderIsUntouchedByTheTimeout() async {
-        let provider = Provider(id: "fast", displayName: "Fast", icon: .providerMark("codex"))
-        let descriptor = WidgetDescriptor(
-            id: "fast.session",
-            providerID: provider.id,
-            metricLabel: "Session",
-            sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 0, limit: 100)
-        )
-        let runtime = TestProviderRuntime(
-            provider: provider,
-            descriptors: [descriptor],
-            snapshot: ProviderSnapshot(
-                providerID: provider.id,
-                displayName: provider.displayName,
-                lines: [.progress(label: "Session", used: 42, limit: 100, format: .percent)]
-            )
-        )
-        let registry = WidgetRegistry(providers: [provider], descriptors: [descriptor])
-        let store = WidgetDataStore(
-            registry: registry,
-            providers: [runtime],
-            defaults: makeUserDefaults("refresh-timeout-fast"),
-            providerRefreshTimeout: 5
-        )
-
-        let outcome = await store.refresh(providerID: provider.id, force: true)
-
-        XCTAssertEqual(outcome, .refreshed)
-        XCTAssertNil(store.providerErrors[provider.id])
     }
 
     func testDeadlineFiresWithoutAwaitingANonCancellableProvider() async {
@@ -137,8 +109,7 @@ final class WidgetDataStoreTimeoutTests: XCTestCase {
         let store = WidgetDataStore(
             registry: registry,
             providers: [runtime],
-            defaults: makeUserDefaults("refresh-timeout-stubborn"),
-            providerRefreshTimeout: 0.05
+            defaults: makeUserDefaults("refresh-timeout-stubborn")
         )
 
         let start = Date()

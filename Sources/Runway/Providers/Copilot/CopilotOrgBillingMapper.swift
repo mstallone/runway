@@ -155,16 +155,8 @@ enum CopilotOrgBillingMapper {
         )
     }
 
-    /// Metric lines from an AI-credit usage response, or `nil` when the body is malformed or carries
+    /// The report from an AI-credit usage response, or `nil` when the body is malformed or carries
     /// no AI-credit items. A report with no Copilot items maps to zero-valued Copilot lines.
-    static func usageLines(_ response: HTTPResponse) -> [MetricLine]? {
-        usageReport(response)?.lines
-    }
-
-    static func usageLines(body: [String: Any]) -> [MetricLine]? {
-        usageReport(body: body)?.lines
-    }
-
     /// A successfully parsed report keeps whether GitHub returned any Copilot credit items separate
     /// from its zero-valued metric lines. Discovery can therefore continue past an accessible empty
     /// org in search of actual usage without confusing that empty `200` response with a `403`.

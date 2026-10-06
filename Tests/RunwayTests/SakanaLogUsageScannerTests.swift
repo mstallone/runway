@@ -143,18 +143,6 @@ final class SakanaLogUsageScannerTests: XCTestCase {
         XCTAssertTrue(scanner.hasSakanaFootprint())
     }
 
-    func testParityAgainstRealLocalLogs() async throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["RUNWAY_SAKANA_PARITY"] == "1")
-        let result = await SakanaLogUsageScanner().scan(now: Date())
-        let scan = try XCTUnwrap(result)
-        for day in scan.series.daily.sorted(by: { $0.date < $1.date }) {
-            print(
-                "SAKANA PARITY \(day.date) tokens=\(day.totalTokens) "
-                    + "estimated=\(day.costUSD.map { String(format: "%.4f", $0) } ?? "nil")"
-            )
-        }
-    }
-
     private func event(
         timestamp: String = "2026-07-26T10:00:00.000Z",
         model: String,

@@ -642,7 +642,7 @@ final class CopilotOrgBillingMapperTests: XCTestCase {
     func testMapsAICreditUsageFromSummary() throws {
         // The exact shape reported in issue #839: one Copilot AI-unit item, fully covered by included
         // credits (netAmount 0).
-        let lines = try XCTUnwrap(CopilotOrgBillingMapper.usageLines(body: makeOrgSummaryBody()))
+        let lines = try XCTUnwrap(CopilotOrgBillingMapper.usageReport(body: makeOrgSummaryBody())?.lines)
 
         XCTAssertEqual(orgCount(lines, "Org Credits") ?? -1, 298.698546, accuracy: 0.0001)
         XCTAssertEqual(orgCount(lines, "Org Credits", valueLabel: "included") ?? -1, 298.698546, accuracy: 0.0001)
@@ -663,7 +663,7 @@ final class CopilotOrgBillingMapperTests: XCTestCase {
             ]
         ]
 
-        let lines = try XCTUnwrap(CopilotOrgBillingMapper.usageLines(body: body))
+        let lines = try XCTUnwrap(CopilotOrgBillingMapper.usageReport(body: body)?.lines)
 
         XCTAssertEqual(orgCount(lines, "Org Credits") ?? -1, 150.5, accuracy: 0.0001)
         XCTAssertEqual(orgCount(lines, "Org Credits", valueLabel: "included"), 120)
@@ -673,7 +673,7 @@ final class CopilotOrgBillingMapperTests: XCTestCase {
 
     @MainActor
     func testCreditDescriptorShowsGrossTotalWithIncludedAndAdditionalSubtitle() throws {
-        let lines = try XCTUnwrap(CopilotOrgBillingMapper.usageLines(body: makeOrgSummaryBody()))
+        let lines = try XCTUnwrap(CopilotOrgBillingMapper.usageReport(body: makeOrgSummaryBody())?.lines)
         let descriptor = try XCTUnwrap(
             CopilotProvider().widgetDescriptors.first { $0.id == "copilot.orgCredits" }
         )
@@ -697,7 +697,7 @@ final class CopilotOrgBillingMapperTests: XCTestCase {
             ["product": "Copilot", "sku": "copilot_business_seat", "unitType": "user-months", "grossQuantity": 10, "netAmount": 190]
         ]
 
-        XCTAssertNil(CopilotOrgBillingMapper.usageLines(body: body))
+        XCTAssertNil(CopilotOrgBillingMapper.usageReport(body: body)?.lines)
     }
 
     func testPremiumRequestRowsDoNotEnterAICreditMetrics() {
@@ -713,11 +713,11 @@ final class CopilotOrgBillingMapperTests: XCTestCase {
             ]]
         ]
 
-        XCTAssertNil(CopilotOrgBillingMapper.usageLines(body: body))
+        XCTAssertNil(CopilotOrgBillingMapper.usageReport(body: body)?.lines)
     }
 
     func testNilWhenSummaryHasNoUsageItems() {
-        XCTAssertNil(CopilotOrgBillingMapper.usageLines(body: ["organization": "acme"]))
+        XCTAssertNil(CopilotOrgBillingMapper.usageReport(body: ["organization": "acme"])?.lines)
     }
 
     func testEmptyUsageItemsMapsToZeroTotals() throws {

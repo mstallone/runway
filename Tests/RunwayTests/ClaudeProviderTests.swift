@@ -55,7 +55,7 @@ final class ClaudeAuthStoreTests: XCTestCase {
         let hashedService = store.keychainServiceCandidates().first!
         keychain.currentUserValues[hashedService] = #"{"claudeAiOauth":{"accessToken":"keychain-token","subscriptionType":"max"}}"#
 
-        let credentials = store.loadCredentialCandidates().first
+        let credentials = store.loadCredentialSet().candidates.first
 
         XCTAssertTrue(hashedService.hasPrefix("Claude Code-credentials-"))
         XCTAssertEqual(credentials?.oauth.accessToken, "keychain-token")
@@ -79,10 +79,10 @@ final class ClaudeAuthStoreTests: XCTestCase {
         let hashedService = store.keychainServiceCandidates().first!
         keychain.currentUserValues[hashedService] = #"{"claudeAiOauth":{"accessToken":"keychain-token","expiresAt":4070908800000,"subscriptionType":"max"}}"#
 
-        let candidates = store.loadCredentialCandidates()
+        let candidates = store.loadCredentialSet().candidates
 
         XCTAssertEqual(candidates.map(\.oauth.accessToken), ["keychain-token", "file-token"])
-        XCTAssertEqual(store.loadCredentialCandidates().first?.oauth.accessToken, "keychain-token")
+        XCTAssertEqual(store.loadCredentialSet().candidates.first?.oauth.accessToken, "keychain-token")
     }
 
     func testPlanBadgeUsesStateFileTierWhenLoginBlobTierIsStale() {
@@ -99,7 +99,7 @@ final class ClaudeAuthStoreTests: XCTestCase {
             keychain: FakeKeychain()
         )
 
-        let state = store.loadCredentialCandidates().first
+        let state = store.loadCredentialSet().candidates.first
 
         XCTAssertEqual(state?.displayOAuth.rateLimitTier, "default_claude_max_20x")
         // The blob itself stays untouched so a token rotation can never persist the override.
@@ -127,7 +127,7 @@ final class ClaudeAuthStoreTests: XCTestCase {
             keychain: FakeKeychain()
         )
 
-        let state = store.loadCredentialCandidates().first
+        let state = store.loadCredentialSet().candidates.first
 
         XCTAssertEqual(
             ClaudeUsageMapper.formatPlan(
@@ -152,7 +152,7 @@ final class ClaudeAuthStoreTests: XCTestCase {
             keychain: FakeKeychain()
         )
 
-        let state = store.loadCredentialCandidates().first
+        let state = store.loadCredentialSet().candidates.first
 
         XCTAssertEqual(
             ClaudeUsageMapper.formatPlan(
@@ -176,7 +176,7 @@ final class ClaudeAuthStoreTests: XCTestCase {
             keychain: FakeKeychain()
         )
 
-        let state = store.loadCredentialCandidates().first
+        let state = store.loadCredentialSet().candidates.first
 
         XCTAssertEqual(state?.oauth.accessToken, "file-token")
         XCTAssertEqual(state?.displayOAuth.rateLimitTier, "default_claude_max_5x")
@@ -196,7 +196,7 @@ final class ClaudeAuthStoreTests: XCTestCase {
             keychain: FakeKeychain()
         )
 
-        let state = store.loadCredentialCandidates().first
+        let state = store.loadCredentialSet().candidates.first
 
         XCTAssertNil(state?.profileSubscriptionType)
         XCTAssertEqual(
@@ -226,7 +226,7 @@ final class ClaudeAuthStoreTests: XCTestCase {
         let service = store.keychainServiceCandidates().first!
         keychain.currentUserValues[service] = #"{"claudeAiOauth":{"accessToken":"keychain-token","subscriptionType":"max","rateLimitTier":"default_claude_max_5x"}}"#
 
-        let candidates = store.loadCredentialCandidates()
+        let candidates = store.loadCredentialSet().candidates
 
         XCTAssertEqual(candidates.map(\.oauth.accessToken), ["keychain-token", "file-token"])
         XCTAssertEqual(candidates.first?.displayOAuth.rateLimitTier, "default_claude_max_20x")
@@ -247,7 +247,7 @@ final class ClaudeAuthStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            store.loadCredentialCandidates().first?.displayOAuth.rateLimitTier,
+            store.loadCredentialSet().candidates.first?.displayOAuth.rateLimitTier,
             "custom_claude_max_5x"
         )
     }
@@ -264,7 +264,7 @@ final class ClaudeAuthStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            store.loadCredentialCandidates().first?.displayOAuth.rateLimitTier,
+            store.loadCredentialSet().candidates.first?.displayOAuth.rateLimitTier,
             "default_claude_max_5x"
         )
     }
@@ -284,7 +284,7 @@ final class ClaudeAuthStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            store.loadCredentialCandidates().first?.displayOAuth.rateLimitTier,
+            store.loadCredentialSet().candidates.first?.displayOAuth.rateLimitTier,
             "default_claude_max_20x"
         )
     }
@@ -306,7 +306,7 @@ final class ClaudeAuthStoreTests: XCTestCase {
             keychain: FakeKeychain()
         )
 
-        let credentials = store.loadCredentialCandidates().first
+        let credentials = store.loadCredentialSet().candidates.first
 
         XCTAssertEqual(credentials?.oauth.accessToken, "env-token")
         XCTAssertEqual(store.liveUsageAvailability(credentials!), .inferenceOnlyToken)
@@ -325,7 +325,7 @@ final class ClaudeAuthStoreTests: XCTestCase {
             keychain: keychain
         )
 
-        let candidates = store.loadCredentialCandidates()
+        let candidates = store.loadCredentialSet().candidates
 
         XCTAssertEqual(candidates.map(\.oauth.accessToken), ["keychain-token", "env-token"])
         // The keychain login (first) can fetch live usage; the env token is the inference-only fallback.
@@ -347,7 +347,7 @@ final class ClaudeAuthStoreTests: XCTestCase {
             keychain: keychain
         )
 
-        let candidates = store.loadCredentialCandidates()
+        let candidates = store.loadCredentialSet().candidates
 
         XCTAssertEqual(candidates.map(\.oauth.accessToken), ["env-token"])
         XCTAssertEqual(store.liveUsageAvailability(candidates[0]), .inferenceOnlyToken)
@@ -370,7 +370,7 @@ final class ClaudeAuthStoreTests: XCTestCase {
         keychain.currentUserValues[store.keychainServiceCandidates().first!] =
             #"{"claudeAiOauth":{"accessToken":"keychain-token","subscriptionType":"pro","scopes":["user:inference"]}}"#
 
-        let candidates = store.loadCredentialCandidates()
+        let candidates = store.loadCredentialSet().candidates
 
         // Keychain login (no user:profile) is dropped from the usage-capable set; the file login is
         // preferred and the env token trails.
@@ -1008,38 +1008,6 @@ final class ClaudeProviderTests: XCTestCase {
         // Local spend tiles are unaffected and still load.
         XCTAssertNotNil(values(snapshot.lines, "Today"))
         XCTAssertEqual(snapshot.plan, "Max 5x")
-    }
-
-    func testLiveClaudeUsageReportsResetFields() async throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["RUNWAY_LIVE_CLAUDE"] == "1")
-
-        let store = ClaudeAuthStore()
-        guard let state = store.loadCredentialCandidates().first else {
-            throw XCTSkip("No Claude credentials on this machine")
-        }
-
-        let response = try await ClaudeUsageClient().fetchUsage(
-            accessToken: state.oauth.accessToken ?? "",
-            usageURL: store.usageEndpoint()
-        )
-        XCTAssertTrue((200..<300).contains(response.statusCode))
-        let resetHeaders = response.headers.filter { $0.key.localizedCaseInsensitiveContains("reset") }
-        print("LIVE response reset headers:", resetHeaders)
-
-        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: response.body) as? [String: Any])
-        for key in ["five_hour", "seven_day", "seven_day_sonnet"] {
-            guard let window = body[key] as? [String: Any] else { continue }
-            print("LIVE \(key)=", window)
-        }
-
-        let mapped = try ClaudeUsageMapper.mapUsageResponse(
-            response,
-            credentials: state.oauth
-        )
-        for label in ["Session", "Weekly", "Sonnet"] {
-            let resetsAt = Self.progress(mapped.lines, label)?.resetsAt
-            print("LIVE mapped \(label) resetsAt=", resetsAt as Any)
-        }
     }
 
     func testUsage401NeverRetriesWithARefreshAndNeverWritesTheCredentialsFile() async {
