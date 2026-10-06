@@ -6,7 +6,7 @@ extension ClaudeUsageMapper {
     /// Claude snapshot is recomputed locally (spend tiles, trend) or is a notice. Add a label here when
     /// `mapUsageResponse` gains a row, or that row drops out of the launch-cached limits below.
     static let liveLimitLabels: Set<String> = [
-        "Session", "Weekly", "Sonnet", "Fable", "Extra usage spent"
+        "Session", "Weekly", "Sonnet", "Fable", "Extra usage spent", resetGrantsLabel
     ]
 }
 
@@ -111,17 +111,29 @@ struct ClaudeLiveUsageCache {
     /// Only live-limit windows whose reset is still ahead are reused, so nothing outlives its own
     /// window: a row with no reset time (Extra Usage, a Session that has not started) is never
     /// carried, and a window whose reset has passed is dropped rather than shown with its pre-reset
-    /// value. Spend tiles are recomputed by the provider and an old notice is not replayed. The
-    /// result keeps the cached snapshot's own time, never the time of the 429.
+    /// value. Rate Limit Resets follows the same rule per reset: only resets whose deadline is still
+    /// ahead are carried, and the row goes when none is left. Spend tiles are recomputed by the
+    /// provider and an old notice is not replayed. The result keeps the cached snapshot's own time,
+    /// never the time of the 429.
     func launchCachedUsage(for state: ClaudeCredentialState, now: Date) -> ClaudeMappedUsage? {
         guard let launchSnapshot,
               state.stateFileIdentityKey == launchSnapshot.identityKey
         else { return nil }
-        let lines = launchSnapshot.snapshot.lines.filter { line in
-            guard ClaudeUsageMapper.liveLimitLabels.contains(line.label),
-                  case .progress(_, _, _, _, let resetsAt?, _, _) = line
-            else { return false }
-            return resetsAt > now
+        let cached = ClaudeUsageMapper.droppingLapsedResetGrants(from: launchSnapshot.snapshot.lines, now: now)
+        let lines = cached.compactMap { line -> MetricLine? in
+            guard ClaudeUsageMapper.liveLimitLabels.contains(line.label) else { return nil }
+            switch line {
+            case .progress(_, _, _, _, let resetsAt?, _, _):
+                return resetsAt > now ? line : nil
+            case .values(let label, var values, let colorHex, let expiries, _, _)
+                where label == ClaudeUsageMapper.resetGrantsLabel && !expiries.isEmpty && !values.isEmpty:
+                // A reset without a deadline has no expiry entry and nothing would ever bound it,
+                // so the carried count is exactly the dated resets still ahead.
+                values[0].number = Double(expiries.count)
+                return .values(label: label, values: values, colorHex: colorHex, expiriesAt: expiries)
+            default:
+                return nil
+            }
         }
         guard !lines.isEmpty else { return nil }
         return ClaudeMappedUsage(

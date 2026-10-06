@@ -219,13 +219,13 @@ final class ClaudeLaunchSnapshotTests: ClaudeLaunchSnapshotTestCase {
     /// Every row the live endpoint can produce must be a known live-limit label, or that row would
     /// silently vanish on a relaunch's first 429 while its neighbors stay.
     func testEveryMappedLiveRowIsALiveLimitLabel() throws {
-        let body = #"{"five_hour":{"utilization":1},"seven_day":{"utilization":2},"seven_day_sonnet":{"utilization":3},"limits":[{"kind":"weekly_scoped","percent":4,"scope":{"model":{"display_name":"Fable"}}}],"extra_usage":{"is_enabled":true,"used_credits":500,"monthly_limit":1000}}"#
+        let body = #"{"five_hour":{"utilization":1},"seven_day":{"utilization":2},"seven_day_sonnet":{"utilization":3},"limits":[{"kind":"weekly_scoped","percent":4,"scope":{"model":{"display_name":"Fable"}}}],"extra_usage":{"is_enabled":true,"used_credits":500,"monthly_limit":1000},"cedar_ember":{"eligible":false}}"#
         let mapped = try ClaudeUsageMapper.mapUsageResponse(
             HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8)),
             credentials: ClaudeOAuth()
         )
 
-        XCTAssertEqual(mapped.lines.count, 5)
+        XCTAssertEqual(mapped.lines.count, 6)
         XCTAssertTrue(Set(mapped.lines.map(\.label)).isSubset(of: ClaudeUsageMapper.liveLimitLabels))
     }
 

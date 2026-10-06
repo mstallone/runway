@@ -109,6 +109,8 @@ Runway does not ask Anthropic which account a token belongs to, so these checks 
 
 Only limit windows with a reset time still in the future are kept (Session, Weekly, Sonnet, Fable). Extra Usage and a Session that has not started have no reset time, so they are not kept and read "No data" until a fetch succeeds. A kept window disappears once its reset time passes.
 
+Rate Limit Resets follows the same rule for each reset. Resets whose deadline is still ahead are kept, and each drops out when its deadline passes. A reset with no deadline is not kept, so the row can show fewer resets than you have until a fetch succeeds. With none left to keep, the row reads "No data". Kept resets do not start a new expiry reminder until a fetch succeeds, and a reminder you already received is not sent again. Spend tiles are always recomputed from local logs. The first successful fetch replaces the saved limits.
+
 Kept limits keep the time they were last fetched. The card's **Outdated** tag, the local API and CLI `fetchedAt`, and the iCloud snapshot all report that time, however many relaunches and rate limits happen in between.
 
 If this account is pinned and its login becomes unavailable, its menu-bar icon stays visible but faded, with no usage values, until a refresh confirms a usable login. See [Menu Bar](../menu-bar.md#login-unavailable).

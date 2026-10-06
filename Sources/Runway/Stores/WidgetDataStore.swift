@@ -620,7 +620,11 @@ final class WidgetDataStore {
             AppLog.debug(.refresh, "preserved last-good history for \(providerID) after scan miss")
         }
         localSnapshots[providerID] = snapshot
-        providersRefreshedThisLaunch.insert(providerID)
+        // A wait-notice snapshot shows values the provider could not revalidate (Claude's limits
+        // kept through a rate limit), so it does not unlock new reset-credit reminders.
+        if snapshot.resolvedWarningAction != .wait {
+            providersRefreshedThisLaunch.insert(providerID)
+        }
         // Stamp the write with the account that produced it: the one the provider's own local
         // evidence named for this refresh when it reports one (a login can change while the app
         // runs), else the card's launch-resolved identity. nil (no stamp) for non-account providers
