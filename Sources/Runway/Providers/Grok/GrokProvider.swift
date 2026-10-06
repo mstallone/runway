@@ -77,7 +77,6 @@ final class GrokProvider: ProviderRuntime {
 
     private func loadAndProbe() async throws -> ProviderSnapshot {
         let candidates = try authStore.loadAuthCandidates()
-        var sawExpiredCandidate = false
 
         for var state in candidates {
             if authStore.needsRefresh(entry: state.entry, token: state.token) {
@@ -85,17 +84,15 @@ final class GrokProvider: ProviderRuntime {
                     return try await probe(state: &state, accessToken: refreshed)
                 }
                 if authStore.isExpired(entry: state.entry, token: state.token) {
-                    sawExpiredCandidate = true
                     continue
                 }
             }
             return try await probe(state: &state, accessToken: state.token)
         }
 
-        if sawExpiredCandidate {
-            throw GrokAuthError.expired
-        }
-        throw GrokAuthError.invalidAuth
+        // `loadAuthCandidates` never returns an empty list, and every candidate above either
+        // returned, threw, or was skipped as expired.
+        throw GrokAuthError.expired
     }
 
     private func probe(state: inout GrokAuthState, accessToken: String) async throws -> ProviderSnapshot {

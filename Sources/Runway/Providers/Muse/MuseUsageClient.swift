@@ -1,7 +1,6 @@
 import Foundation
 
 struct MuseUsageClient: Sendable {
-    static let usageURL = URL(string: "https://dev.meta.ai/usage/")!
     var http: any HTTPClient
 
     init(http: any HTTPClient = MusePortalHTTPClient()) {

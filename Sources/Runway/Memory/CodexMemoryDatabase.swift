@@ -5,10 +5,6 @@ struct CodexMemoryRow: Equatable, Sendable {
     var threadID: String
     var rawMemory: String
     var rolloutSummary: String?
-    var rolloutSlug: String?
-    var generatedAt: String?
-    var usageCount: Int?
-    var lastUsage: String?
 }
 
 /// Read-only view of a Codex home's `memories_1.sqlite`.
@@ -45,13 +41,13 @@ struct CodexMemoryDatabase: Sendable {
         }
     }
 
-    /// One memory's bodies plus metadata for the editor's read-only view.
+    /// One memory's bodies for the editor's read-only view.
     func loadRow(dbPath: String, threadID: String) throws -> CodexMemoryRow {
         // Single-quote doubling is the SQL string-literal escape; thread ids
         // are the only interpolated value.
         let escaped = threadID.replacingOccurrences(of: "'", with: "''")
         let sql = """
-        SELECT thread_id, raw_memory, rollout_summary, rollout_slug, generated_at, usage_count, last_usage \
+        SELECT thread_id, raw_memory, rollout_summary \
         FROM stage1_outputs WHERE thread_id = '\(escaped)' LIMIT 1
         """
         guard let json = try sqlite.queryJSONRows(path: dbPath, sql: sql),
@@ -61,11 +57,7 @@ struct CodexMemoryDatabase: Sendable {
         return CodexMemoryRow(
             threadID: row.threadID,
             rawMemory: row.rawMemory ?? "",
-            rolloutSummary: row.rolloutSummary,
-            rolloutSlug: row.rolloutSlug,
-            generatedAt: row.generatedAt,
-            usageCount: row.usageCount,
-            lastUsage: row.lastUsage
+            rolloutSummary: row.rolloutSummary
         )
     }
 

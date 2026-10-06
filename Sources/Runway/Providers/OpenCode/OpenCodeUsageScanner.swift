@@ -1,10 +1,5 @@
 import Foundation
 
-/// The result of a local OpenCode scan: the combined-hosted daily series for the spend tiles + trend.
-struct OpenCodeUsageScan: Sendable {
-    var logScan: LogUsageScan
-}
-
 /// Reads OpenCode's local SQLite logs (`~/.local/share/opencode/opencode*.db`, all release channels)
 /// for the spend tiles and usage trend. Cookie-free: the per-message `cost` OpenCode writes for its
 /// own hosted gateways is authoritative (Zen models aren't in our pricing snapshots), so it is summed
@@ -45,7 +40,7 @@ struct OpenCodeUsageScanner: Sendable {
     /// Scan the last `daysBack` days. Returns `nil` only when there is no OpenCode database at all;
     /// a present-but-empty database yields an empty scan (idle tiles collapse to "No data" via
     /// `SpendTileMapper`). Throws `databaseUnreadable` when databases exist but none could be read.
-    func scan(now: Date, daysBack: Int = 30) async throws -> OpenCodeUsageScan? {
+    func scan(now: Date, daysBack: Int = 30) async throws -> LogUsageScan? {
         let paths: [String]
         do {
             paths = try databasePaths()
@@ -103,7 +98,7 @@ struct OpenCodeUsageScanner: Sendable {
                 tokens: row.tokens, cost: row.cost, model: row.model
             )
         }
-        return OpenCodeUsageScan(logScan: accumulator.build())
+        return accumulator.build()
     }
 
     /// Cheap local probe for `hasLocalCredentials()`: does any tracked database hold at least one hosted

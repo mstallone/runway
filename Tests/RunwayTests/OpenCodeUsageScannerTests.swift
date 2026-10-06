@@ -34,8 +34,8 @@ final class OpenCodeUsageScannerTests: XCTestCase {
 
     func testCombinedHostedSeriesUnionsDatabasesAndSkipsGarbage() async throws {
         guard let scan = try await standardScanner().scan(now: now) else { return XCTFail("expected a scan") }
-        let totalCost = scan.logScan.series.daily.compactMap(\.costUSD).reduce(0, +)
-        let totalTokens = scan.logScan.series.daily.reduce(0) { $0 + $1.totalTokens }
+        let totalCost = scan.series.daily.compactMap(\.costUSD).reduce(0, +)
+        let totalTokens = scan.series.daily.reduce(0) { $0 + $1.totalTokens }
         // opencode-go 2+3+4 plus Zen 1 = 10; the null-cost and "garbage" rows are dropped.
         XCTAssertEqual(totalCost, 10.0, accuracy: 0.0001)
         XCTAssertEqual(totalTokens, 4300) // 1000 + 500 + 2000 + 800
@@ -48,7 +48,7 @@ final class OpenCodeUsageScannerTests: XCTestCase {
             databasePaths: { ["/oc/opencode.db"] }
         )
         guard let scan = try await scanner.scan(now: now) else { return XCTFail("expected a scan") }
-        XCTAssertEqual(scan.logScan.series.daily.compactMap(\.costUSD).reduce(0, +), 1.0, accuracy: 0.0001)
+        XCTAssertEqual(scan.series.daily.compactMap(\.costUSD).reduce(0, +), 1.0, accuracy: 0.0001)
     }
 
     func testMissingDatabaseReturnsNil() async throws {
@@ -63,7 +63,7 @@ final class OpenCodeUsageScannerTests: XCTestCase {
             databasePaths: { ["/oc/opencode.db"] }
         )
         guard let scan = try await scanner.scan(now: now) else { return XCTFail("expected a scan") }
-        XCTAssertTrue(scan.logScan.series.daily.isEmpty)
+        XCTAssertTrue(scan.series.daily.isEmpty)
     }
 
     func testFailingDatabaseIsSkippedNotFatal() async throws {
@@ -72,7 +72,7 @@ final class OpenCodeUsageScannerTests: XCTestCase {
             databasePaths: { ["/oc/opencode.db", "/oc/opencode-next.db"] }
         )
         guard let scan = try await scanner.scan(now: now) else { return XCTFail("expected a scan") }
-        XCTAssertEqual(scan.logScan.series.daily.compactMap(\.costUSD).reduce(0, +), 4.0, accuracy: 0.0001)
+        XCTAssertEqual(scan.series.daily.compactMap(\.costUSD).reduce(0, +), 4.0, accuracy: 0.0001)
     }
 
     func testAllDatabasesFailingThrowsInsteadOfEmptyScan() async {
@@ -134,7 +134,7 @@ final class OpenCodeUsageScannerTests: XCTestCase {
             databasePaths: { ["/oc/opencode.db"] }
         )
         guard let scan = try await scanner.scan(now: now) else { return XCTFail("expected a scan") }
-        let tokens = scan.logScan.series.daily.reduce(0) { $0 + $1.totalTokens }
+        let tokens = scan.series.daily.reduce(0) { $0 + $1.totalTokens }
         XCTAssertEqual(tokens, 1_000_000_000_000_000)
     }
 }

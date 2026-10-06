@@ -138,7 +138,7 @@ struct CopilotEnterpriseDiscovery: Sendable {
     func lookupSlugs(token: String) async -> SlugLookup {
         let response: HTTPResponse
         do {
-            response = try await client.fetchViewerEnterprises(after: nil, token: token)
+            response = try await client.fetchViewerEnterprises(token: token)
         } catch {
             AppLog.warn(LogTag.plugin("copilot"), "enterprise slug discovery failed: \(error.localizedDescription)")
             return .temporarilyUnavailable

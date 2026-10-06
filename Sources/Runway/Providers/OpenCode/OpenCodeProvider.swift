@@ -145,7 +145,7 @@ final class OpenCodeProvider: ProviderRuntime {
             }
         }
 
-        let scan: OpenCodeUsageScan?
+        let scan: LogUsageScan?
         do {
             scan = try await usageScanner.scan(now: refreshedAt)
         } catch {
@@ -162,13 +162,13 @@ final class OpenCodeProvider: ProviderRuntime {
         var lines = meterLines
         if let scan {
             SpendTileMapper.appendTokenUsage(
-                scan.logScan.series, to: &lines, now: refreshedAt,
+                scan.series, to: &lines, now: refreshedAt,
                 estimated: false,
-                unknownModelsByDay: scan.logScan.unknownModelsByDay,
-                modelUsage: scan.logScan.modelUsage,
+                unknownModelsByDay: scan.unknownModelsByDay,
+                modelUsage: scan.modelUsage,
                 modelSourceNote: sourceNote
             )
-            SpendTileMapper.appendUsageTrend(scan.logScan.series, to: &lines, now: refreshedAt, note: sourceNote)
+            SpendTileMapper.appendUsageTrend(scan.series, to: &lines, now: refreshedAt, note: sourceNote)
         }
 
         if lines.isEmpty {
@@ -198,9 +198,9 @@ final class OpenCodeProvider: ProviderRuntime {
             refreshedAt: refreshedAt,
             usageHistory: scan.map {
                 ProviderUsageHistory(
-                    series: $0.logScan.series,
-                    modelUsage: $0.logScan.modelUsage,
-                    unknownModelsByDay: $0.logScan.unknownModelsByDay
+                    series: $0.series,
+                    modelUsage: $0.modelUsage,
+                    unknownModelsByDay: $0.unknownModelsByDay
                 )
             },
             applicableMetricIDs: applicableMetricIDs

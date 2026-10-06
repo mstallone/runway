@@ -92,7 +92,7 @@ struct HeaderView: View {
     /// double-fire. Same split as the Quit ⌘Q item below.
     @ViewBuilder
     private var menuItems: some View {
-        Button { toggle(.customize) } label: {
+        Button { withAnimation(Motion.modeSwitch) { layout.screen = .customize } } label: {
             Label("Customize", systemImage: "slider.horizontal.3")
         }
         .keyboardShortcut(.return, modifiers: [])
@@ -165,11 +165,5 @@ struct HeaderView: View {
             appearance: colorScheme,
             displayName: container.displayName(for: group.provider)
         )
-    }
-
-    private func toggle(_ screen: PopoverScreen) {
-        withAnimation(Motion.modeSwitch) {
-            layout.screen = layout.screen == screen ? .dashboard : screen
-        }
     }
 }

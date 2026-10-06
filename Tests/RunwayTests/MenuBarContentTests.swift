@@ -253,7 +253,7 @@ final class MenuBarContentTests: XCTestCase {
             displayName: providerID.uppercased(),
             icon: .providerMark("cursor")
         )
-        return ProviderMetrics(provider: provider, metrics: metrics)
+        return ProviderMetrics(provider: provider, alwaysShownMetrics: metrics, expandedMetrics: [])
     }
 
     private func percent(_ id: String, _ label: String, _ used: Double) -> WidgetDescriptor {

@@ -70,7 +70,6 @@ enum CursorUsageError: Error, LocalizedError, Equatable {
     case connectionFailed
     case invalidResponse
     case requestFailed(Int)
-    case usageAfterRefreshFailed
     case requestBasedUnavailable(String)
     case totalUsageLimitMissing
     case noActiveSubscription
@@ -83,8 +82,6 @@ enum CursorUsageError: Error, LocalizedError, Equatable {
             return ProviderUsageErrorText.invalidResponse
         case .requestFailed(let statusCode):
             return ProviderUsageErrorText.requestFailed(statusCode: statusCode)
-        case .usageAfterRefreshFailed:
-            return "Usage request failed after refresh. Try again."
         case .requestBasedUnavailable(let message):
             return message
         case .totalUsageLimitMissing:

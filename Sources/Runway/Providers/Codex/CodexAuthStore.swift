@@ -72,7 +72,6 @@ enum CodexAuthError: Error, LocalizedError, Equatable {
     case notLoggedIn
     case loginRenewalRequired
     case usageAPIKey
-    case invalidAuthPayload
     /// The Codex Keychain item exists but hasn't been loaded this process — the neutral connect
     /// prompt, not a warning.
     case keychainConnectRequired
@@ -88,8 +87,6 @@ enum CodexAuthError: Error, LocalizedError, Equatable {
             return "Codex login needs renewal. Run `codex`, then refresh Runway."
         case .usageAPIKey:
             return "Usage not available for API key."
-        case .invalidAuthPayload:
-            return "Codex auth data is invalid."
         case .keychainConnectRequired:
             return "Codex login found in Keychain. Connect to load it; if macOS asks, choose Always Allow to avoid future dialogs."
         case .keychainPermissionRequired:
@@ -103,7 +100,7 @@ enum CodexAuthError: Error, LocalizedError, Equatable {
         switch self {
         case .loginRenewalRequired:
             return true
-        case .notLoggedIn, .usageAPIKey, .invalidAuthPayload, .keychainConnectRequired,
+        case .notLoggedIn, .usageAPIKey, .keychainConnectRequired,
              .keychainPermissionRequired, .credentialStoreUnreadable:
             return false
         }
