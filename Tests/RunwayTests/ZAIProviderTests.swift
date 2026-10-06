@@ -305,7 +305,7 @@ final class ZAIProviderTests: XCTestCase {
 
         let snapshot = await provider.refresh()
 
-        XCTAssertEqual(snapshot.lines.first?.label, "Error")
+        XCTAssertEqual(snapshot.errorText, ZAIAuthError.missingKey.localizedDescription)
     }
 
     func testRefreshOnAuthFailureReportsInvalidKey() async {
@@ -318,7 +318,7 @@ final class ZAIProviderTests: XCTestCase {
 
         let snapshot = await provider.refresh()
 
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, ZAIAuthError.invalidKey.localizedDescription)
     }
 
     func testRefreshOnNon2xxReportsRequestFailed() async {
@@ -334,20 +334,20 @@ final class ZAIProviderTests: XCTestCase {
 
         let snapshot = await provider.refresh()
 
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, ZAIUsageError.requestFailed(500).localizedDescription)
     }
 
     func testRefreshOnTransportErrorReportsNetwork() async {
         let provider = ZAIProvider(
             authStore: makeAuthStore(key: "zai-test"),
             usageClient: ZAIUsageClient(http: RoutingHTTPClient { _ in
-                throw ZAIUsageError.connectionFailed
+                throw URLError(.notConnectedToInternet)
             })
         )
 
         let snapshot = await provider.refresh()
 
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, ZAIUsageError.connectionFailed.localizedDescription)
     }
 
     func testRefreshWithoutCodingPlanReportsNotAvailable() async {

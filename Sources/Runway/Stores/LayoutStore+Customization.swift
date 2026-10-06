@@ -188,13 +188,6 @@ extension LayoutStore {
         metricOrder(for: providerID).compactMap { registry.descriptor(id: $0) }
     }
 
-    func metricOrderWithDivider(for providerID: String, dividerID: String) -> [String] {
-        let ordered = orderedSupportedMetrics(for: providerID).map(\.id)
-        return ordered.filter { !expandedMetricIDs.contains($0) }
-            + [dividerID]
-            + ordered.filter { expandedMetricIDs.contains($0) }
-    }
-
     /// Pinned metrics grouped by provider, in the user's Customize order (provider order, then each
     /// provider's metric order). A temporarily disabled provider is excluded from the rendered groups
     /// but keeps its pins. Drives the menu-bar strip.
@@ -347,7 +340,7 @@ extension LayoutStore {
         let nextExpanded = expandedMetricIDs.subtracting(providerIDs).union(providerExpanded)
         // Only the dragged metric's expand-on-enable entry is consumed — an explicit placement.
         // Clearing every metric in the list (the old `subtracting(seen)`) also cleared disabled
-        // optional metrics that `metricOrderWithDivider` includes by default but the user never moved,
+        // optional metrics that the drag's full metric list includes but the user never moved,
         // so they lost their below-caret default. Matches `reorderMetric`, which consumes only the
         // dragged id.
         var nextDefaultExpandedOnEnableIDs = defaultExpandedOnEnableIDs
