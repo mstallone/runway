@@ -51,9 +51,8 @@ struct ProviderLinksView: View {
 
     private func linkButton(_ link: ProviderLink) -> some View {
         Button {
-            let opened = URL(string: link.url).map { NSWorkspace.shared.open($0) } ?? false
-            if !opened {
-                AppLog.error(.lifecycle, "couldn't open provider link \(link.url)")
+            if let url = URL(string: link.url) {
+                NSWorkspace.shared.open(url)
             }
         } label: {
             HStack(spacing: 4) {
