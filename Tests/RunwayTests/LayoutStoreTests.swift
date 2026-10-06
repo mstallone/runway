@@ -1450,14 +1450,6 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertNil(store.customizeDetail(for: "nope"))
     }
 
-    func testMetricCountMatchesRegistryDescriptors() {
-        let store = makeStore("MetricCount")
-        for id in MockData.providers.map(\.id) {
-            XCTAssertEqual(store.metricCount(for: id), MockData.descriptors(for: id).count)
-        }
-        XCTAssertEqual(store.metricCount(for: "missing"), 0)
-    }
-
     func testCustomizeProviderIDClearsWhenLeavingCustomize() {
         let store = makeStore("RouteClears")
         store.screen = .customize
@@ -1472,7 +1464,7 @@ final class LayoutStoreTests: XCTestCase {
 
     /// `clearShareConfirmation` hides the pill immediately and cancels the auto-clear task, so a
     /// confirmation mid-countdown can't reappear stale after the popover closes and reopens.
-    func testClearShareConfirmationHidesPillAndCancelsTimer() {
+    func testClearShareConfirmationHidesPill() {
         let store = makeStore("ShareConfirmationClear")
         XCTAssertFalse(store.shareConfirmation)
 

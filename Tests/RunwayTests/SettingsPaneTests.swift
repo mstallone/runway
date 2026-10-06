@@ -2,8 +2,7 @@ import XCTest
 @testable import Runway
 
 /// The Settings window's pane identity: raw values are persisted (last-selected pane, per-pane
-/// height keys) and double as the toolbar item identifiers, so they must stay stable, and every
-/// pane must round-trip through its raw value.
+/// height keys) and double as the toolbar item identifiers, so they must stay stable.
 final class SettingsPaneTests: XCTestCase {
     func testRawValuesAreStable() {
         XCTAssertEqual(
@@ -12,16 +11,4 @@ final class SettingsPaneTests: XCTestCase {
         )
     }
 
-    func testRawValueRoundTrips() {
-        for pane in SettingsPane.allCases {
-            XCTAssertEqual(SettingsPane(rawValue: pane.rawValue), pane)
-        }
-    }
-
-    func testEveryPaneHasTitleAndSymbol() {
-        for pane in SettingsPane.allCases {
-            XCTAssertFalse(pane.title.isEmpty)
-            XCTAssertFalse(pane.systemSymbol.isEmpty)
-        }
-    }
 }

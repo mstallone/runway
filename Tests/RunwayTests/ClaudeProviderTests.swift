@@ -42,26 +42,6 @@ final class ClaudeAuthStoreTests: XCTestCase {
         XCTAssertEqual(unknownExpiry.diagnosticsLabel(now: now), "keychainLegacy expired=unknown")
     }
 
-    func testPrefersCurrentUserKeychainCredentialsBeforeFile() {
-        let files = FakeFiles([
-            "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"file-token","subscriptionType":"pro"}}"#
-        ])
-        let keychain = ServiceKeychain()
-        let store = ClaudeAuthStore(
-            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
-            files: files,
-            keychain: keychain
-        )
-        let hashedService = store.keychainServiceCandidates().first!
-        keychain.currentUserValues[hashedService] = #"{"claudeAiOauth":{"accessToken":"keychain-token","subscriptionType":"max"}}"#
-
-        let credentials = store.loadCredentialSet().candidates.first
-
-        XCTAssertTrue(hashedService.hasPrefix("Claude Code-credentials-"))
-        XCTAssertEqual(credentials?.oauth.accessToken, "keychain-token")
-        XCTAssertEqual(credentials?.oauth.subscriptionType, "max")
-    }
-
     func testPrefersKeychainOverFileEvenWhenFileTokenExpiresLater() {
         // #738 regression: the keychain is Claude Code's live source of truth, so it must win even when a
         // stale `~/.claude/.credentials.json` carries a *later* expiry. Ranking purely by expiry (the old
@@ -81,8 +61,9 @@ final class ClaudeAuthStoreTests: XCTestCase {
 
         let candidates = store.loadCredentialSet().candidates
 
+        XCTAssertTrue(hashedService.hasPrefix("Claude Code-credentials-"))
         XCTAssertEqual(candidates.map(\.oauth.accessToken), ["keychain-token", "file-token"])
-        XCTAssertEqual(store.loadCredentialSet().candidates.first?.oauth.accessToken, "keychain-token")
+        XCTAssertEqual(candidates.first?.oauth.subscriptionType, "max")
     }
 
     func testPlanBadgeUsesStateFileTierWhenLoginBlobTierIsStale() {

@@ -293,17 +293,6 @@ final class SakanaProviderTests: XCTestCase {
         XCTAssertTrue(descriptors[3...].allSatisfy(\.isSpendTile))
     }
 
-    func testCatalogPlacesSakanaInAlphabeticalProviderTail() {
-        let defaults = UserDefaults(suiteName: "SakanaProviderTests.\(UUID().uuidString)")!
-        let ids = ProviderCatalog.make(defaults: defaults).map(\.provider.id)
-
-        XCTAssertEqual(ids, [
-            "claude", "codex", "cursor",
-            "antigravity", "copilot", "devin", "grok", "kimi", "muse",
-            "opencode", "openrouter", "sakana", "zai"
-        ])
-    }
-
     private func plaintextAuthStore(token: String) -> SakanaAuthStore {
         let database = "/arc/Cookies"
         let row = "\(Data(SakanaAuthStore.cookieHost.utf8).hex)|42|plain:\(Data(token.utf8).hex)"

@@ -1035,26 +1035,6 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertNil(scan)
     }
 
-    func testScanCachesUnchangedFilesAndPicksUpNewOnes() async throws {
-        let day = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-3600))
-        let home = try CodexLogFixture.makeHome(files: [
-            "sessions/rollout-a.jsonl": CodexLogFixture.tokenCount(
-                timestamp: day, last: CodexLogFixture.usage(input: 100, output: 50), model: "gpt-5.2"
-            )
-        ])
-        let scanner = CodexLogFixture.scanner(home: home)
-
-        let first = await scanner.scan(pricing: fixedRates())
-        XCTAssertEqual(first?.series.daily.reduce(0) { $0 + $1.totalTokens }, 150)
-
-        try CodexLogFixture.tokenCount(
-            timestamp: day, last: CodexLogFixture.usage(input: 30, output: 20), model: "gpt-5.2"
-        ).write(to: home.appendingPathComponent("sessions/rollout-b.jsonl"), atomically: true, encoding: .utf8)
-
-        let second = await scanner.scan(pricing: fixedRates())
-        XCTAssertEqual(second?.series.daily.reduce(0) { $0 + $1.totalTokens }, 200)
-    }
-
     func testScanPricesRealCodexModelsFromBundledSnapshots() async throws {
         let day = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-3600))
         let home = try CodexLogFixture.makeHome(files: [

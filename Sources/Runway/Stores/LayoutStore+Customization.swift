@@ -144,7 +144,7 @@ extension LayoutStore {
 
     /// Total metrics a provider supports — the L1 row's badge number. Registry descriptor count,
     /// independent of how many the user has enabled.
-    func metricCount(for providerID: String) -> Int {
+    private func metricCount(for providerID: String) -> Int {
         registry.descriptors(for: providerID).count
     }
 
