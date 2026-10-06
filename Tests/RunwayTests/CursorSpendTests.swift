@@ -283,6 +283,42 @@ final class CursorSpendRangeTests: XCTestCase {
 
 @MainActor
 final class CursorSpendProviderTests: XCTestCase {
+    func testUsageCSVPastItsDeadlineKeepsPlanUsageAndDropsSpendHistory() async {
+        // The CSV is additive. An export that runs out its deadline must not discard the live plan
+        // usage that already loaded.
+        let accessToken = makeCursorJWT(sub: "google-oauth2|user_abc123")
+        let http = RoutingHTTPClient { request in
+            if request.url.absoluteString.contains("export-usage-events-csv") {
+                throw DeadlineExceeded()
+            }
+            return cursorPlanRoutes(request)
+        }
+        let provider = CursorProvider(
+            authStore: CursorAuthStore(
+                sqlite: FakeSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
+                keychain: FakeKeychain()
+            ),
+            usageClient: CursorUsageClient(http: http),
+            now: { Date(timeIntervalSince1970: 1_800_000_000) },
+            pricing: { TestPricing.bundled }
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertTrue(http.requests.contains { $0.url.absoluteString.contains("export-usage-events-csv") })
+        XCTAssertTrue(snapshot.lines.contains { $0.label == "Total usage" })
+        XCTAssertFalse(snapshot.lines.contains { $0.isError })
+        for label in ["Today", "Yesterday", "Last 30 Days", "Usage Trend"] {
+            XCTAssertFalse(snapshot.lines.contains { $0.label == label }, "\(label) line must be absent")
+        }
+        XCTAssertNil(snapshot.usageHistory)
+    }
+
+    func testUsageCSVDeadlineLeavesRoomUnderTheRefreshCeiling() {
+        // Six 10s calls can run ahead of the export. The export's deadline has to fit in what is left.
+        XCTAssertLessThanOrEqual(60 + CursorProvider.usageCSVDeadline, WidgetDataStore.defaultProviderRefreshTimeout)
+    }
+
     func testSpendTrackingDownloadsCSVExposesSpendTilesAndFlagsUnknownModels() async {
         // The provider downloads the usage CSV, exposes the spend-tile + trend descriptors, and emits
         // Today / Yesterday / Last 30 Days / Usage Trend lines
@@ -306,22 +342,7 @@ final class CursorSpendProviderTests: XCTestCase {
             if url.contains("export-usage-events-csv") {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(csv.utf8))
             }
-            if url.contains("GetCurrentPeriodUsage") {
-                return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
-                {
-                  "enabled": true,
-                  "billingCycleEnd": 1772592000000,
-                  "planUsage": { "limit": 40000, "remaining": 32000, "totalPercentUsed": 20 }
-                }
-                """.utf8))
-            }
-            if url.contains("GetPlanInfo") {
-                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"pro plan"}}"#.utf8))
-            }
-            if url.contains("GetCreditGrantsBalance") {
-                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"hasCreditGrants":false}"#.utf8))
-            }
-            return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            return cursorPlanRoutes(request)
         }
         let provider = CursorProvider(
             authStore: CursorAuthStore(
@@ -455,6 +476,27 @@ final class CursorUsageClientRequestTests: XCTestCase {
 }
 
 // MARK: - Shared test helpers (file-private; mirror CursorProviderTests)
+
+/// The stock plan-usage routes for a Pro account: 20% used, no credit grants.
+private func cursorPlanRoutes(_ request: HTTPRequest) -> HTTPResponse {
+    let url = request.url.absoluteString
+    if url.contains("GetCurrentPeriodUsage") {
+        return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
+        {
+          "enabled": true,
+          "billingCycleEnd": 1772592000000,
+          "planUsage": { "limit": 40000, "remaining": 32000, "totalPercentUsed": 20 }
+        }
+        """.utf8))
+    }
+    if url.contains("GetPlanInfo") {
+        return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"pro plan"}}"#.utf8))
+    }
+    if url.contains("GetCreditGrantsBalance") {
+        return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"hasCreditGrants":false}"#.utf8))
+    }
+    return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+}
 
 private func makeCursorJWT(sub: String = "google-oauth2|user", exp: Double = 9_999_999_999) -> String {
     let payload = #"{"sub":"\#(sub)","exp":\#(exp)}"#

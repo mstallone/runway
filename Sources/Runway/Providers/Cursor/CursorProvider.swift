@@ -259,9 +259,15 @@ final class CursorProvider: ProviderRuntime {
         lines.append(line)
     }
 
+    /// Wall-clock bound on the usage CSV export. The export can stream for minutes on heavy accounts
+    /// and the request's own timeout only fires on an idle connection. The six 10s calls ahead of it
+    /// can take 60s, so this keeps the whole refresh inside the 150s `refreshTimeout`, which would
+    /// otherwise discard the live plan usage along with the spend history.
+    static let usageCSVDeadline: TimeInterval = 60
+
     /// Strictly additive: fetch the usage CSV and append the three per-day spend tiles. Any failure
-    /// (no session, non-2xx, or undecodable body) appends nothing, so the live Cursor mapping is never
-    /// affected and the spend tiles fall back to "No data".
+    /// (no session, deadline, non-2xx, or undecodable body) appends nothing, so the live Cursor
+    /// mapping is never affected and the spend tiles fall back to "No data".
     private func appendSpendLines(to lines: inout [MetricLine], accessToken: String) async -> ProviderUsageHistory? {
         let calendar = Calendar.current
         let end = now()
@@ -270,7 +276,16 @@ final class CursorProvider: ProviderRuntime {
 
         let response: HTTPResponse?
         do {
-            response = try await usageClient.fetchUsageCSV(accessToken: accessToken, start: start, end: end)
+            let client = usageClient
+            response = try await withDeadline(seconds: Self.usageCSVDeadline) {
+                try await client.fetchUsageCSV(accessToken: accessToken, start: start, end: end)
+            }
+        } catch is DeadlineExceeded {
+            AppLog.warn(
+                LogTag.plugin("cursor"),
+                "usage CSV request exceeded \(Int(Self.usageCSVDeadline))s; skipping spend history this refresh"
+            )
+            return nil
         } catch {
             AppLog.warn(LogTag.plugin("cursor"), "usage CSV request failed")
             return nil
