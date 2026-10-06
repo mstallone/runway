@@ -195,27 +195,34 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         XCTAssertTrue(recorder.posts.contains { $0.0 == "test.closeToRunningOut" })
     }
 
-    func testDisablingProviderDropsItsNotificationState() async {
+    func testDisabledProviderIsSkippedAndItsNotificationStateIsDropped() async {
         let settings = NotificationSettingsStore(defaults: makeUserDefaults("disable-settings"))
         allOn(settings)
         let recorder = Recorder()
         let enabled = EnabledFlag(true)
-        // Prime from healthy, then worsen to red so a milestone fires before the disable.
+        // Prime from healthy, then worsen to close so a milestone fires before the disable.
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder,
                                             defaultsName: "disable", isEnabled: { _ in enabled.value })
         await store.refreshAll(force: true)
         await store.evaluateNotifications(now: base)   // healthy → primes, no fire
-        XCTAssertEqual(recorder.posts.count, 0)
-        runtime.snapshot = snapshot(used: 95)    // → red, fires
+        runtime.snapshot = snapshot(used: 87)    // → close, fires
         await store.refreshAll(force: true)
         await store.evaluateNotifications(now: base)
-        let firstCount = recorder.posts.count
-        XCTAssertGreaterThan(firstCount, 0)
+        XCTAssertEqual(recorder.posts.map(\.0), ["test.healthyToClose"])
 
-        // Disable the provider: evaluation skips it (and prunes its state), so nothing new fires.
+        // Usage worsens to running-out, and the provider is disabled before the next evaluation:
+        // the pass skips it, so Will Run Out does not fire.
+        runtime.snapshot = snapshot(used: 95)
+        await store.refreshAll(force: true)
         enabled.value = false
         await store.evaluateNotifications(now: base)
-        XCTAssertEqual(recorder.posts.count, firstCount)
+        XCTAssertEqual(recorder.posts.count, 1, "a disabled provider is skipped")
+
+        // Re-enabled while still running out: the disable dropped its state, so this is a fresh
+        // baseline that records without firing. Stale "close" state would fire Will Run Out here.
+        enabled.value = true
+        await store.evaluateNotifications(now: base)
+        XCTAssertEqual(recorder.posts.count, 1, "re-enabling starts from a fresh baseline")
     }
 
     func testLowRemainingFiresInUsedDisplayMode() async {
