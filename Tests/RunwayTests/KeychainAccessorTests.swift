@@ -101,7 +101,13 @@ final class KeychainAccessorTests: XCTestCase {
         }
 
         XCTAssertNil(try accessor(answering: errSecItemNotFound).readGenericPassword(service: "service"))
-        XCTAssertThrowsError(try accessor(answering: errSecAuthFailed).readGenericPassword(service: "service"))
+        // Locked or otherwise unreadable, and an item that needs approval, are both "couldn't be read".
+        for status in [errSecInteractionNotAllowed, errSecAuthFailed] {
+            XCTAssertThrowsError(
+                try accessor(answering: status).readGenericPassword(service: "service"),
+                "status \(status)"
+            )
+        }
     }
 
     func testQuietAutomaticReadReportsAMissingItemAndRestoresTheUISwitch() {
