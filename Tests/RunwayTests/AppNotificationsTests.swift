@@ -6,6 +6,14 @@ import UserNotifications
 /// under XCTest so tests can never raise system prompts or post real notifications.
 @MainActor
 final class AppNotificationsTests: XCTestCase {
+    func testShowHandlerIsInvokedByShow() {
+        var opened = false
+        MenuBarPopover.showHandler = { opened = true }
+        defer { MenuBarPopover.showHandler = nil }
+        MenuBarPopover.show()
+        XCTAssertTrue(opened)
+    }
+
     func testPostIsANoOpUnderTestsAndNeverTouchesTheCenter() async {
         let probe = CenterProbe()
         let notifications = AppNotifications(centerProvider: {
