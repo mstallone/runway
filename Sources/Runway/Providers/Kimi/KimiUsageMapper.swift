@@ -268,8 +268,8 @@ enum KimiUsageMapper {
 
     private static func integer(_ raw: Any?) -> Int? {
         guard let number = ProviderParse.number(raw),
-              number >= Double(Int.min),
-              number <= Double(Int.max)
+              number >= -0x1p63,
+              number < 0x1p63
         else {
             return nil
         }

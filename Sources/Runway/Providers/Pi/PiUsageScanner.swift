@@ -111,17 +111,22 @@ actor PiUsageScanner {
               message["role"] as? String == "assistant",
               let providerID = message["provider"] as? String,
               let cardID = PiProviderMapping.cardID(forPiProvider: providerID),
-              let usage = message["usage"] as? [String: Any]
+              let usage = message["usage"] as? [String: Any],
+              // A corrupt count (negative or absurdly large) drops the whole line.
+              let input = ProviderParse.tokenCount(usage["input"]),
+              let output = ProviderParse.tokenCount(usage["output"]),
+              let cacheRead = ProviderParse.tokenCount(usage["cacheRead"]),
+              let cacheWrite = ProviderParse.tokenCount(usage["cacheWrite"]),
+              let cacheWrite1h = ProviderParse.tokenCount(usage["cacheWrite1h"]),
+              let reportedTotal = ProviderParse.tokenCount(usage["totalTokens"])
         else { return nil }
 
-        let cacheWrite = ProviderParse.clampedTokenCount(usage["cacheWrite"])
-        let cacheWrite1h = ProviderParse.clampedTokenCount(usage["cacheWrite1h"])
         let tokens = TokenBreakdown(
-            input: ProviderParse.clampedTokenCount(usage["input"]),
+            input: input,
             cacheWrite5m: max(cacheWrite - cacheWrite1h, 0),
             cacheWrite1h: cacheWrite1h,
-            cacheRead: ProviderParse.clampedTokenCount(usage["cacheRead"]),
-            output: ProviderParse.clampedTokenCount(usage["output"])
+            cacheRead: cacheRead,
+            output: output
         )
 
         let carriedCost = (usage["cost"] as? [String: Any]).flatMap { ProviderParse.number($0["total"]) }
@@ -132,7 +137,7 @@ actor PiUsageScanner {
             model: (message["model"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
             carriedCost: carriedCost,
             tokens: tokens,
-            reportedTotalTokens: ProviderParse.clampedTokenCount(usage["totalTokens"])
+            reportedTotalTokens: reportedTotal
         )
     }
 

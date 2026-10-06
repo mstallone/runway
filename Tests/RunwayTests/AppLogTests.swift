@@ -103,7 +103,7 @@ final class AppLogTests: XCTestCase {
         XCTAssertNil(ProxyConfig.load(text: "not json"))
         let contents = try fileContents()
         XCTAssertTrue(contents.contains("[WARN] [config] proxy off: proxy.enabled is true"), contents)
-        XCTAssertTrue(contents.contains("[WARN] [config] proxy off: ~/.runway/config.json is not valid JSON"), contents)
+        XCTAssertTrue(contents.contains("[WARN] [config] proxy off: ~/.runway/config.json is not a JSON object"), contents)
         XCTAssertFalse(contents.contains("hunter2"), contents)
     }
 

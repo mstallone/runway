@@ -82,7 +82,7 @@ enum GrokUsageMapper {
     }
 
     private static func formatUnits(_ value: Double) -> String {
-        if value.rounded() == value {
+        if value.rounded() == value, abs(value) < 0x1p63 {
             return String(Int(value))
         }
         return String(value)

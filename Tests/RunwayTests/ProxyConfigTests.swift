@@ -32,6 +32,7 @@ final class ProxyConfigTests: XCTestCase {
         XCTAssertNil(ProxyConfig.load(text: #"{"proxy":{"enabled":false,"url":"socks5://127.0.0.1:1080"}}"#))
         XCTAssertNil(ProxyConfig.load(text: #"{"proxy":{"enabled":true,"url":"ftp://127.0.0.1:21"}}"#)) // unsupported scheme
         XCTAssertNil(ProxyConfig.load(text: #"{"proxy":{"enabled":true}}"#))                            // no url
+        XCTAssertNil(ProxyConfig.load(text: #"{"proxy":{"enabled":true,"url":"socks5://127.0.0.1:108080"}}"#)) // port out of range
         XCTAssertNil(ProxyConfig.load(text: "not json"))
         XCTAssertNil(ProxyConfig.load(text: nil))                                                       // no config file
         XCTAssertNil(ProxyConfig.load(text: "{}"))
