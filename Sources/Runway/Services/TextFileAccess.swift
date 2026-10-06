@@ -225,3 +225,10 @@ struct LocalTextFileAccessor: TextFileAccessing {
         POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
     }
 }
+
+func expandHome(_ path: String) -> String {
+    guard path == "~" || path.hasPrefix("~/") else { return path }
+    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    if path == "~" { return home }
+    return home + String(path.dropFirst())
+}
