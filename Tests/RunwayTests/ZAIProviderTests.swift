@@ -114,7 +114,14 @@ final class ZAIAuthStoreTests: XCTestCase {
         XCTAssertEqual(store.loadAPIKey()?.apiKey, "zai")
     }
 
-    // MARK: - In-app save / delete / status (Customize → Z.ai → API Key)
+    func testReadsAlternateConfigPath() {
+        let store = ZAIAuthStore(
+            files: FakeFiles(["~/.config/zai/key.json": "zai-alt"]),
+            environment: FakeEnvironment()
+        )
+
+        XCTAssertEqual(store.loadAPIKey()?.apiKey, "zai-alt")
+    }
 
     func testSaveAPIKeyRejectsEmptyKey() {
         let files = FakeFiles()
@@ -125,7 +132,6 @@ final class ZAIAuthStoreTests: XCTestCase {
         }
         XCTAssertNil(files.files[ZAIAuthStore.configPaths[0]])
     }
-
 }
 
 // MARK: - ZAIUsageMapperTests

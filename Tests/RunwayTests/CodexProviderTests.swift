@@ -714,10 +714,6 @@ final class CodexUsageMapperTests: XCTestCase {
         }
         return values
     }
-
-    private func makeDate(_ value: String) -> Date {
-        RunwayISO8601.date(from: value)!
-    }
 }
 
 @MainActor

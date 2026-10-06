@@ -137,15 +137,10 @@ extension LayoutStore {
             ProviderRow(
                 provider: provider,
                 isEnabled: isProviderEnabled(provider.id),
-                metricCount: metricCount(for: provider.id)
+                // The registry descriptor count, independent of how many the user has enabled.
+                metricCount: registry.descriptors(for: provider.id).count
             )
         }
-    }
-
-    /// Total metrics a provider supports — the L1 row's badge number. Registry descriptor count,
-    /// independent of how many the user has enabled.
-    private func metricCount(for providerID: String) -> Int {
-        registry.descriptors(for: providerID).count
     }
 
     /// The L2 Customize detail for one provider: every metric it supports, split across the

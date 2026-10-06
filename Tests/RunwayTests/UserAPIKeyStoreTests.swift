@@ -2,7 +2,8 @@ import XCTest
 @testable import Runway
 
 /// The shared read / status / save / delete behavior behind every user-supplied API key (OpenRouter,
-/// Z.ai). Provider suites cover only their own wiring: config paths, env-var names, and error mapping.
+/// Z.ai). Provider suites cover only their own wiring: config paths, env-var names, and the
+/// missing-key error mapping.
 final class UserAPIKeyStoreTests: XCTestCase {
     private static let paths = ["~/.config/runway/example.json", "~/.config/example/key.json"]
     private static let savedKey = [paths[0]: #"{"apiKey":"file-key"}"#]

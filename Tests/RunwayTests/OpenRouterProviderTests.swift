@@ -14,15 +14,21 @@ final class OpenRouterAuthStoreTests: XCTestCase {
         XCTAssertEqual(auth?.apiKey, "sk-or-file")
     }
 
-    // MARK: - In-app save / delete / status (Customize → OpenRouter → API Key)
-
-    func testAcceptsShortEnvNameAsFallback() {
+    func testReadsAlternateConfigPath() {
         let store = OpenRouterAuthStore(
-            files: FakeFiles(),
-            environment: FakeEnvironment(["OPENROUTER_KEY": "sk-or-short"])
+            files: FakeFiles(["~/.config/openrouter/key.json": "sk-or-alt"]),
+            environment: FakeEnvironment()
         )
 
-        XCTAssertEqual(store.loadAPIKey()?.apiKey, "sk-or-short")
+        XCTAssertEqual(store.loadAPIKey()?.apiKey, "sk-or-alt")
+    }
+
+    func testShortEnvNameIsOnlyTheFallback() {
+        func key(_ env: [String: String]) -> String? {
+            OpenRouterAuthStore(files: FakeFiles(), environment: FakeEnvironment(env)).loadAPIKey()?.apiKey
+        }
+        XCTAssertEqual(key(["OPENROUTER_KEY": "sk-or-short"]), "sk-or-short")
+        XCTAssertEqual(key(["OPENROUTER_API_KEY": "sk-or-main", "OPENROUTER_KEY": "sk-or-short"]), "sk-or-main")
     }
 
     func testSaveAPIKeyRejectsEmptyKey() {
@@ -34,7 +40,6 @@ final class OpenRouterAuthStoreTests: XCTestCase {
         }
         XCTAssertNil(files.files[OpenRouterAuthStore.configPaths[0]])
     }
-
 }
 
 final class OpenRouterUsageMapperTests: XCTestCase {

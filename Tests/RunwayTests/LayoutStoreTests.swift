@@ -1462,8 +1462,8 @@ final class LayoutStoreTests: XCTestCase {
 
     // MARK: - Share confirmation
 
-    /// `clearShareConfirmation` hides the pill immediately and cancels the auto-clear task, so a
-    /// confirmation mid-countdown can't reappear stale after the popover closes and reopens.
+    /// `clearShareConfirmation` hides the pill immediately. (Cancelling the auto-clear timer is
+    /// covered by `TransientNoticeTests`.)
     func testClearShareConfirmationHidesPill() {
         let store = makeStore("ShareConfirmationClear")
         XCTAssertFalse(store.shareConfirmation)
