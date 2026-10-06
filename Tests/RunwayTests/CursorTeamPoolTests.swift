@@ -33,12 +33,30 @@ final class CursorTeamPoolTests: XCTestCase {
                 usage: usage, planName: name, planInfoUnavailable: name == nil
             ).shouldFallback)
         }
-        XCTAssertFalse(CursorPlanUsageFacts(usage: usage).shouldTryGenericRequestFallback)
+        XCTAssertFalse(CursorPlanUsageFacts(usage: usage, planName: nil).shouldTryGenericRequestFallback)
         let mapped = try CursorUsageMapper.mapUsage(
             usage: usage, planName: nil, creditGrants: nil, stripeBalanceCents: 0
         )
         assertPercent(mapped, "Cursor models", 3)
         assertPercent(mapped, "Other models", 0)
+    }
+
+    func testTeamNameAloneWithPoolsAndNoLimitUsesThePools() throws {
+        // The plan lookup says Team but the payload carries no spend-limit metadata.
+        let usage: [String: Any] = [
+            "enabled": true,
+            "planUsage": ["autoPercentUsed": 4, "apiPercentUsed": 9]
+        ]
+        XCTAssertFalse(CursorUsageMapper.shouldUseRequestBasedFallback(
+            usage: usage, planName: "Team", planInfoUnavailable: false
+        ).shouldFallback)
+        XCTAssertFalse(CursorPlanUsageFacts(usage: usage, planName: "Team").shouldTryGenericRequestFallback)
+        let mapped = try CursorUsageMapper.mapUsage(
+            usage: usage, planName: "Team", creditGrants: nil, stripeBalanceCents: 0
+        )
+        XCTAssertNil(mapped.lines.first { $0.label == "Total usage" })
+        assertPercent(mapped, "Cursor models", 4)
+        assertPercent(mapped, "Other models", 9)
     }
 
     func testZeroPoolsWithoutLimitStillUseRequestFallback() {
@@ -52,7 +70,7 @@ final class CursorTeamPoolTests: XCTestCase {
         XCTAssertTrue(CursorUsageMapper.shouldUseRequestBasedFallback(
             usage: usage, planName: "Team", planInfoUnavailable: false
         ).shouldFallback)
-        XCTAssertTrue(CursorPlanUsageFacts(usage: usage).shouldTryGenericRequestFallback)
+        XCTAssertTrue(CursorPlanUsageFacts(usage: usage, planName: nil).shouldTryGenericRequestFallback)
     }
 
     func testLegacyPoolAtZeroSpendKeepsDollarMeter() throws {
@@ -77,7 +95,7 @@ final class CursorTeamPoolTests: XCTestCase {
             "enabled": true,
             "planUsage": ["autoPercentUsed": 30, "apiPercentUsed": 50]
         ]
-        XCTAssertTrue(CursorPlanUsageFacts(usage: usage).shouldTryGenericRequestFallback)
+        XCTAssertTrue(CursorPlanUsageFacts(usage: usage, planName: nil).shouldTryGenericRequestFallback)
         XCTAssertTrue(CursorUsageMapper.shouldUseRequestBasedFallback(
             usage: usage, planName: "Enterprise", planInfoUnavailable: false
         ).shouldFallback)

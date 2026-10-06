@@ -208,7 +208,7 @@ final class CursorProvider: ProviderRuntime {
             return snapshot(mapped, usageHistory: history)
         }
 
-        if shouldTryGenericRequestFallback(usage: usage) {
+        if shouldTryGenericRequestFallback(usage: usage, planName: planName) {
             do {
                 var mapped = try await requestBasedResult(
                     accessToken: currentToken,
@@ -432,8 +432,8 @@ final class CursorProvider: ProviderRuntime {
         )
     }
 
-    private func shouldTryGenericRequestFallback(usage: [String: Any]) -> Bool {
-        CursorPlanUsageFacts(usage: usage).shouldTryGenericRequestFallback
+    private func shouldTryGenericRequestFallback(usage: [String: Any], planName: String?) -> Bool {
+        CursorPlanUsageFacts(usage: usage, planName: planName).shouldTryGenericRequestFallback
     }
 
     private func snapshot(_ mapped: CursorMappedUsage, usageHistory: ProviderUsageHistory? = nil) -> ProviderSnapshot {
