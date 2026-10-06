@@ -46,8 +46,6 @@ final class UnavailableCursorKeychain: KeychainReading, @unchecked Sendable {
     func genericPasswordExists(service: String) -> Bool? {
         true
     }
-
-    func writeGenericPassword(service: String, value: String) throws {}
 }
 
 /// A protected Cursor keychain item that becomes readable once the user approves the prompt.

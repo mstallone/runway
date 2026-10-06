@@ -2560,8 +2560,6 @@ final class ReadModeTrackingKeychain: KeychainReading, @unchecked Sendable {
     func genericPasswordExists(service: String, account: String) -> Bool? {
         true
     }
-
-    func writeGenericPassword(service: String, value: String) throws {}
 }
 
 /// A Keychain holding a gh item Runway isn't authorized to read prompt-free: non-interactive reads
