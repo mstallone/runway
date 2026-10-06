@@ -33,6 +33,11 @@ enum DevinUsageMapper {
         }
         let dailyReset = hideDailyQuota ? nil : unixSecondsToDate(planStatus["dailyQuotaResetAtUnix"])
         let weeklyReset = unixSecondsToDate(planStatus["weeklyQuotaResetAtUnix"])
+        // With no percentage, the reset alone decides between "exhausted" and "no weekly quota", so
+        // an unparsable reset is schema drift too, not an absent window.
+        if weeklyRemaining == nil, planStatus["weeklyQuotaResetAtUnix"] != nil, weeklyReset == nil {
+            throw DevinUsageError.invalidResponse
+        }
         let extraUsageBalance = dollarsFromMicros(planStatus["overageBalanceMicros"])
 
         var lines: [MetricLine] = []

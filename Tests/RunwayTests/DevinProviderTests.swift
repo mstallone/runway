@@ -130,6 +130,24 @@ final class DevinUsageMapperTests: XCTestCase {
         }
     }
 
+    func testMalformedWeeklyResetWithoutPercentageThrowsInsteadOfUsingDailyFallback() {
+        for malformed: Any in ["abc", true, NSNull()] {
+            var userStatus = makeUserStatus()
+            var planStatus = userStatus["planStatus"] as! [String: Any]
+            var planInfo = planStatus["planInfo"] as! [String: Any]
+            planInfo["hideDailyQuota"] = true
+            planStatus["planInfo"] = planInfo
+            planStatus.removeValue(forKey: "weeklyQuotaRemainingPercent")
+            planStatus["weeklyQuotaResetAtUnix"] = malformed
+            userStatus["planStatus"] = planStatus
+
+            // The reset is the only signal left for the weekly window. Unreadable is not absent.
+            XCTAssertThrowsError(try DevinUsageMapper.mapUserStatus(userStatus)) { error in
+                XCTAssertEqual(error as? DevinUsageError, .invalidResponse)
+            }
+        }
+    }
+
     func testThrowsQuotaUnavailableWhenNoDisplayableFieldsExist() {
         let userStatus: [String: Any] = [
             "planStatus": [
