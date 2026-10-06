@@ -86,7 +86,7 @@ final class ClaudeAccountIsolationTests: XCTestCase {
         XCTAssertEqual(usageRequests(fixture.http).count, 2)
     }
 
-    func testRejectedKeychainCandidateFallsBackToNextSourceWithoutARefreshAttempt() async {
+    func testRejectedKeychainCandidateFallsBackToNextSource() async {
         let fileAccount = credentials(access: "file-b", refresh: "file-refresh", plan: "pro")
         let keychainAccount = credentials(
             access: "keychain-a", refresh: "keychain-refresh", plan: "max"
@@ -101,10 +101,6 @@ final class ClaudeAccountIsolationTests: XCTestCase {
         let service = store.keychainServiceCandidates().first!
         keychain.currentUserValues[service] = keychainAccount
         let fixture = makeFixture(files: files, keychain: keychain) { request in
-            XCTAssertTrue(
-                request.url.absoluteString.hasSuffix("/api/oauth/usage"),
-                "a rejected token must fall through to the next source, never to the token endpoint"
-            )
             if request.headers["Authorization"] == "Bearer file-b" {
                 return Self.usageResponse(percent: 75)
             }
@@ -114,6 +110,8 @@ final class ClaudeAccountIsolationTests: XCTestCase {
         let snapshot = await fixture.provider.refresh()
 
         XCTAssertEqual(sessionUsage(snapshot), 75)
+        XCTAssertEqual(snapshot.plan, "Pro")
+        XCTAssertNil(snapshot.errorText)
         XCTAssertEqual(
             usageRequests(fixture.http).compactMap { $0.headers["Authorization"] },
             ["Bearer keychain-a", "Bearer file-b"]

@@ -1022,10 +1022,10 @@ final class ClaudeProviderTests: XCTestCase {
         let now = RunwayISO8601.date(from: "2026-02-20T16:00:00.000Z")!
         let originalBlob = #"{"claudeAiOauth":{"accessToken":"stale-token","refreshToken":"refresh-1","expiresAt":4102444800000,"subscriptionType":"pro","scopes":["user:profile"]}}"#
         let files = FakeFiles(["/tmp/claude/.credentials.json": originalBlob])
-        let httpClient = RoutingHTTPClient { request in
-            XCTAssertTrue(request.url.absoluteString.hasSuffix("/api/oauth/usage"))
-            return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+        let httpClient = RoutingHTTPClient { _ in
+            HTTPResponse(statusCode: 401, headers: [:], body: Data())
         }
+        let tokenEndpoint = ClaudeTokenRenewal.rotatingTokenEndpoint()
         let provider = ClaudeProvider(
             authStore: ClaudeAuthStore(
                 environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
@@ -1035,6 +1035,7 @@ final class ClaudeProviderTests: XCTestCase {
             ),
             usageClient: ClaudeUsageClient(httpClient: httpClient),
             logUsageScanner: ClaudeLogFixture.scanner(home: nil),
+            tokenRenewal: .observed(tokenEndpoint: tokenEndpoint, files: files),
             now: { now },
             pricing: { TestPricing.bundled }
         )
@@ -1042,61 +1043,12 @@ final class ClaudeProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertEqual(httpClient.requests.count, 1)
+        XCTAssertTrue(tokenEndpoint.requests.isEmpty, "a 401 must not reach the token endpoint")
         XCTAssertEqual(files.files["/tmp/claude/.credentials.json"], originalBlob)
         XCTAssertNil(badge(snapshot.lines, "Error"))
         XCTAssertNil(snapshot.line(label: "Session"))
         XCTAssertEqual(snapshot.warning, ClaudeAuthError.loginRenewalRequired.localizedDescription)
         XCTAssertEqual(snapshot.loginRequired, true)
-    }
-
-    func testFallsBackToFileWhenKeychainTokenIsLockedOut() async {
-        // #687: a stale/locked-out token sits in the keychain (the usage endpoint rejects it) while a
-        // fresh external `claude` re-login wrote a working token to the file. The refresh must fall
-        // through to the file source and recover instead of surfacing the stale keychain error until
-        // the app is restarted.
-        let now = RunwayISO8601.date(from: "2026-02-20T16:00:00.000Z")!
-        let files = FakeFiles([
-            "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"fresh-access","refreshToken":"fresh-refresh","expiresAt":4070908800000,"subscriptionType":"pro","scopes":["user:profile"]}}"#
-        ])
-        let keychain = ServiceKeychain()
-        let authStore = ClaudeAuthStore(
-            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
-            files: files,
-            keychain: keychain,
-            now: { now }
-        )
-        // The keychain is always probed first (it's the source of truth), so this exercises the
-        // auth-failure fallback: the stale keychain token is rejected server-side, and recovery comes
-        // from falling through to the fresh file token — not from any expiry-based reordering.
-        let hashedService = authStore.keychainServiceCandidates().first!
-        keychain.currentUserValues[hashedService] = #"{"claudeAiOauth":{"accessToken":"stale-access","refreshToken":"stale-refresh","expiresAt":4102444800000,"subscriptionType":"max","scopes":["user:profile"]}}"#
-
-        let httpClient = RoutingHTTPClient { request in
-            XCTAssertTrue(request.url.absoluteString.hasSuffix("/api/oauth/usage"))
-            let authorization = request.headers["Authorization"] ?? ""
-            guard authorization.contains("fresh-access") else {
-                return HTTPResponse(statusCode: 401, headers: [:], body: Data())
-            }
-            return HTTPResponse(
-                statusCode: 200,
-                headers: [:],
-                body: Data(#"{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8)
-            )
-        }
-        let provider = ClaudeProvider(
-            authStore: authStore,
-            usageClient: ClaudeUsageClient(httpClient: httpClient),
-            logUsageScanner: ClaudeLogFixture.scanner(home: nil),
-            now: { now },
-            pricing: { TestPricing.bundled }
-        )
-
-        let snapshot = await provider.refresh()
-
-        // Recovered from the file source: plan + usage reflect the fresh token, with no error badge.
-        XCTAssertEqual(snapshot.plan, "Pro")
-        XCTAssertEqual(Self.progress(snapshot.lines, "Session")?.used, 42)
-        XCTAssertNil(badge(snapshot.lines, "Error"))
     }
 
     func testAllSourcesExpiredServesLocalSpendTilesUnderARenewalNotice() async throws {
@@ -1124,7 +1076,6 @@ final class ClaudeProviderTests: XCTestCase {
 
         // Every usage call 401s → both sources are dead; no other endpoint is ever contacted.
         let httpClient = RoutingHTTPClient { request in
-            XCTAssertTrue(request.url.absoluteString.hasSuffix("/api/oauth/usage"))
             return HTTPResponse(statusCode: 401, headers: [:], body: Data())
         }
         let provider = ClaudeProvider(

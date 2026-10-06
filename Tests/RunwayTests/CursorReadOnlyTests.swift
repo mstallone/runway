@@ -75,7 +75,7 @@ final class CursorRevokedTokenFallbackTests: XCTestCase {
         // be tried once instead of reporting renewal while a working credential sits unread.
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let revoked = makeSharedCursorJWT(sub: "auth0|same-user", exp: now.timeIntervalSince1970 + 3_600)
-        let live = makeSharedCursorJWT(sub: "auth0|same-user", exp: now.timeIntervalSince1970 + 3_600)
+        let live = makeSharedCursorJWT(sub: "auth0|same-user", exp: now.timeIntervalSince1970 + 7_200)
         let http = RoutingHTTPClient { request in
             XCTAssertFalse(request.url.absoluteString.contains("oauth/token"), "no OAuth token-endpoint call may be made")
             guard request.headers["Authorization"]?.contains(live) == true else {
@@ -108,6 +108,18 @@ final class CursorRevokedTokenFallbackTests: XCTestCase {
             snapshot.errorText,
             "the live same-account token should have served this refresh"
         )
+        XCTAssertEqual(tokensTried(http, revoked: revoked, live: live), ["revoked", "live"])
+    }
+
+    /// The bearer credentials the provider sent, in order, collapsing each probe's requests to one
+    /// entry. Requests that carry neither token (cookie-authenticated endpoints) are skipped.
+    private func tokensTried(_ http: RoutingHTTPClient, revoked: String, live: String) -> [String] {
+        http.requests.reduce(into: [String]()) { tried, request in
+            let authorization = request.headers["Authorization"] ?? ""
+            guard let name = authorization.contains(live) ? "live" : authorization.contains(revoked) ? "revoked" : nil
+            else { return }
+            if tried.last != name { tried.append(name) }
+        }
     }
 
     func testAlternativeCredentialsNetworkFailureIsNotReportedAsRenewal() async {
@@ -116,7 +128,7 @@ final class CursorRevokedTokenFallbackTests: XCTestCase {
         // path — the alternative may be perfectly valid.
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let revoked = makeSharedCursorJWT(sub: "auth0|same-user", exp: now.timeIntervalSince1970 + 3_600)
-        let live = makeSharedCursorJWT(sub: "auth0|same-user", exp: now.timeIntervalSince1970 + 3_600)
+        let live = makeSharedCursorJWT(sub: "auth0|same-user", exp: now.timeIntervalSince1970 + 7_200)
         let http = RoutingHTTPClient { request in
             guard request.headers["Authorization"]?.contains(live) == true else {
                 return HTTPResponse(statusCode: 401, headers: [:], body: Data())
@@ -140,9 +152,8 @@ final class CursorRevokedTokenFallbackTests: XCTestCase {
 
         let snapshot = await provider.refresh()
 
-        let error = snapshot.errorText
-        XCTAssertEqual(error, ProviderUsageErrorText.requestFailed(statusCode: 503))
-        XCTAssertNotEqual(error, CursorAuthError.loginRenewalRequired.localizedDescription)
+        XCTAssertEqual(snapshot.errorText, ProviderUsageErrorText.requestFailed(statusCode: 503))
+        XCTAssertEqual(tokensTried(http, revoked: revoked, live: live), ["revoked", "live"])
     }
 
     func testServerRejectionDoesNotRetryADifferentAccountsToken() async {

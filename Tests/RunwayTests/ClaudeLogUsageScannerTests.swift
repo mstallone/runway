@@ -475,9 +475,11 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
 
     func testScanSkipsFilesLastTouchedBeforeTheWindow() async throws {
         let now = Date()
+        // The entry itself is in-window, so the per-entry date filter would keep it: only the
+        // file-level mtime skip can leave the result empty.
         let home = try ClaudeLogFixture.makeHome(files: [
             "project-a/old.jsonl": ClaudeLogFixture.usageLine(
-                timestamp: RunwayISO8601.string(from: now.addingTimeInterval(-90 * 86_400)),
+                timestamp: RunwayISO8601.string(from: now.addingTimeInterval(-3_600)),
                 input: 100, output: 50, costUSD: 0.25
             )
         ])

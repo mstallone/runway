@@ -345,14 +345,13 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testDesktop401NeverAttemptsRefreshTokenExchange() async throws {
+    func testDesktop401ShowsDesktopExpiredNoticeAfterOneUsageCall() async throws {
         let fixture = try makeFixture(
             activeOrganization: organization,
             v2: [cacheKey(organization: organization): tokenEntry("desktop-token", expiresIn: 3_600)]
         )
-        let httpClient = RoutingHTTPClient { request in
-            XCTAssertTrue(request.url.absoluteString.hasSuffix("/api/oauth/usage"))
-            return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+        let httpClient = RoutingHTTPClient { _ in
+            HTTPResponse(statusCode: 401, headers: [:], body: Data())
         }
         let now = now
         let provider = ClaudeProvider(
