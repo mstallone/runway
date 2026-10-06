@@ -142,14 +142,14 @@ struct MuseLogUsageScanner: Sendable {
     /// Muse `input_tokens` is the full prompt, including cache buckets. `output_tokens` already
     /// includes reasoning, so reasoning is not added again.
     static func tokenBreakdown(from usage: [String: Any]) -> TokenBreakdown? {
-        guard let input = nonnegativeInt(usage["input_tokens"]),
-              let output = nonnegativeInt(usage["output_tokens"])
+        guard let input = ProviderParse.nonnegativeInt(usage["input_tokens"]),
+              let output = ProviderParse.nonnegativeInt(usage["output_tokens"])
         else { return nil }
 
-        let cacheReadRaw = nonnegativeInt(usage["cache_read_tokens"])
-            ?? nonnegativeInt(usage["cached_tokens"])
+        let cacheReadRaw = ProviderParse.nonnegativeInt(usage["cache_read_tokens"])
+            ?? ProviderParse.nonnegativeInt(usage["cached_tokens"])
             ?? 0
-        let cacheWriteRaw = nonnegativeInt(usage["cache_write_tokens"]) ?? 0
+        let cacheWriteRaw = ProviderParse.nonnegativeInt(usage["cache_write_tokens"]) ?? 0
         let cacheRead = min(cacheReadRaw, input)
         let cacheWrite = min(cacheWriteRaw, max(0, input - cacheRead))
         return TokenBreakdown(
@@ -204,13 +204,6 @@ struct MuseLogUsageScanner: Sendable {
         JSONLScanning.jsonlFiles(under: directory).filter { file in
             file.mtime >= since && URL(fileURLWithPath: file.path).lastPathComponent == "session.jsonl"
         }
-    }
-
-    private static func nonnegativeInt(_ value: Any?) -> Int? {
-        guard let number = ProviderParse.number(value), number.isFinite,
-              number >= 0, number <= Double(Int.max), number.rounded(.towardZero) == number
-        else { return nil }
-        return Int(number)
     }
 
     private func expandHome(_ path: String) -> String {

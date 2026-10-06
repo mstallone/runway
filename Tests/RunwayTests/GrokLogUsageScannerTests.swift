@@ -103,6 +103,22 @@ final class GrokLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(merged.modelUsage?.daily.first?.models.map(\.model), ["grok-4.6-build"])
     }
 
+    func testCorruptLegacyTokenCountDropsTheRowInsteadOfTrapping() {
+        // `Int(Double)` traps at 2^63; one corrupt row must neither take the app down nor be priced.
+        let log = """
+        {"ts":"2026-06-10T09:00:00.000Z","pid":100,"msg":"model changed","ctx":{"model":"grok-build"}}
+        {"ts":"2026-06-10T10:00:00.000Z","pid":1e30,"msg":"model changed","ctx":{"model":"grok-build"}}
+        {"ts":"2026-06-10T10:00:00.000Z","pid":100,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1e30,"cached_prompt_tokens":1e31,"completion_tokens":0,"reasoning_tokens":0}}
+        {"ts":"2026-06-10T11:00:00.000Z","pid":100,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000,"cached_prompt_tokens":0,"completion_tokens":-5,"reasoning_tokens":0}}
+        {"ts":"2026-06-10T12:00:00.000Z","pid":100,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000,"cached_prompt_tokens":0,"completion_tokens":500,"reasoning_tokens":0}}
+        """
+
+        let usage = GrokLogUsageScanner.parse(log, since: since, pricing: TestPricing.bundled)
+
+        // Only the third, well-formed row counts.
+        XCTAssertEqual(usage.series.daily.map(\.totalTokens), [1_500])
+    }
+
     func testAttributesTokensToPerProcessModelAndPrices() {
         // pid 100 is on grok-build, pid 200 on grok-composer-2.5-fast; each token row prices against
         // its own process's current model.

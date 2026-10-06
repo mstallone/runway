@@ -24,4 +24,21 @@ final class ProviderParseTests: XCTestCase {
         XCTAssertEqual(ProviderParse.number(object["string"]), 2.5)
         XCTAssertEqual(ProviderParse.bool(object["true"]), true)
     }
+
+    func testCountHelpersNeverTrapOnOutOfRangeValues() {
+        // 2^63 is the first Double that `Int(_:)` cannot hold; `Double(Int.max)` rounds up to it.
+        XCTAssertNil(ProviderParse.nonnegativeInt(9_223_372_036_854_775_808.0))
+        XCTAssertNil(ProviderParse.nonnegativeInt(1e30))
+        XCTAssertNil(ProviderParse.nonnegativeInt(-1))
+        XCTAssertNil(ProviderParse.nonnegativeInt(1.5))
+        XCTAssertEqual(ProviderParse.nonnegativeInt(42), 42)
+        XCTAssertNil(ProviderParse.tokenCount(1e30))
+        XCTAssertNil(ProviderParse.tokenCount(-1))
+        XCTAssertEqual(ProviderParse.tokenCount(nil), 0)
+        XCTAssertEqual(ProviderParse.tokenCount(7), 7)
+        XCTAssertEqual(ProviderParse.clampedTokenCount(1e30), 1_000_000_000_000_000)
+        XCTAssertEqual(ProviderParse.clampedTokenCount(-5), 0)
+        XCTAssertEqual(ProviderParse.clampedTokenCount(nil), 0)
+        XCTAssertEqual(ProviderParse.clampedTokenCount("12"), 12)
+    }
 }

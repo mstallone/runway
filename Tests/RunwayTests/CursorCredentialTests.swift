@@ -4,6 +4,44 @@ import XCTest
 /// Cursor credential handling: which local source wins, what stays prompt-free, and how a lapsed or
 /// rejected token is reported now that Runway never refreshes or writes Cursor's credentials.
 final class CursorAuthStoreTests: XCTestCase {
+    func testNonStringStateValueDoesNotDiscardTheTokenReadWithIt() {
+        // The state query folds every requested key into one JSON object. A NULL or numeric value
+        // on another row must not make the whole object, and so the token, unreadable.
+        struct MixedValueSQLite: SQLiteAccessing {
+            let token: String
+            func queryValue(path: String, sql: String) throws -> String? {
+                #"{"\#(CursorAuthStore.accessTokenKey)":"\#(token)","\#(CursorAuthStore.membershipTypeKey)":null}"#
+            }
+            func queryJSONRows(path: String, sql: String) throws -> String? { nil }
+        }
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let token = makeSharedCursorJWT(sub: "auth0|user", exp: now.timeIntervalSince1970 + 3_600)
+        let store = CursorAuthStore(sqlite: MixedValueSQLite(token: token), keychain: ServiceKeychain(), now: { now })
+
+        XCTAssertEqual(store.loadCredentials().state?.accessToken, token)
+    }
+
+    @MainActor
+    func testFailedStateDatabaseReadIsUnreadableNotLoggedOut() async {
+        // A locked database or a `sqlite3` timeout used to read as "not logged in", which told a
+        // signed-in user to sign in and hid Cursor from first-run detection.
+        struct FailingSQLite: SQLiteAccessing {
+            func queryValue(path: String, sql: String) throws -> String? { throw SQLiteError.queryFailed("database is locked") }
+            func queryJSONRows(path: String, sql: String) throws -> String? { nil }
+        }
+        let store = CursorAuthStore(sqlite: FailingSQLite(), keychain: ServiceKeychain())
+        XCTAssertEqual(store.loadCredentials(), .stateDatabaseUnreadable)
+
+        let provider = CursorProvider(authStore: store)
+        let hasCredentials = await provider.hasLocalCredentials()
+        let snapshot = await provider.refresh()
+        XCTAssertTrue(hasCredentials)
+        XCTAssertEqual(snapshot.errorText, CursorAuthError.stateDatabaseUnreadable.localizedDescription)
+
+        // A database with no login rows is still a plain logout.
+        XCTAssertEqual(CursorAuthStore(sqlite: FakeCursorSQLite(), keychain: ServiceKeychain()).loadCredentials(), .none)
+    }
+
     func testExpiredSQLiteTokenYieldsToAUsableSameAccountKeychainToken() {
         // Read-only means a lapsed selected token ends the refresh, so a usable token for the SAME
         // account must win instead of reporting renewal while a working credential sits unread.

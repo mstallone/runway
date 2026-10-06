@@ -150,13 +150,13 @@ struct GrokLogUsageScanner: Sendable {
             for (rawModel, rawUsage) in modelUsage {
                 guard let model = rawModel.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
                       let values = rawUsage as? [String: Any],
-                      let fullInput = nonnegativeInt(values["inputTokens"]),
-                      let output = nonnegativeInt(values["outputTokens"])
+                      let fullInput = ProviderParse.nonnegativeInt(values["inputTokens"]),
+                      let output = ProviderParse.nonnegativeInt(values["outputTokens"])
                 else { continue }
 
-                let cacheRead = min(nonnegativeInt(values["cachedReadTokens"]) ?? 0, fullInput)
+                let cacheRead = min(ProviderParse.nonnegativeInt(values["cachedReadTokens"]) ?? 0, fullInput)
                 let cacheCreation = min(
-                    nonnegativeInt(values["cacheCreationTokens"]) ?? 0,
+                    ProviderParse.nonnegativeInt(values["cacheCreationTokens"]) ?? 0,
                     fullInput - cacheRead
                 )
                 let tokens = TokenBreakdown(
@@ -165,7 +165,7 @@ struct GrokLogUsageScanner: Sendable {
                     cacheRead: cacheRead,
                     output: output
                 )
-                let total = nonnegativeInt(values["totalTokens"]) ?? tokens.totalTokens
+                let total = ProviderParse.nonnegativeInt(values["totalTokens"]) ?? tokens.totalTokens
                 guard total > 0 else { continue }
                 entries.append(SessionEntry(
                     promptID: promptID,
@@ -189,13 +189,6 @@ struct GrokLogUsageScanner: Sendable {
             return nil
         }
         return Date(timeIntervalSince1970: seconds)
-    }
-
-    private static func nonnegativeInt(_ value: Any?) -> Int? {
-        guard let number = ProviderParse.number(value), number.isFinite,
-              number >= 0, number <= Double(Int.max), number.rounded(.towardZero) == number
-        else { return nil }
-        return Int(number)
     }
 
     /// A fork can replay a parent's completed turn under the same prompt id. Keep one model row for
@@ -315,7 +308,7 @@ struct GrokLogUsageScanner: Sendable {
             else { return }
 
             let ctx = object["ctx"] as? [String: Any] ?? [:]
-            let pid = ProviderParse.number(object["pid"]).map { Int($0) }
+            let pid = ProviderParse.nonnegativeInt(object["pid"])
 
             if let model = modelID(msg: msg, ctx: ctx) {
                 if let pid { modelByPID[pid] = model }
@@ -323,21 +316,24 @@ struct GrokLogUsageScanner: Sendable {
             }
 
             guard msg == "shell.turn.inference_done",
-                  let promptTokens = ProviderParse.number(ctx["prompt_tokens"]),
+                  ProviderParse.number(ctx["prompt_tokens"]) != nil,
                   let timestamp = (object["ts"] as? String).flatMap(RunwayISO8601.date(from:)),
                   timestamp >= since
             else { return }
 
-            let completion = Int(ProviderParse.number(ctx["completion_tokens"]) ?? 0)
-            let reasoning = Int(ProviderParse.number(ctx["reasoning_tokens"]) ?? 0)
+            // A corrupt count (negative or absurdly large) drops the whole row.
+            guard let promptTokens = ProviderParse.tokenCount(ctx["prompt_tokens"]),
+                  let completion = ProviderParse.tokenCount(ctx["completion_tokens"]),
+                  let reasoning = ProviderParse.tokenCount(ctx["reasoning_tokens"]),
+                  let cachedPrompt = ProviderParse.tokenCount(ctx["cached_prompt_tokens"])
+            else { return }
             // `cached_prompt_tokens` is a subset of `prompt_tokens`, so total counts prompt once.
-            let cached = min(ProviderParse.number(ctx["cached_prompt_tokens"]) ?? 0, promptTokens)
-            let cacheRead = Int(cached)
-            let inputNoCache = Int(max(0, promptTokens - cached))
+            let cacheRead = min(cachedPrompt, promptTokens)
+            let inputNoCache = promptTokens - cacheRead
             let output = completion + reasoning
 
             let day = dayKeys.key(for: timestamp)
-            let totalTokens = Int(promptTokens) + output
+            let totalTokens = promptTokens + output
 
             // Grok's token rows lack a model id; attribute via the row's process. Rows that can't be
             // priced (no attributable model, or a model no source can price) are excluded from every

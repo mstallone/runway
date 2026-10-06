@@ -31,7 +31,12 @@ enum LocalLimitsAPI {
     private static func encode(_ value: some Encodable) -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        return (try? encoder.encode(value)) ?? Data(#"{"errors":[],"providers":{},"schema":"runway.limits.v1"}"#.utf8)
+        do {
+            return try encoder.encode(value)
+        } catch {
+            AppLog.error(.localAPI, "limits response could not be encoded; serving an empty envelope: \(error.localizedDescription)")
+            return Data(#"{"errors":[],"providers":{},"schema":"runway.limits.v1"}"#.utf8)
+        }
     }
 
     private struct WireEnvelope: Encodable {

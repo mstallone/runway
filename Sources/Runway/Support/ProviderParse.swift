@@ -93,6 +93,32 @@ enum ProviderParse {
         return try? JSONDecoder().decode(type, from: data)
     }
 
+    /// A whole, non-negative count that fits an `Int`, or nil. `Int(Double)` traps at and above
+    /// 2^63, so counts read from a log or an API go through this, `tokenCount` or
+    /// `clampedTokenCount` instead of a bare conversion.
+    static func nonnegativeInt(_ value: Any?) -> Int? {
+        // `Double(Int.max)` rounds up to 2^63, which itself traps, so the bound is strict.
+        guard let number = number(value),
+              number >= 0, number < 0x1p63, number.rounded(.towardZero) == number
+        else { return nil }
+        return Int(number)
+    }
+
+    /// A token count for a log row: 0 when the field is absent or non-numeric, nil when it is
+    /// present but corrupt (negative, or above 1e15 — far beyond any real total). Callers skip the
+    /// row on nil, so a corrupt line is never priced.
+    static func tokenCount(_ value: Any?) -> Int? {
+        guard let number = number(value) else { return 0 }
+        guard number >= 0, number <= 1e15 else { return nil }
+        return Int(number)
+    }
+
+    /// A token count clamped to a safe range: missing, non-numeric and negative values read as 0,
+    /// and a corrupt, absurdly large one stops at 1e15.
+    static func clampedTokenCount(_ value: Any?) -> Int {
+        Int(min(max(number(value) ?? 0, 0), 1e15))
+    }
+
     /// Decode a JWT's payload (the middle dot-separated segment) as a JSON object. Base64url is
     /// translated to standard base64 and padded before decoding.
     static func jwtPayload(_ token: String) -> [String: Any]? {

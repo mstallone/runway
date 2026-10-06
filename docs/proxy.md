@@ -35,7 +35,7 @@ When the URL has no port, the scheme's default applies (socks5 â†’ 1080, http â†
 
 - Runway reads the config once at launch. Restart Runway after changing the file.
 - `localhost`, `127.0.0.1`, and `::1` always bypass the proxy, so the [local HTTP API](local-http-api.md) is unaffected.
-- A missing, disabled, invalid, or unreadable config leaves proxying off.
+- A missing, disabled, invalid, or unreadable config leaves proxying off. A missing or disabled one is silent. An unreadable file, a file that is not a JSON object, or an enabled proxy with a rejected URL (wrong scheme, no host, or a port out of range) writes a warning to the log file, without the URL.
 
 ## Scope
 

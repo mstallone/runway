@@ -221,7 +221,7 @@ enum CodexUsageMapper {
     private static func readPeriodMs(_ window: [String: Any]?) -> Int? {
         guard let window else { return nil }
         guard let seconds = ProviderParse.number(window["limit_window_seconds"]) else { return nil }
-        return Int(seconds * 1000)
+        return ProviderParse.nonnegativeInt((seconds * 1000).rounded(.towardZero))
     }
 
     /// Codex flex credits as raw values: the floored credit count and its dollar value (count × 4¢),

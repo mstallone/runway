@@ -91,6 +91,24 @@ final class AppLogTests: XCTestCase {
         XCTAssertFalse(contents.contains("sk-1234567890abcdefghij"), contents)
     }
 
+    func testRejectedProxyConfigIsLoggedWithoutItsURL() throws {
+        // An enabled proxy that can't be used sends traffic direct, so it must be loud; the URL may
+        // carry a password, so it must not be in the line. A disabled or absent proxy stays silent.
+        AppLog.reloadLevel(.info)
+        XCTAssertNil(ProxyConfig.load(text: #"{"proxy":{"enabled":false,"url":"ftp://user:hunter2@host"}}"#))
+        XCTAssertNil(ProxyConfig.load(text: "{}"))
+        XCTAssertFalse(try fileContents().contains("proxy off"))
+
+        XCTAssertNil(ProxyConfig.load(text: #"{"proxy":{"enabled":true,"url":"ftp://user:hunter2@host"}}"#))
+        XCTAssertNil(ProxyConfig.load(text: "not json"))
+        XCTAssertNil(ProxyConfig.load(text: #"{"proxy":{"enabled":true,"url":"socks5://user:hunter2@127.0.0.1:108080"}}"#))
+        let contents = try fileContents()
+        XCTAssertTrue(contents.contains("[WARN] [config] proxy off: proxy.enabled is true but proxy.url has a port out of range"), contents)
+        XCTAssertTrue(contents.contains("[WARN] [config] proxy off: proxy.enabled is true"), contents)
+        XCTAssertTrue(contents.contains("[WARN] [config] proxy off: ~/.runway/config.json is not a JSON object"), contents)
+        XCTAssertFalse(contents.contains("hunter2"), contents)
+    }
+
     func testCorruptSnapshotCacheRecoversToEmptyWithAWarning() throws {
         // A non-decodable blob (post-upgrade schema drift, a half-written write, a manual `defaults`
         // edit) recovers to an empty cache. Dropping every provider's snapshot at once feeds a refresh

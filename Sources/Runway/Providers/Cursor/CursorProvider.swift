@@ -85,6 +85,8 @@ final class CursorProvider: ProviderRuntime {
         case .unreadable:
             // Approval cannot fix a locked keychain or a failing securityd, so don't ask for it.
             return ProviderSnapshot.error(provider: provider, error: CursorAuthError.credentialStoreUnreadable)
+        case .stateDatabaseUnreadable:
+            return ProviderSnapshot.error(provider: provider, error: CursorAuthError.stateDatabaseUnreadable)
         case .none:
             return ProviderSnapshot.error(provider: provider, error: CursorAuthError.notLoggedIn)
         }
@@ -127,7 +129,7 @@ final class CursorProvider: ProviderRuntime {
                     provider: provider,
                     error: CursorAuthError.credentialStoreUnreadable
                 )
-            case .none:
+            case .none, .stateDatabaseUnreadable:
                 AppLog.info(
                     LogTag.auth("cursor"),
                     "\(state.source) token rejected and this account has no other local credential; renewal required"

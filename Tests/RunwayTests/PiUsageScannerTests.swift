@@ -57,6 +57,17 @@ final class PiUsageScannerTests: XCTestCase {
         XCTAssertEqual(entry?.tokens.output, 50)
     }
 
+    func testCorruptTokenCountDropsTheLineInsteadOfTrapping() {
+        // `Int(Double)` traps at 2^63; one corrupt line must neither take the app down nor be priced.
+        func usageLine(_ usage: String) -> Data {
+            Data(#"{"type":"message","id":"m1","timestamp":"2026-07-12T10:00:00.000Z","message":{"role":"assistant","provider":"anthropic","model":"claude-opus-4-8","usage":{\#(usage)}}}"#.utf8)
+        }
+        XCTAssertNil(PiUsageScanner.parseLine(usageLine(#""input":1e30,"output":5,"totalTokens":1e30"#)))
+        XCTAssertNil(PiUsageScanner.parseLine(usageLine(#""input":10,"output":-5,"totalTokens":5"#)))
+        // An absent count is still 0, not corrupt.
+        XCTAssertEqual(PiUsageScanner.parseLine(usageLine(#""input":10,"totalTokens":10"#))?.tokens.output, 0)
+    }
+
     func testSplitsCacheWriteBucketsBy1hPortion() {
         let entry = PiUsageScanner.parseLine(line(cacheWrite: 1000, cacheWrite1h: 400))
         XCTAssertEqual(entry?.tokens.cacheWrite1h, 400)
