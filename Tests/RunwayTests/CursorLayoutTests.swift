@@ -33,4 +33,9 @@ final class CursorLayoutTests: XCTestCase {
             "cursor.today", "cursor.yesterday", "cursor.last30"
         ])
     }
+
+    func testGrokBotIsOutsideTheMigrationBaseline() {
+        // Outside the frozen baseline, so existing users are offered it once.
+        XCTAssertFalse(DefaultLayout.migrationBaselineMetricIDs.contains("cursor.grokBot"))
+    }
 }

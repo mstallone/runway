@@ -204,9 +204,6 @@ final class CursorProviderTests: XCTestCase {
         XCTAssertEqual(grokBot?.sample.title, "Grok Bot")
         XCTAssertEqual(grokBot?.metricLabel, "Grok Bot usage")
         XCTAssertEqual(grokBot?.limitResources.map(\.key), ["grokBot"])
-        // Outside the frozen baseline, so existing users are offered it once (default placement is
-        // covered by `CursorLayoutTests`).
-        XCTAssertFalse(DefaultLayout.migrationBaselineMetricIDs.contains("cursor.grokBot"))
     }
 
     func testRefreshFetchesLiveCursorUsage() async {
