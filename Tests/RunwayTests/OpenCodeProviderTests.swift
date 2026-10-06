@@ -484,35 +484,3 @@ final class OpenCodeProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.errorText, OpenCodeUsageError.connectionFailed.localizedDescription)
     }
 }
-
-private final class ThrowingHTTPClient: HTTPClient, @unchecked Sendable {
-    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
-        throw URLError(.notConnectedToInternet)
-    }
-}
-
-/// A clock the fake HTTP client can move, so a request takes time on the provider's clock.
-private final class SteppingClock: @unchecked Sendable {
-    private let lock = NSLock()
-    private var current: Date
-
-    init(_ start: Date) { current = start }
-
-    var now: Date { lock.withLock { current } }
-
-    func advance(by interval: TimeInterval) {
-        lock.withLock { current = current.addingTimeInterval(interval) }
-    }
-}
-
-/// Answers with a fixed response after `delay` has passed on `clock`.
-private struct SlowHTTPClient: HTTPClient {
-    let response: HTTPResponse
-    let clock: SteppingClock
-    let delay: TimeInterval
-
-    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
-        clock.advance(by: delay)
-        return response
-    }
-}

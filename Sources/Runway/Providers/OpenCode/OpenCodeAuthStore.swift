@@ -85,15 +85,42 @@ struct OpenCodeAuthStore: Sendable {
     /// be queried throws `credentialDatabaseUnreadable`, and an unreadable `auth.json` or data
     /// directory throws `credentialsUnreadable`.
     func goAPIKey() throws -> String? {
+        let lookup = try goKeyLookup()
+        if lookup.key == nil, let unreadable = lookup.unreadableDatabases.min(by: { $0.key < $1.key }) {
+            throw OpenCodeUsageError.credentialDatabaseUnreadable(detail: unreadable.value)
+        }
+        return lookup.key
+    }
+
+    /// One pass over the Go login: the key, where it came from, and which databases could not be
+    /// asked. `refresh()` needs the last two to tell a logout (the database that had the key was
+    /// read and no longer has one) from a failed read of that database.
+    struct GoKeyLookup: Sendable {
+        var key: String?
+        /// The database whose answer supplied the key, including when that answer was "use
+        /// `auth.json`". The `auth.json` path when there is no database.
+        var source: String?
+        /// Databases that could not be queried, with sqlite3's message for the log. Only filled
+        /// when no key was found: once one is, later databases are not asked.
+        var unreadableDatabases: [String: String] = [:]
+    }
+
+    /// The loader behind `goAPIKey()`. Throws only `credentialsUnreadable`, for an unreadable
+    /// `auth.json` or data directory when no key was found.
+    func goKeyLookup() throws -> GoKeyLookup {
         let paths: [String]
         do {
             paths = try OpenCodePaths.databaseFiles(in: dataDirectory)
         } catch {
             throw OpenCodeUsageError.credentialsUnreadable(detail: error.localizedDescription)
         }
-        guard !paths.isEmpty else { return try authFileGoKey() }
+        guard !paths.isEmpty else {
+            let key = try authFileGoKey()
+            return GoKeyLookup(key: key, source: key == nil ? nil : authFilePath)
+        }
 
-        var failure: OpenCodeUsageError?
+        var lookup = GoKeyLookup()
+        var authFileFailure: OpenCodeUsageError?
         for path in paths {
             do {
                 let tables = try probeTables(path)
@@ -104,13 +131,15 @@ struct OpenCodeAuthStore: Sendable {
                 case .authFile(let tableFallback):
                     key = try authFileGoKey() ?? (tableFallback ? try tableGoKey(path) : nil)
                 }
-                if let key { return key }
+                if let key { return GoKeyLookup(key: key, source: path) }
+            } catch OpenCodeUsageError.credentialDatabaseUnreadable(let detail) {
+                lookup.unreadableDatabases[path] = detail
             } catch let error as OpenCodeUsageError {
-                failure = failure ?? error
+                authFileFailure = authFileFailure ?? error
             }
         }
-        if let failure { throw failure }
-        return nil
+        if let authFileFailure { throw authFileFailure }
+        return lookup
     }
 
     /// What Codex attribution needs to know about a database's `openai` login: whether it is the

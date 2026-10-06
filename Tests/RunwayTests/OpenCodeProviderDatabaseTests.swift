@@ -65,6 +65,42 @@ final class OpenCodeProviderDatabaseTests: XCTestCase {
         XCTAssertNil(second.line(label: "Today"))
         XCTAssertNil(second.loginRequired)
         XCTAssertEqual(http.requests.count, 1)
+
+        // Readable again: the card recovers on its own.
+        authSQLite.failing = []
+        let third = await provider.refresh()
+        XCTAssertNil(third.errorText)
+        XCTAssertNotNil(third.line(label: "Session"))
+        XCTAssertEqual(http.requests.count, 2)
+    }
+
+    func testLogoutBesideAnUnreadableDatabaseShowsTilesNotAnError() async throws {
+        // While logged in, a corrupt leftover channel database is never asked, because the stable
+        // database already answered. After a logout it is asked and fails. The database that had the
+        // key was read and has none now, so this is a logout, not a failed read of the login.
+        let dir = try DB(self)
+        try dir.execute(DB.openCode2Tables + [
+            DB.credential(id: "c1", integration: "opencode-go", value: #"{"type":"key","key":"oc_sk_live"}"#),
+            DB.sessionMessage(id: "m1", seq: 1, ms: epochMs("2026-07-12T10:00:00.000Z"), data:
+                #"{"finish":"stop","model":{"id":"glm-5.2","providerID":"opencode-go"},"cost":2,"tokens":{"input":400,"output":100}}"#)
+        ].joined())
+        try dir.writeCorruptDatabase("opencode-next.db")
+        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: usageJSON()))
+        let provider = provider(dir, http: http)
+
+        let loggedIn = await provider.refresh()
+        XCTAssertNotNil(loggedIn.line(label: "Session"))
+        XCTAssertNotNil(loggedIn.line(label: "Today"))
+
+        try dir.execute("DELETE FROM credential;")
+        for _ in 0..<2 {
+            let loggedOut = await provider.refresh()
+            XCTAssertNil(loggedOut.errorText)
+            XCTAssertNotNil(loggedOut.line(label: "Today"))
+            XCTAssertNil(loggedOut.line(label: "Session"))
+            XCTAssertNil(loggedOut.plan)
+        }
+        XCTAssertEqual(http.requests.count, 1)
     }
 
     func testLoginDatabaseFailureOnTheFirstRefreshStillShowsLocalTiles() async throws {

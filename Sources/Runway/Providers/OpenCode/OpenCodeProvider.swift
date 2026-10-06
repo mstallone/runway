@@ -70,10 +70,12 @@ final class OpenCodeProvider: ProviderRuntime {
     /// once per run, not once per 5-minute refresh.
     private var loggedAuthReadFailure = false
 
-    /// Whether a Go key has been resolved earlier in this process. A card that had Go meters must
-    /// not have them blanked by one failed read of the login; a card that never had them has
-    /// nothing to protect. In memory only, so the first refresh after a launch starts unprotected.
-    private var hasResolvedGoKey = false
+    /// The database that supplied the Go key on the most recent complete read of the login, or
+    /// `nil` when that read found no key. A card that has Go meters must not have them blanked by
+    /// one failed read of that database; if that database was read and no longer has a key, the
+    /// user logged out, whatever other database is unreadable. In memory only, so the first refresh
+    /// after a launch starts unprotected.
+    private var goKeySource: String?
 
     /// Edge-triggers the rejected-key log the same way.
     private var loggedRejectedKey = false
@@ -136,23 +138,32 @@ final class OpenCodeProvider: ProviderRuntime {
         var goKey: String?
         var authReadError: OpenCodeUsageError?
         do {
-            goKey = try await loadOffMainActor { [authStore] in try authStore.goAPIKey() }
-            loggedAuthReadFailure = false
-            if goKey != nil { hasResolvedGoKey = true }
-        } catch OpenCodeUsageError.credentialDatabaseUnreadable(let detail) {
-            let error = OpenCodeUsageError.credentialDatabaseUnreadable(detail: detail)
-            if !loggedAuthReadFailure {
-                loggedAuthReadFailure = true
-                AppLog.warn(LogTag.plugin("opencode"), "credential database unreadable: \(detail)")
+            let lookup = try await loadOffMainActor { [authStore] in try authStore.goKeyLookup() }
+            goKey = lookup.key
+            if lookup.key != nil {
+                goKeySource = lookup.source
+                loggedAuthReadFailure = false
+            } else if let unreadable = lookup.unreadableDatabases.min(by: { $0.key < $1.key }) {
+                let error = OpenCodeUsageError.credentialDatabaseUnreadable(detail: unreadable.value)
+                if !loggedAuthReadFailure {
+                    loggedAuthReadFailure = true
+                    AppLog.warn(LogTag.plugin("opencode"), "credential database unreadable: \(unreadable.value)")
+                }
+                if let goKeySource, lookup.unreadableDatabases[goKeySource] != nil {
+                    // The database this card's Go login came from could not be read. Publishing
+                    // tiles alone would replace and cache over its meters because of one busy
+                    // database, so fail the refresh instead.
+                    return ProviderSnapshot.error(provider: provider, error: error)
+                }
+                // Either no Go login was in use, or the database that had it was read and no longer
+                // does (a logout). One unreadable database elsewhere, a leftover channel file say,
+                // must not take the local tiles away.
+                goKeySource = nil
+                authReadError = error
+            } else {
+                goKeySource = nil
+                loggedAuthReadFailure = false
             }
-            if hasResolvedGoKey {
-                // This card had a Go login moments ago. Publishing tiles alone would replace and
-                // cache over its meters because of one busy database, so fail the refresh instead.
-                return ProviderSnapshot.error(provider: provider, error: error)
-            }
-            // No Go login seen this run: nothing to protect, and one unreadable database (a
-            // leftover channel file, say) must not take the local tiles away.
-            authReadError = error
         } catch let error as OpenCodeUsageError {
             authReadError = error
             if case .credentialsUnreadable(let detail) = error, !loggedAuthReadFailure {
