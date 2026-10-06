@@ -805,13 +805,35 @@ final class ClaudeProviderTests: XCTestCase {
             """#
         )
         let httpClient = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data()))
-        let files = FakeFiles()
+        // Everything a renewal needs is in place — a token endpoint that would rotate and a
+        // write-back path that would succeed — so only the kill switch keeps either from running.
+        let refreshHTTP = FakeHTTPClient(response: HTTPResponse(
+            statusCode: 200,
+            headers: [:],
+            body: Data(#"{"access_token":"new-access","refresh_token":"refresh-2","expires_in":3600}"#.utf8)
+        ))
+        struct CountingStdinRunner: StdinProcessRunning {
+            let writes: CallCounter
+            func run(executable: String, arguments: [String], stdin: String, timeout: TimeInterval) throws -> ProcessResult {
+                _ = writes.next()
+                return ProcessResult(exitCode: 0, stdout: "", stderr: "")
+            }
+        }
+        let keychainWrites = CallCounter()
+        var writeBack = ClaudeCredentialWriteBack()
+        writeBack.helperIsSilentlyAuthorized = { _, _ in true }
+        writeBack.stdinRunner = CountingStdinRunner(writes: keychainWrites)
         var renewal = ClaudeTokenRenewal()
+        renewal.refresher = ClaudeTokenRefresher(httpClient: refreshHTTP)
+        renewal.writeBack = writeBack
+        renewal.keychain = keychain
+        renewal.environment = FakeEnvironment()
+        renewal.currentAccount = { "tester" }
         renewal.isDisabled = { true }
         let provider = ClaudeProvider(
             authStore: ClaudeAuthStore(
                 environment: FakeEnvironment(),
-                files: files,
+                files: FakeFiles(),
                 keychain: keychain
             ),
             usageClient: ClaudeUsageClient(httpClient: httpClient),
@@ -825,7 +847,8 @@ final class ClaudeProviderTests: XCTestCase {
         // The expired stamp short-circuits before any network call: no usage call, and above all no
         // POST to any /oauth/token endpoint.
         XCTAssertTrue(httpClient.requests.isEmpty)
-        XCTAssertTrue(files.files.isEmpty, "a declined renewal must not write Claude's credentials file")
+        XCTAssertTrue(refreshHTTP.requests.isEmpty, "a declined renewal must not contact the token endpoint")
+        XCTAssertEqual(keychainWrites.count, 0, "a declined renewal must not write Claude's credential store")
         XCTAssertNil(badge(snapshot.lines, "Error"))
         XCTAssertNil(snapshot.line(label: "Session"))
         XCTAssertEqual(snapshot.warning, ClaudeAuthError.loginRenewalRequired.localizedDescription)
@@ -1486,6 +1509,10 @@ private final class CallCounter: @unchecked Sendable {
     func next() -> Int {
         lock.lock(); defer { lock.unlock() }
         value += 1
+        return value
+    }
+    var count: Int {
+        lock.lock(); defer { lock.unlock() }
         return value
     }
 }
