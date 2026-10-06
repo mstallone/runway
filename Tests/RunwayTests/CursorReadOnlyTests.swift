@@ -3,7 +3,7 @@ import XCTest
 
 @MainActor
 final class CursorReadOnlyCredentialTests: XCTestCase {
-    func testExpiredTokenNeverRefreshesOrWritesAndReportsRenewal() async {
+    func testExpiredTokenNeverRefreshesAndReportsRenewal() async {
         // Runway is a read-only consumer of Cursor's credentials: an expired token means NO
         // token-endpoint call and a renewal notice. (`SQLiteAccessing` has no write method.)
         let sqlite = FakeCursorSQLite(values: [

@@ -46,6 +46,7 @@ final class WidgetUsagePeriodTests: XCTestCase {
         var row = WidgetData(title: "Rate Limit Resets", icon: .providerMark("codex"), kind: .count, used: 0,
                              limit: nil, values: [MetricValue(number: 0, kind: .count)])
         row.isUsagePeriod = false
+        XCTAssertTrue(row.isZeroUsage)
         XCTAssertNil(row.unboundedValueTooltip)
     }
 

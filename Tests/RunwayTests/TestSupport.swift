@@ -429,6 +429,16 @@ final class FakeHTTPClient: HTTPClient, @unchecked Sendable {
     }
 }
 
+extension ProviderSnapshot {
+    /// The provider-level error message a failed refresh surfaces, or nil when there is none.
+    var errorText: String? {
+        lines.compactMap { line -> String? in
+            guard case .badge(let label, let text, _, _) = line, label == MetricLine.errorBadgeLabel else { return nil }
+            return text
+        }.first
+    }
+}
+
 /// Test-target-only defaults so in-memory doubles don't each need a stub. The app target has none on
 /// purpose: a real accessor must make its own race-free, mode-aware implementations.
 extension TextFileAccessing {
