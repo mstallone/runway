@@ -394,8 +394,7 @@ final class KeychainAccessorTests: XCTestCase {
         let probe = ManualRefreshApprovalProbe()
         let runtimes = providers.map { KeychainApprovalRuntime(provider: $0, probe: probe) }
         let suiteName = "RunwayTests.keychain-refresh-all.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let defaults = UserDefaults(testSuiteName: suiteName)!
         let store = WidgetDataStore(
             registry: WidgetRegistry(providers: providers, descriptors: []),
             providers: runtimes,

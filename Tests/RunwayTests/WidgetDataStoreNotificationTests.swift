@@ -40,7 +40,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
 
     private func makeUserDefaults(_ name: String) -> UserDefaults {
         let suite = "WidgetDataStoreNotificationTests.\(name)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = UserDefaults(testSuiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
         return defaults
     }

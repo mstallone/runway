@@ -71,7 +71,7 @@ final class WidgetDataStorePlanTests: XCTestCase {
 
     private func makeDefaults(_ name: String) -> UserDefaults {
         let suiteName = "RunwayTests.Plan.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = UserDefaults(testSuiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         return defaults
     }

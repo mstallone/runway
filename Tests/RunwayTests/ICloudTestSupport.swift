@@ -14,7 +14,7 @@ func makeDataStore(_ defaults: UserDefaults) -> WidgetDataStore {
 
 func makeDefaults(_ name: String, syncEnabled: Bool = true) -> UserDefaults {
     let suite = "RunwayTests.ICloudIdentity.\(name).\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
+    let defaults = UserDefaults(testSuiteName: suite)!
     defaults.removePersistentDomain(forName: suite)
     defaults.set(syncEnabled, forKey: "runway.icloudSync.enabled.v1")
     return defaults

@@ -21,7 +21,7 @@ final class ProviderLoginStatusTests: XCTestCase {
     func testLoginStateTracksRefreshFailuresRecoveryAndPartialData() async {
         let provider = Provider(id: "login-test", displayName: "Test", icon: .providerMark("codex"))
         let runtime = LoginStatusRuntime(provider: provider)
-        let defaults = UserDefaults(suiteName: "ProviderLoginStatusTests.\(UUID().uuidString)")!
+        let defaults = UserDefaults(testSuiteName: "ProviderLoginStatusTests.\(UUID().uuidString)")!
         let store = WidgetDataStore(registry: WidgetRegistry(providers: [provider], descriptors: []),
                                     providers: [runtime], defaults: defaults)
         runtime.snapshot = ProviderSnapshot(providerID: provider.id, displayName: "Test",

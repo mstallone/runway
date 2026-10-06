@@ -182,9 +182,8 @@ final class WidgetMeterStyleTests: XCTestCase {
 
     func testMeterStylePersistsAcrossStoreInstances() {
         let suiteName = "RunwayTests.MeterStyle.persist.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = UserDefaults(testSuiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let store = makeEmptyStore(defaults)
         XCTAssertEqual(store.meterStyle, .remaining)
@@ -271,7 +270,7 @@ final class WidgetMeterStyleTests: XCTestCase {
 
     private func makeUserDefaults(_ name: String) -> UserDefaults {
         let suiteName = "RunwayTests.MeterStyle.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = UserDefaults(testSuiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         return defaults
     }

@@ -191,9 +191,8 @@ final class CodexHomeDiscoveryTests: XCTestCase {
 
     private func scratchDefaults() -> UserDefaults {
         let suite = "CodexHomeDiscoveryTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = UserDefaults(testSuiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         return defaults
     }
 }

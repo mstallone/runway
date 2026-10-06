@@ -145,9 +145,8 @@ final class ShellEnvironmentSnapshotTests: XCTestCase {
 
     private func makeScratchDefaults() -> UserDefaults {
         let suiteName = "RunwayTests.ShellEnvironmentSnapshot.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = UserDefaults(testSuiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
-        addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
         return defaults
     }
 }

@@ -346,7 +346,7 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
 
     private func makeFreshDefaults(_ name: String) -> UserDefaults {
         let suite = "RunwayTests.ICloudSync.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = UserDefaults(testSuiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
         return defaults
     }

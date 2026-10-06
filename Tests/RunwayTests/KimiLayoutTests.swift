@@ -7,9 +7,8 @@ final class KimiLayoutTests: XCTestCase {
 
     func testFreshDefaultsSeedApprovedKimiLayout() {
         let suiteName = "RunwayTests.KimiLayout.FreshDefaults.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = UserDefaults(testSuiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let store = LayoutStore(
             registry: .from([KimiProvider()]),

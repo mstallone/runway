@@ -5,9 +5,8 @@ import XCTest
 final class MuseLayoutTests: XCTestCase {
     func testFreshDefaultsSeedApprovedMuseLayout() {
         let suiteName = "RunwayTests.MuseLayout.FreshDefaults.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = UserDefaults(testSuiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let store = LayoutStore(
             registry: .from([MuseProvider()]),
@@ -37,9 +36,8 @@ final class MuseLayoutTests: XCTestCase {
 
     func testExistingLayoutKeepsMetersAlwaysShownWhenSpendTilesSeed() {
         let suiteName = "RunwayTests.MuseLayout.ExistingSpendSeed.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = UserDefaults(testSuiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
 
         defaults.set(
             try! JSONEncoder().encode([

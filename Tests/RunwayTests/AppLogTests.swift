@@ -96,8 +96,7 @@ final class AppLogTests: XCTestCase {
         // storm, so it must be loud. A missing blob (first launch) stays silent.
         AppLog.reloadLevel(.info)
         let defaultsName = "RunwayTests.AppLog.corrupt-cache.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
-        defer { defaults.removePersistentDomain(forName: defaultsName) }
+        let defaults = try XCTUnwrap(UserDefaults(testSuiteName: defaultsName))
 
         _ = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots").loadSnapshots(providerIDs: ["test"])
         XCTAssertFalse(try fileContents().contains("cache decode failed"))
@@ -120,8 +119,7 @@ final class AppLogTests: XCTestCase {
             snapshot: ProviderSnapshot(providerID: provider.id, displayName: provider.displayName, lines: [])
         )
         let defaultsName = "RunwayTests.AppLog.slow.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
-        defer { defaults.removePersistentDomain(forName: defaultsName) }
+        let defaults = try XCTUnwrap(UserDefaults(testSuiteName: defaultsName))
         var ticks = [100.0, 112.5]
         let store = WidgetDataStore(
             registry: WidgetRegistry(providers: [provider], descriptors: []),
