@@ -7,9 +7,8 @@ enum OpenCodeUsageError: Error, LocalizedError, Equatable {
     /// file and never a credential value; the user-facing description stays friendly.
     case credentialsUnreadable(detail: String)
     /// A database that holds (or decides) the login could not be queried, or its credential row is
-    /// malformed. Unlike a bad `auth.json` this is usually a busy or locked database, so the refresh
-    /// fails as a whole and the last good card stays on screen. `detail` is sqlite3's message for
-    /// the log file, never a credential value.
+    /// malformed. Unlike a bad `auth.json` this is usually a busy or locked database. `detail` is
+    /// sqlite3's message for the log file, never a credential value.
     case credentialDatabaseUnreadable(detail: String)
     /// OpenCode databases exist on disk but none could be read this refresh. Failing loudly here beats
     /// rendering authoritative-looking $0 tiles from an empty scan.
@@ -71,6 +70,11 @@ final class OpenCodeProvider: ProviderRuntime {
     /// once per run, not once per 5-minute refresh.
     private var loggedAuthReadFailure = false
 
+    /// Whether a Go key has been resolved earlier in this process. A card that had Go meters must
+    /// not have them blanked by one failed read of the login; a card that never had them has
+    /// nothing to protect. In memory only, so the first refresh after a launch starts unprotected.
+    private var hasResolvedGoKey = false
+
     /// Edge-triggers the rejected-key log the same way.
     private var loggedRejectedKey = false
 
@@ -108,11 +112,15 @@ final class OpenCodeProvider: ProviderRuntime {
     func hasLocalCredentials() async -> Bool {
         // Same sources as `refresh()`, through the same loaders: the local `opencode-go` key (`auth.json`,
         // or the credential table once OpenCode 2 runs the database), or any hosted usage in the local
-        // database. Local-only, off the main actor. An unreadable credential store is itself an
-        // OpenCode footprint — enable the provider so `refresh()` can surface the actionable error.
+        // database. Local-only, off the main actor. An unreadable auth.json is itself an OpenCode
+        // footprint — enable the provider so `refresh()` can surface the actionable error. A database
+        // that could not be asked for the login proves nothing by itself: like a first `refresh()`,
+        // fall through to whether there is hosted usage to show.
         await loadOffMainActor { [authStore, usageScanner] in
             do {
                 if try authStore.goAPIKey() != nil { return true }
+            } catch OpenCodeUsageError.credentialDatabaseUnreadable {
+                // Logged by the usage probe below when the same database fails there too.
             } catch {
                 return true
             }
@@ -130,16 +138,21 @@ final class OpenCodeProvider: ProviderRuntime {
         do {
             goKey = try await loadOffMainActor { [authStore] in try authStore.goAPIKey() }
             loggedAuthReadFailure = false
+            if goKey != nil { hasResolvedGoKey = true }
         } catch OpenCodeUsageError.credentialDatabaseUnreadable(let detail) {
-            // Without the login there is no telling whether Go meters apply. Publishing tiles alone
-            // would replace and cache over a good card because of one busy database.
+            let error = OpenCodeUsageError.credentialDatabaseUnreadable(detail: detail)
             if !loggedAuthReadFailure {
                 loggedAuthReadFailure = true
                 AppLog.warn(LogTag.plugin("opencode"), "credential database unreadable: \(detail)")
             }
-            return ProviderSnapshot.error(
-                provider: provider, error: OpenCodeUsageError.credentialDatabaseUnreadable(detail: detail)
-            )
+            if hasResolvedGoKey {
+                // This card had a Go login moments ago. Publishing tiles alone would replace and
+                // cache over its meters because of one busy database, so fail the refresh instead.
+                return ProviderSnapshot.error(provider: provider, error: error)
+            }
+            // No Go login seen this run: nothing to protect, and one unreadable database (a
+            // leftover channel file, say) must not take the local tiles away.
+            authReadError = error
         } catch let error as OpenCodeUsageError {
             authReadError = error
             if case .credentialsUnreadable(let detail) = error, !loggedAuthReadFailure {

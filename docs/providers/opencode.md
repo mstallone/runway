@@ -32,8 +32,14 @@ Go meters are percents from `GET https://opencode.ai/zen/go/v1/usage`, OpenCode'
 - **"OpenCode Go key was rejected"**: the local key was not accepted. Log into OpenCode Go again. Spend tiles from your local logs still show.
 - **"No OpenCode Go subscription on this key"**: the key is valid but this account is not on Go. The spend tiles still work if you use Zen locally.
 - **"Couldn't read OpenCode's saved login"**: `auth.json` exists but is unreadable or not valid JSON. Runway does not treat that as a logout. Check its permissions, or log into OpenCode Go again. If you have local usage, the spend tiles still show without the Go meters.
+- **OpenCode was not turned on automatically**: first-launch detection turns it on when it finds a Go key or hosted usage in a readable database. A database that could not be read at that moment does not count. Turn the provider on in **Customize**.
 - **Spend tiles show "No data"**: Runway needs OpenCode's local database at `~/.local/share/opencode/opencode*.db`. Run an OpenCode session, then refresh.
-- **"Couldn't read OpenCode's local database"**: the database or data directory exists but could not be read this refresh. If only the usage logs could not be read and you are on Go, the percent meters still refresh. If the login could not be read from the database, the whole refresh fails: the last loaded card stays on screen and Runway retries shortly. Quit OpenCode and refresh. If it persists, check the permissions on `~/.local/share/opencode`.
+- **"Couldn't read OpenCode's local database"**: the database or data directory exists but could not be read this refresh. If only the usage logs could not be read and you are on Go, the percent meters still refresh. If the Go login could not be read from a database, what happens depends on what Runway has seen since it launched:
+  - **It already found your Go key this run**: the refresh fails, the last loaded card (meters and tiles) stays on screen, and Runway retries shortly.
+  - **It has not found a Go key this run** (you do not use Go, or Runway just launched): the spend tiles still load from the databases that can be read, without the Go meters. Right after a launch a Go user can therefore see one refresh without meters; they return on the next refresh that can read the login.
+  - **Nothing can be read at all**: the card shows this error.
+
+  Quit OpenCode and refresh. If it persists, check the permissions on `~/.local/share/opencode`.
 
 ## Under the hood
 
