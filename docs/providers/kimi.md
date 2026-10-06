@@ -13,7 +13,7 @@ Tracks Kimi Code membership quota using the login from the official Kimi Code CL
 
 Kimi Code membership quota is shared between the Kimi website, the CLI, and every API key on the same account, so the values describe the account-wide pool, not just this Mac. Extra Usage rows only appear when Kimi reports a Booster wallet for the account. Runway displays the currency Kimi returns, including CNY and USD.
 
-When Kimi reports your membership (Free, Adagio, Moderato, Allegretto, Allegro, Vivace), Runway shows it beside the provider name.
+When Kimi reports your membership (Free, Adagio, Moderato, Allegretto, Allegro, Vivace), Runway shows it in the provider's header.
 
 ## Where credentials come from
 

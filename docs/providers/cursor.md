@@ -14,7 +14,7 @@ Tracks your Cursor plan usage using the login from the Cursor app.
 | Grok Bot | Grok Bot weekly usage percent and reset countdown. Enabled by default, below the caret |
 | Extra Usage | On-demand spend, user-scoped when available, otherwise the team aggregate. Shown as a meter when Cursor returns a limit |
 
-When Cursor reports your plan name, Runway shows it beside the provider name.
+When Cursor reports your plan name, Runway shows it in the provider's header.
 
 Grok Bot has its own weekly allowance, separate from Cursor's billing-cycle meter. It uses the existing Cursor login. Signing into the Grok CLI is not required. Accounts without a personal included allowance (including pooled enterprise seats) hide the meter.
 

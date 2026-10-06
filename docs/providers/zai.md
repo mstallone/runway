@@ -10,7 +10,7 @@ Tracks [Z.ai](https://z.ai) (Zhipu AI) GLM Coding Plan usage quotas.
 | Weekly | 7-day rolling window token usage (percentage) |
 | Web Searches | Monthly web-search, web-reader, and Zread calls (used / limit) |
 
-When Z.ai reports your plan name, Runway shows it beside the provider name.
+When Z.ai reports your plan name, Runway shows it in the provider's header.
 
 ## Where credentials come from
 

@@ -13,7 +13,7 @@ Tracks Muse Code subscription quota from the signed-in Meta developer dashboard,
 | Yesterday | Yesterday's local tokens and estimated API-rate value |
 | Last 30 Days | Local tokens and estimated API-rate value over the history window |
 
-When Muse reports a subscription tier (Everyday Usage, High Usage, or Power Usage), Runway shows it beside the provider name. A pay-as-you-go `META_API_KEY` and the Muse CLI login are not used for quota reads. Five-Hour Usage and Weekly Usage start always visible and starred in the menu bar. Usage Trend and the spend tiles start on demand.
+When Muse reports a subscription tier (Everyday Usage, High Usage, or Power Usage), Runway shows it in the provider's header. A pay-as-you-go `META_API_KEY` and the Muse CLI login are not used for quota reads. Five-Hour Usage and Weekly Usage start always visible and starred in the menu bar. Usage Trend and the spend tiles start on demand.
 
 The five-hour and weekly meters are account-wide subscription pools, calculated from the dashboard's weighted usage and limits. The graph and spend rows come from local session logs and include only usage saved on this Mac. With iCloud sync on, Runway combines that machine-local history with history from your other Macs without double-counting the account-wide subscription meters.
 

@@ -12,7 +12,7 @@ Tracks your OpenCode-hosted usage: the **Go** subscription and the **Zen** pay-a
 | Today / Yesterday / Last 30 Days | Local cost and tokens across all your OpenCode-hosted usage (Go and Zen) |
 | Usage Trend | A day-by-day chart of tokens over the last month |
 
-When you have the Go subscription, Runway shows "Go" beside the provider name.
+When you have the Go subscription, Runway shows "Go" in the provider's header.
 
 The Session, Weekly, and Monthly meters are account-wide, the same percents the OpenCode dashboard shows, including usage from other machines. If you only use the Zen gateway (no Go subscription), the cap meters are hidden and you see the spend tiles.
 
