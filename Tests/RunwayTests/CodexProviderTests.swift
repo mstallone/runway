@@ -782,7 +782,7 @@ final class CodexProviderTests: XCTestCase {
         let now = RunwayISO8601.date(from: "2026-07-12T12:00:00.000Z")!
         let milliseconds = Int(RunwayISO8601.date(from: "2026-07-12T10:00:00.000Z")!.timeIntervalSince1970 * 1000)
         let rows = "[[\(milliseconds),0,150,\"gpt-test\",100,0,0,50,0,\"oauth-row\"]]"
-        let sqlite = TrackingOpenCodeSQLite(data: ["/oc/opencode.db": rows])
+        let sqlite = OpenCodeFakeSQLite(data: ["/oc/opencode.db": rows])
         let openCodeScanner = OpenCodeCodexUsageScanner(
             authStore: OpenCodeAuthStore(
                 files: FakeFiles(["/oc/auth.json": #"{"openai":{"type":"oauth","access":"token"}}"#]),
@@ -837,23 +837,6 @@ final class CodexProviderTests: XCTestCase {
         }
         return values
     }
-}
-
-/// Records whether Codex asked OpenCode's local database, so extra-account cards can be proven idle.
-private final class TrackingOpenCodeSQLite: SQLiteAccessing, @unchecked Sendable {
-    var data: [String: String]
-    var lastDataSQL: String?
-
-    init(data: [String: String]) {
-        self.data = data
-    }
-
-    func queryValue(path: String, sql: String) throws -> String? {
-        lastDataSQL = sql
-        return data[path]
-    }
-
-    func queryJSONRows(path: String, sql: String) throws -> String? { nil }
 }
 
 @MainActor

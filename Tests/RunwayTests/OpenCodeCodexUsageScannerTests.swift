@@ -195,7 +195,10 @@ final class OpenCodeCodexUsageScannerTests: XCTestCase {
 
     func testQuerySelectsOnlyCompletedOpenAIRows() {
         let sql = OpenCodeCodexUsageScanner.dataSQL(cutoffMs: 123)
-        XCTAssertTrue(sql.contains("providerID') = 'openai'"), sql)
+        XCTAssertTrue(
+            sql.contains("COALESCE(json_extract(data,'$.model.providerID'),json_extract(data,'$.providerID')) = 'openai'"),
+            sql
+        )
         XCTAssertTrue(sql.contains("$.cost') = 0"), sql)
         XCTAssertTrue(sql.contains("$.time.completed"), sql)
         XCTAssertTrue(sql.contains("$.finish"), sql)
@@ -217,26 +220,175 @@ final class OpenCodeCodexUsageScannerTests: XCTestCase {
         let milliseconds = Int(RunwayISO8601.date(from: iso)!.timeIntervalSince1970 * 1000)
         return "[\(milliseconds),\(cost),\(total),\"\(model)\",\(input),\(cacheRead),\(cacheWrite),\(output),\(reasoning),\"\(id)\"]"
     }
-}
 
-/// Stub that returns crafted payloads per database path and classifies the query by SQL shape.
-private final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
-    var data: [String: String]
-    var failing: Set<String>
-    var lastDataSQL: String?
+    // MARK: - OpenCode 2
 
-    init(data: [String: String] = [:], failing: Set<String> = []) {
-        self.data = data
-        self.failing = failing
+    private typealias DB = OpenCodeDataDirectory
+    private let oauthAuth = #"{"openai":{"type":"oauth","access":"token"}}"#
+
+    private func ms(_ iso: String) -> Int { Int(RunwayISO8601.date(from: iso)!.timeIntervalSince1970 * 1000) }
+
+    /// An OpenCode 2 assistant row: nested model, token buckets, no `$.tokens.total`.
+    private func assistant(
+        _ id: String, seq: Int, at iso: String, provider: String = "openai", cost: String = "0",
+        input: Int, output: Int, completed: Bool = true
+    ) -> String {
+        let t = ms(iso)
+        let time = completed ? #"{"created":\#(t),"completed":\#(t)}"# : #"{"created":\#(t)}"#
+        return DB.sessionMessage(id: id, seq: seq, ms: t, data:
+            #"{"model":{"id":"gpt-test","providerID":"\#(provider)"},"cost":\#(cost),"time":\#(time),"tokens":{"input":\#(input),"output":\#(output)}}"#)
     }
 
+    private func realScanner(_ dir: DB, auth: String? = nil) -> OpenCodeCodexUsageScanner {
+        OpenCodeCodexUsageScanner(authStore: dir.authStore(auth: auth), databasePaths: dir.databasePaths)
+    }
+
+    private func totalTokens(_ scan: LogUsageScan?) -> Int? {
+        scan.map { $0.series.daily.reduce(0) { $0 + $1.totalTokens } }
+    }
+
+    /// The generated SQL against a real upgraded OpenCode 2 database. The ChatGPT login was created
+    /// on July 11; the stale auth.json says API key and must be ignored.
+    func testOpenCode2OAuthUsageIsAttributedOnce() async throws {
+        let dir = try DB(self)
+        let legacy = ms("2026-07-05T10:00:00.000Z")
+        try dir.execute(DB.openCode2Tables + [
+            DB.credential(
+                id: "c1", integration: "openai", value: #"{"type":"oauth","access":"a","refresh":"r"}"#,
+                created: String(ms("2026-07-11T00:00:00.000Z"))
+            ),
+            // Counted: a new-table row after the login.
+            assistant("m1", seq: 1, at: "2026-07-12T10:00:00.000Z", input: 100, output: 50),
+            // Counted once: an old-table row and its migrated copy, both older than the login. The
+            // copy is outside the login bound; the original needs no bound.
+            DB.message(id: "m2", ms: legacy, data:
+                #"{"role":"assistant","providerID":"openai","modelID":"gpt-test","cost":0,"finish":"stop","tokens":{"total":30,"input":20,"output":10}}"#),
+            assistant("m2", seq: 2, at: "2026-07-05T10:00:00.000Z", input: 20, output: 10),
+            // Not counted: a new-table row from before the login, which may be paid API-key usage.
+            assistant("m3", seq: 3, at: "2026-07-10T10:00:00.000Z", input: 4000, output: 4000),
+            // Not counted: priced (API-key) traffic, another provider, and an unfinished message.
+            assistant("m4", seq: 4, at: "2026-07-12T10:00:00.000Z", cost: "0.5", input: 4000, output: 4000),
+            assistant("m5", seq: 5, at: "2026-07-12T10:00:00.000Z", provider: "opencode-go", input: 4000, output: 4000),
+            assistant("m6", seq: 6, at: "2026-07-12T10:00:00.000Z", input: 4000, output: 4000, completed: false),
+            // Counted: a completed compaction. Not counted: a running one.
+            DB.sessionMessage(id: "m7", type: "compaction", seq: 7, ms: ms("2026-07-12T11:00:00.000Z"), data:
+                #"{"status":"completed","model":{"id":"gpt-test","providerID":"openai"},"cost":0,"tokens":{"input":1000}}"#),
+            DB.sessionMessage(id: "m8", type: "compaction", seq: 8, ms: ms("2026-07-12T11:00:00.000Z"), data:
+                #"{"status":"running","model":{"id":"gpt-test","providerID":"openai"},"cost":0,"tokens":{"input":4000}}"#)
+        ].joined())
+
+        let scan = await realScanner(dir, auth: #"{"openai":{"type":"api","key":"sk-stale"}}"#)
+            .scan(now: now, pricing: pricing)
+        // m1 (150) + m2 (30) + m7 (1000).
+        XCTAssertEqual(totalTokens(scan), 1180)
+        XCTAssertEqual(scan?.modelUsage?.daily.flatMap(\.models).map(\.model).first, "gpt-test")
+    }
+
+    func testOpenCode2APIKeyLoginIsNotAttributedDespiteStaleOAuthAuthFile() async throws {
+        let dir = try DB(self)
+        try dir.execute(DB.openCode2Tables + [
+            DB.credential(id: "c1", integration: "openai", value: #"{"type":"key","key":"sk-x"}"#),
+            assistant("m1", seq: 1, at: "2026-07-12T10:00:00.000Z", input: 100, output: 50)
+        ].joined())
+        let scan = await realScanner(dir, auth: oauthAuth).scan(now: now, pricing: pricing)
+        XCTAssertNil(scan)
+    }
+
+    func testOpenCode2LogoutStopsAttributionDespiteStaleOAuthAuthFile() async throws {
+        let dir = try DB(self)
+        try dir.execute(DB.openCode2Tables + assistant("m1", seq: 1, at: "2026-07-12T10:00:00.000Z", input: 100, output: 50))
+        let scan = await realScanner(dir, auth: oauthAuth).scan(now: now, pricing: pricing)
+        XCTAssertNil(scan)
+    }
+
+    func testEachChannelDatabaseIsGatedAndBoundedByItsOwnLogin() async throws {
+        // Stable is on an API key; preview is on ChatGPT since July 11. Only preview usage after its
+        // own login counts.
+        let dir = try DB(self)
+        try dir.execute(DB.openCode2Tables + [
+            DB.credential(id: "c1", integration: "openai", value: #"{"type":"key","key":"sk-x"}"#),
+            assistant("stable", seq: 1, at: "2026-07-12T10:00:00.000Z", input: 600, output: 300)
+        ].joined())
+        try dir.execute(DB.openCode2Tables + [
+            DB.credential(
+                id: "c1", integration: "openai", value: #"{"type":"oauth","access":"live"}"#,
+                created: String(ms("2026-07-11T00:00:00.000Z"))
+            ),
+            assistant("preview-before", seq: 1, at: "2026-07-10T10:00:00.000Z", input: 4000, output: 4000),
+            assistant("preview-after", seq: 2, at: "2026-07-12T10:00:00.000Z", input: 100, output: 50)
+        ].joined(), in: "opencode-next.db")
+
+        let scan = await realScanner(dir).scan(now: now, pricing: pricing)
+        XCTAssertEqual(totalTokens(scan), 150)
+    }
+
+    func testUnreadableChannelDatabaseDoesNotHideAReadableOne() async throws {
+        let dir = try DB(self)
+        try dir.execute(DB.openCode2Tables + [
+            DB.credential(id: "c1", integration: "openai", value: #"{"type":"oauth","access":"live"}"#),
+            assistant("m1", seq: 1, at: "2026-07-12T10:00:00.000Z", input: 100, output: 50)
+        ].joined())
+        try dir.writeCorruptDatabase("opencode-next.db")
+        let scan = await realScanner(dir).scan(now: now, pricing: pricing)
+        XCTAssertEqual(totalTokens(scan), 150)
+    }
+
+    func testOAuthDatabaseThatCannotBeQueriedIsAMissNotAnEmptyHistory() async {
+        // The login reads as OAuth from auth.json, then the only usable database fails. A sibling
+        // with no message tables does not turn that into a successful empty scan.
+        let sqlite = FailingDataSQLite(base: OpenCodeFakeSQLite(tables: ["/oc/opencode-next.db": "credential"]))
+        sqlite.base.openAICredentials["/oc/opencode-next.db"] = #"["oauth",1,0]"#
+        sqlite.base.tables["/oc/opencode.db"] = "message"
+        let scanner = OpenCodeCodexUsageScanner(
+            authStore: OpenCodeAuthStore(
+                files: FakeFiles(["/oc/auth.json": oauthAuth]),
+                environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/oc"]),
+                homeDirectory: { URL(fileURLWithPath: "/unused") },
+                sqlite: sqlite
+            ),
+            sqlite: sqlite,
+            databasePaths: { ["/oc/opencode-next.db", "/oc/opencode.db"] }
+        )
+        let scan = await scanner.scan(now: now, pricing: pricing)
+        XCTAssertNil(scan)
+    }
+
+    func testOAuthChannelsWithoutMessageTablesYieldAnEmptyHistory() async {
+        let sqlite = OpenCodeFakeSQLite(tables: ["/oc/opencode.db": "credential"], openAICredentials: ["/oc/opencode.db": #"["oauth",1,0]"#])
+        let scanner = OpenCodeCodexUsageScanner(
+            authStore: OpenCodeAuthStore(
+                files: FakeFiles(),
+                environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/oc"]),
+                homeDirectory: { URL(fileURLWithPath: "/unused") },
+                sqlite: sqlite
+            ),
+            sqlite: sqlite,
+            databasePaths: { ["/oc/opencode.db"] }
+        )
+        guard let scan = await scanner.scan(now: now, pricing: pricing) else { return XCTFail("expected a scan") }
+        XCTAssertTrue(scan.series.daily.isEmpty)
+        XCTAssertNil(sqlite.lastDataSQL)
+    }
+
+    func testLoginBoundAppliesOnlyToTheNewTable() throws {
+        let sql = OpenCodeCodexUsageScanner.dataSQL(cutoffMs: 123, oauthSinceMs: 456)
+        let union = try XCTUnwrap(sql.range(of: "UNION ALL"), sql)
+        let old = sql[try XCTUnwrap(sql.range(of: "FROM message"), sql).lowerBound..<union.lowerBound]
+        let new = sql[union.upperBound...]
+        XCTAssertFalse(old.contains(">= 456"), String(old))
+        XCTAssertTrue(new.contains("COALESCE(json_extract(data,'$.time.completed'),time_created) >= 456"), String(new))
+        XCTAssertFalse(OpenCodeCodexUsageScanner.dataSQL(cutoffMs: 123).contains(">= 456"))
+    }
+}
+
+/// Answers probes and credential queries from `base` and fails every usage query.
+private final class FailingDataSQLite: SQLiteAccessing, @unchecked Sendable {
+    let base: OpenCodeFakeSQLite
+    init(base: OpenCodeFakeSQLite) { self.base = base }
+
     func queryValue(path: String, sql: String) throws -> String? {
-        if failing.contains(path) { throw SQLiteError.queryFailed("boom") }
-        if sql.contains("json_group_array") {
-            lastDataSQL = sql
-            return data[path]
-        }
-        return nil
+        if sql.contains("json_group_array") { throw SQLiteError.queryFailed("database is locked") }
+        return try base.queryValue(path: path, sql: sql)
     }
 
     func queryJSONRows(path: String, sql: String) throws -> String? { nil }

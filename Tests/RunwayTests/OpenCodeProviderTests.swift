@@ -38,6 +38,14 @@ final class OpenCodeProviderTests: XCTestCase {
         )))
     }
 
+    private func unauthorizedClient() -> OpenCodeUsageClient {
+        OpenCodeUsageClient(http: FakeHTTPClient(response: HTTPResponse(
+            statusCode: 401,
+            headers: [:],
+            body: Data(#"{"type":"error","error":{"type":"AuthError","message":"Unauthorized"}}"#.utf8)
+        )))
+    }
+
     private func provider(
         files: TextFileAccessing,
         scanner: OpenCodeUsageScanner,
@@ -55,7 +63,7 @@ final class OpenCodeProviderTests: XCTestCase {
     func testHasLocalCredentialsViaGoAuthKey() async {
         let provider = provider(
             files: FakeFiles(["/oc/auth.json": authJSON]),
-            scanner: OpenCodeUsageScanner(sqlite: StubSQLite(), databasePaths: { [] })
+            scanner: OpenCodeUsageScanner(sqlite: OpenCodeFakeSQLite(), databasePaths: { [] })
         )
         let has = await provider.hasLocalCredentials()
         XCTAssertTrue(has)
@@ -66,7 +74,7 @@ final class OpenCodeProviderTests: XCTestCase {
         let provider = provider(
             files: FakeFiles(),
             scanner: OpenCodeUsageScanner(
-                sqlite: StubSQLite(data: ["/oc/opencode.db": db]),
+                sqlite: OpenCodeFakeSQLite(data: ["/oc/opencode.db": db]),
                 databasePaths: { ["/oc/opencode.db"] }
             )
         )
@@ -78,7 +86,7 @@ final class OpenCodeProviderTests: XCTestCase {
         let provider = provider(
             files: FakeFiles(),
             scanner: OpenCodeUsageScanner(
-                sqlite: StubSQLite(data: ["/oc/opencode.db": "[]"]),
+                sqlite: OpenCodeFakeSQLite(data: ["/oc/opencode.db": "[]"]),
                 databasePaths: { ["/oc/opencode.db"] }
             )
         )
@@ -95,7 +103,7 @@ final class OpenCodeProviderTests: XCTestCase {
         let snapshot = await provider(
             files: FakeFiles(["/oc/auth.json": authJSON]),
             scanner: OpenCodeUsageScanner(
-                sqlite: StubSQLite(data: ["/oc/opencode.db": db]),
+                sqlite: OpenCodeFakeSQLite(data: ["/oc/opencode.db": db]),
                 databasePaths: { ["/oc/opencode.db"] }
             ),
             client: OpenCodeUsageClient(http: http)
@@ -123,7 +131,7 @@ final class OpenCodeProviderTests: XCTestCase {
     func testRefreshNotLoggedInWhenNoKeyAndNoDatabase() async {
         let snapshot = await provider(
             files: FakeFiles(),
-            scanner: OpenCodeUsageScanner(sqlite: StubSQLite(), databasePaths: { [] })
+            scanner: OpenCodeUsageScanner(sqlite: OpenCodeFakeSQLite(), databasePaths: { [] })
         ).refresh()
         XCTAssertEqual(snapshot.errorText, OpenCodeUsageError.notLoggedIn.localizedDescription)
     }
@@ -131,7 +139,7 @@ final class OpenCodeProviderTests: XCTestCase {
     func testRefreshShowsAPIMetersWithGoKeyButNoDatabase() async {
         let snapshot = await provider(
             files: FakeFiles(["/oc/auth.json": authJSON]),
-            scanner: OpenCodeUsageScanner(sqlite: StubSQLite(), databasePaths: { [] })
+            scanner: OpenCodeUsageScanner(sqlite: OpenCodeFakeSQLite(), databasePaths: { [] })
         ).refresh()
         XCTAssertEqual(snapshot.plan, "Go")
         guard case let .progress(_, used, limit, format, _, _, _)? = snapshot.line(label: "Session") else {
@@ -147,7 +155,7 @@ final class OpenCodeProviderTests: XCTestCase {
         let snapshot = await provider(
             files: FakeFiles(["/oc/auth.json": authJSON]),
             scanner: OpenCodeUsageScanner(
-                sqlite: StubSQLite(failing: ["/oc/opencode.db"]),
+                sqlite: OpenCodeFakeSQLite(failing: ["/oc/opencode.db"]),
                 databasePaths: { ["/oc/opencode.db"] }
             )
         ).refresh()
@@ -160,7 +168,7 @@ final class OpenCodeProviderTests: XCTestCase {
         let snapshot = await provider(
             files: FakeFiles(),
             scanner: OpenCodeUsageScanner(
-                sqlite: StubSQLite(failing: ["/oc/opencode.db"]),
+                sqlite: OpenCodeFakeSQLite(failing: ["/oc/opencode.db"]),
                 databasePaths: { ["/oc/opencode.db"] }
             )
         ).refresh()
@@ -171,7 +179,7 @@ final class OpenCodeProviderTests: XCTestCase {
     func testRefreshSurfacesUnreadableAuthFileInsteadOfNotLoggedIn() async {
         let snapshot = await provider(
             files: UnreadableFiles(present: ["/oc/auth.json"]),
-            scanner: OpenCodeUsageScanner(sqlite: StubSQLite(), databasePaths: { [] })
+            scanner: OpenCodeUsageScanner(sqlite: OpenCodeFakeSQLite(), databasePaths: { [] })
         ).refresh()
         XCTAssertEqual(snapshot.errorText, OpenCodeUsageError.credentialsUnreadable(detail: "").localizedDescription)
     }
@@ -179,7 +187,7 @@ final class OpenCodeProviderTests: XCTestCase {
     func testHasLocalCredentialsTrueWhenAuthFileUnreadable() async {
         let provider = provider(
             files: UnreadableFiles(present: ["/oc/auth.json"]),
-            scanner: OpenCodeUsageScanner(sqlite: StubSQLite(), databasePaths: { [] })
+            scanner: OpenCodeUsageScanner(sqlite: OpenCodeFakeSQLite(), databasePaths: { [] })
         )
         let has = await provider.hasLocalCredentials()
         XCTAssertTrue(has)
@@ -190,7 +198,7 @@ final class OpenCodeProviderTests: XCTestCase {
         let snapshot = await provider(
             files: FakeFiles(),
             scanner: OpenCodeUsageScanner(
-                sqlite: StubSQLite(data: ["/oc/opencode.db": db]),
+                sqlite: OpenCodeFakeSQLite(data: ["/oc/opencode.db": db]),
                 databasePaths: { ["/oc/opencode.db"] }
             )
         ).refresh()
@@ -202,23 +210,119 @@ final class OpenCodeProviderTests: XCTestCase {
         XCTAssertNil(snapshot.line(label: "Session"))
     }
 
-    func testUnauthorizedKeyFailsLoudly() async {
+    func testUnauthorizedKeyWithoutLocalUsageFailsLoudly() async {
         let snapshot = await provider(
             files: FakeFiles(["/oc/auth.json": authJSON]),
-            scanner: OpenCodeUsageScanner(sqlite: StubSQLite(), databasePaths: { [] }),
-            client: OpenCodeUsageClient(http: FakeHTTPClient(response: HTTPResponse(
-                statusCode: 401,
-                headers: [:],
-                body: Data(#"{"type":"error","error":{"type":"AuthError","message":"Unauthorized"}}"#.utf8)
-            )))
+            scanner: OpenCodeUsageScanner(sqlite: OpenCodeFakeSQLite(), databasePaths: { [] }),
+            client: unauthorizedClient()
         ).refresh()
         XCTAssertEqual(snapshot.errorText, OpenCodeUsageError.unauthorized.localizedDescription)
+        XCTAssertEqual(snapshot.loginRequired, true)
+    }
+
+    func testGoMeterFailureKeepsLocalTilesUnderANotice() async {
+        // A rejected key or an unreachable usage API must not cost the local spend. The failure
+        // rides as the card notice, and the Go rows stay applicable so the notice stands in for them.
+        let db = "[" + row("2026-07-12T10:00:00.000Z", "1.0", 500, "gpt-5.5", "opencode") + "]"
+        let cases: [(OpenCodeUsageClient, OpenCodeUsageError, Bool?)] = [
+            (unauthorizedClient(), .unauthorized, true),
+            (OpenCodeUsageClient(http: ThrowingHTTPClient()), .connectionFailed, nil),
+            (OpenCodeUsageClient(http: FakeHTTPClient(response: HTTPResponse(
+                statusCode: 500, headers: [:], body: Data()
+            ))), .requestFailed(500), nil)
+        ]
+        for (client, error, loginRequired) in cases {
+            let snapshot = await provider(
+                files: FakeFiles(["/oc/auth.json": authJSON]),
+                scanner: OpenCodeUsageScanner(
+                    sqlite: OpenCodeFakeSQLite(data: ["/oc/opencode.db": db]),
+                    databasePaths: { ["/oc/opencode.db"] }
+                ),
+                client: client
+            ).refresh()
+            XCTAssertNil(snapshot.errorText, "\(error)")
+            XCTAssertNotNil(snapshot.line(label: "Today"), "\(error)")
+            XCTAssertNotNil(snapshot.usageHistory, "\(error)")
+            XCTAssertNil(snapshot.line(label: "Session"), "\(error)")
+            XCTAssertNil(snapshot.plan, "\(error)")
+            XCTAssertEqual(snapshot.warning, error.localizedDescription)
+            XCTAssertEqual(snapshot.loginRequired, loginRequired, "\(error)")
+            XCTAssertNil(snapshot.applicableMetricIDs, "\(error)")
+        }
+    }
+
+    // MARK: - OpenCode 2
+
+    private typealias DB = OpenCodeDataDirectory
+
+    private func provider(_ dir: OpenCodeDataDirectory, auth: String? = nil, http: FakeHTTPClient) -> OpenCodeProvider {
+        let now = self.now
+        return OpenCodeProvider(
+            authStore: dir.authStore(auth: auth),
+            usageClient: OpenCodeUsageClient(http: http),
+            usageScanner: OpenCodeUsageScanner(databasePaths: dir.databasePaths),
+            now: { now }
+        )
+    }
+
+    /// The whole card against a real upgraded OpenCode 2 database: the Go key comes from the
+    /// credential table (the imported auth.json is stale), and spend comes from the new message log.
+    func testOpenCode2LoginAndUsageDriveTheCard() async throws {
+        let dir = try DB(self)
+        try dir.execute(DB.openCode2Tables + [
+            DB.credential(id: "c1", integration: "opencode-go", value: #"{"type":"key","key":"oc_sk_live"}"#),
+            DB.sessionMessage(id: "m1", seq: 1, ms: epochMs("2026-07-12T10:00:00.000Z"), data:
+                #"{"model":{"id":"glm-5.2","providerID":"opencode-go"},"cost":2,"tokens":{"input":400,"output":100}}"#)
+        ].joined())
+        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: usageJSON()))
+        let provider = provider(dir, auth: #"{"opencode-go":{"type":"api","key":"sk-stale"}}"#, http: http)
+
+        let has = await provider.hasLocalCredentials()
+        XCTAssertTrue(has)
+        let snapshot = await provider.refresh()
+        XCTAssertEqual(http.requests.first?.headers["Authorization"], "Bearer oc_sk_live")
+        XCTAssertEqual(snapshot.plan, "Go")
+        XCTAssertNotNil(snapshot.line(label: "Session"))
+        guard case .values(_, let values, _, _, _, _)? = snapshot.line(label: "Today") else {
+            return XCTFail("expected a Today tile")
+        }
+        XCTAssertEqual(values.first?.number, 2)
+        XCTAssertEqual(values.last?.number, 500)
+    }
+
+    func testOpenCode2LogoutIsNotDetectedOrRefreshedFromTheStaleAuthFile() async throws {
+        // Logged out of OpenCode 2 with nothing logged: the leftover auth.json must neither enable
+        // the provider nor send its dead key anywhere. `hasLocalCredentials()` and `refresh()` agree.
+        let dir = try DB(self)
+        try dir.execute(DB.openCode2Tables)
+        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: usageJSON()))
+        let provider = provider(dir, auth: authJSON, http: http)
+
+        let has = await provider.hasLocalCredentials()
+        XCTAssertFalse(has)
+        let snapshot = await provider.refresh()
+        XCTAssertTrue(http.requests.isEmpty)
+        XCTAssertNil(snapshot.line(label: "Session"))
+        XCTAssertNil(snapshot.errorText)
+    }
+
+    func testUnreadableOpenCode2CredentialStoreIsAFootprintAndAnError() async throws {
+        let dir = try DB(self)
+        try dir.writeCorruptDatabase("opencode.db")
+        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: usageJSON()))
+        let provider = provider(dir, auth: authJSON, http: http)
+
+        let has = await provider.hasLocalCredentials()
+        XCTAssertTrue(has)
+        let snapshot = await provider.refresh()
+        XCTAssertTrue(http.requests.isEmpty, "the stale auth.json key must not be sent")
+        XCTAssertEqual(snapshot.errorText, OpenCodeUsageError.databaseUnreadable.localizedDescription)
     }
 
     func testEntitlementErrorWithoutLocalUsageIsNoGoSubscription() async {
         let snapshot = await provider(
             files: FakeFiles(["/oc/auth.json": authJSON]),
-            scanner: OpenCodeUsageScanner(sqlite: StubSQLite(), databasePaths: { [] }),
+            scanner: OpenCodeUsageScanner(sqlite: OpenCodeFakeSQLite(), databasePaths: { [] }),
             client: OpenCodeUsageClient(http: FakeHTTPClient(response: HTTPResponse(
                 statusCode: 403,
                 headers: [:],
@@ -233,7 +337,7 @@ final class OpenCodeProviderTests: XCTestCase {
         let snapshot = await provider(
             files: FakeFiles(["/oc/auth.json": authJSON]),
             scanner: OpenCodeUsageScanner(
-                sqlite: StubSQLite(data: ["/oc/opencode.db": db]),
+                sqlite: OpenCodeFakeSQLite(data: ["/oc/opencode.db": db]),
                 databasePaths: { ["/oc/opencode.db"] }
             ),
             client: OpenCodeUsageClient(http: FakeHTTPClient(response: HTTPResponse(
@@ -253,10 +357,10 @@ final class OpenCodeProviderTests: XCTestCase {
         )
     }
 
-    func testGeneric403FailsLoudly() async {
+    func testGeneric403WithoutLocalUsageFailsLoudly() async {
         let snapshot = await provider(
             files: FakeFiles(["/oc/auth.json": authJSON]),
-            scanner: OpenCodeUsageScanner(sqlite: StubSQLite(), databasePaths: { [] }),
+            scanner: OpenCodeUsageScanner(sqlite: OpenCodeFakeSQLite(), databasePaths: { [] }),
             client: OpenCodeUsageClient(http: FakeHTTPClient(response: HTTPResponse(
                 statusCode: 403, headers: [:], body: Data("<html>denied</html>".utf8)
             )))
@@ -264,10 +368,10 @@ final class OpenCodeProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.errorText, OpenCodeUsageError.requestFailed(403).localizedDescription)
     }
 
-    func testConnectionFailureFailsLoudly() async {
+    func testConnectionFailureWithoutLocalUsageFailsLoudly() async {
         let snapshot = await provider(
             files: FakeFiles(["/oc/auth.json": authJSON]),
-            scanner: OpenCodeUsageScanner(sqlite: StubSQLite(), databasePaths: { [] }),
+            scanner: OpenCodeUsageScanner(sqlite: OpenCodeFakeSQLite(), databasePaths: { [] }),
             client: OpenCodeUsageClient(http: ThrowingHTTPClient())
         ).refresh()
         XCTAssertEqual(snapshot.errorText, OpenCodeUsageError.connectionFailed.localizedDescription)
@@ -278,26 +382,4 @@ private final class ThrowingHTTPClient: HTTPClient, @unchecked Sendable {
     func send(_ request: HTTPRequest) async throws -> HTTPResponse {
         throw URLError(.notConnectedToInternet)
     }
-}
-
-private final class StubSQLite: SQLiteAccessing, @unchecked Sendable {
-    var data: [String: String]
-    var failing: Set<String>
-    init(data: [String: String] = [:], failing: Set<String> = []) {
-        self.data = data
-        self.failing = failing
-    }
-
-    func queryValue(path: String, sql: String) throws -> String? {
-        if failing.contains(path) { throw SQLiteError.queryFailed("boom") }
-        if sql.contains("json_group_array") { return data[path] }
-        if sql.contains("SELECT 1") {
-            let payload = data[path]
-            return (payload != nil && payload != "[]" && !(payload ?? "").isEmpty) ? "1" : nil
-        }
-        return nil
-    }
-
-    // JSON row queries are not exercised here.
-    func queryJSONRows(path: String, sql: String) throws -> String? { nil }
 }

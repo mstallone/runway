@@ -3,8 +3,9 @@ import Foundation
 /// Typed failures for the OpenCode provider, preserving friendly user-facing descriptions.
 enum OpenCodeUsageError: Error, LocalizedError, Equatable {
     case notLoggedIn
-    /// `auth.json` exists but could not be read or parsed — broken storage, not logout. `detail`
-    /// carries the underlying cause for the log file; the user-facing description stays friendly.
+    /// OpenCode's credential store (an OpenCode 2 database, or `auth.json`) exists but could not be
+    /// read or parsed — broken storage, not logout. `detail` carries the underlying cause for the log
+    /// file and never a credential value; the user-facing description stays friendly.
     case credentialsUnreadable(detail: String)
     /// OpenCode databases exist on disk but none could be read this refresh. Failing loudly here beats
     /// rendering authoritative-looking $0 tiles from an empty scan.
@@ -22,7 +23,7 @@ enum OpenCodeUsageError: Error, LocalizedError, Equatable {
         case .notLoggedIn:
             return "OpenCode not detected. Log in with OpenCode Go or use OpenCode locally first."
         case .credentialsUnreadable:
-            return "Couldn't read OpenCode's auth.json. Check its file permissions or log into OpenCode Go again."
+            return "Couldn't read OpenCode's saved login. Quit OpenCode and refresh, or log into OpenCode Go again."
         case .databaseUnreadable:
             return "Couldn't read OpenCode's local database. Quit OpenCode and refresh, or check the data directory's permissions."
         case .connectionFailed:
@@ -62,9 +63,12 @@ final class OpenCodeProvider: ProviderRuntime {
     /// measured, not imputed.
     private let sourceNote = "From your OpenCode logs"
 
-    /// Edge-triggers the auth-read-failure log so a persistently unreadable `auth.json` warns once per
-    /// run, not once per 5-minute refresh.
+    /// Edge-triggers the auth-read-failure log so a persistently unreadable credential store warns
+    /// once per run, not once per 5-minute refresh.
     private var loggedAuthReadFailure = false
+
+    /// Edge-triggers the Go-meters-failure log the same way: once per distinct failure.
+    private var loggedGoError: OpenCodeUsageError?
 
     init(
         authStore: OpenCodeAuthStore = OpenCodeAuthStore(),
@@ -98,8 +102,9 @@ final class OpenCodeProvider: ProviderRuntime {
     }
 
     func hasLocalCredentials() async -> Bool {
-        // Same sources as `refresh()`: the local `opencode-go` auth key, or any hosted usage already in
-        // the local database. Local-only, off the main actor. An unreadable auth.json is itself an
+        // Same sources as `refresh()`, through the same loaders: the local `opencode-go` key (OpenCode 2
+        // credential table, or OpenCode 1 `auth.json`), or any hosted usage already in the local
+        // database. Local-only, off the main actor. An unreadable credential store is itself an
         // OpenCode footprint — enable the provider so `refresh()` can surface the actionable error.
         await loadOffMainActor { [authStore, usageScanner] in
             do {
@@ -125,7 +130,7 @@ final class OpenCodeProvider: ProviderRuntime {
             authReadError = error
             if case .credentialsUnreadable(let detail) = error, !loggedAuthReadFailure {
                 loggedAuthReadFailure = true
-                AppLog.warn(LogTag.plugin("opencode"), "auth.json unreadable: \(detail)")
+                AppLog.warn(LogTag.plugin("opencode"), "credentials unreadable: \(detail)")
             }
         } catch {
             authReadError = .credentialsUnreadable(detail: error.localizedDescription)
@@ -133,6 +138,7 @@ final class OpenCodeProvider: ProviderRuntime {
 
         var meterLines: [MetricLine] = []
         var plan: String?
+        var goError: OpenCodeUsageError?
         if let goKey {
             switch await fetchGoMeters(apiKey: goKey) {
             case .meters(let lines):
@@ -141,9 +147,15 @@ final class OpenCodeProvider: ProviderRuntime {
             case .noSubscription:
                 AppLog.info(LogTag.plugin("opencode"), "Go usage endpoint: no active subscription")
             case .failed(let error):
-                return ProviderSnapshot.error(provider: provider, error: error)
+                // A failed meters request must not cost the local spend tiles. It becomes the hard
+                // error only when there is nothing else to show, and a notice otherwise.
+                goError = error
             }
         }
+        if let goError, goError != loggedGoError {
+            AppLog.warn(LogTag.plugin("opencode"), "Go meters unavailable: \(goError.localizedDescription)")
+        }
+        loggedGoError = goError
 
         let scan: LogUsageScan?
         do {
@@ -172,6 +184,9 @@ final class OpenCodeProvider: ProviderRuntime {
         }
 
         if lines.isEmpty {
+            if let goError {
+                return ProviderSnapshot.error(provider: provider, error: goError)
+            }
             if goKey != nil {
                 return ProviderSnapshot.error(provider: provider, error: OpenCodeUsageError.noGoSubscription)
             }
@@ -186,8 +201,10 @@ final class OpenCodeProvider: ProviderRuntime {
         // Without a Go subscription (Zen-only usage, or a key the endpoint answered with
         // `EntitlementError`), the three Go cap rows aren't applicable — hide them as documented
         // instead of rendering three "No data" meters above the local tiles. With meters present,
-        // everything applies (`nil` keeps the legacy all-applicable behavior).
-        let applicableMetricIDs: Set<String>? = meterLines.isEmpty
+        // everything applies (`nil` keeps the legacy all-applicable behavior). A failed meters request
+        // says nothing about the subscription, so the rows stay applicable and the notice below
+        // stands in for them.
+        let applicableMetricIDs: Set<String>? = meterLines.isEmpty && goError == nil
             ? ["opencode.trend", "opencode.today", "opencode.yesterday", "opencode.last30"]
             : nil
 
@@ -203,7 +220,9 @@ final class OpenCodeProvider: ProviderRuntime {
                     unknownModelsByDay: $0.unknownModelsByDay
                 )
             },
-            applicableMetricIDs: applicableMetricIDs
+            applicableMetricIDs: applicableMetricIDs,
+            warning: goError?.localizedDescription,
+            loginRequired: ProviderLoginStatus.requirement(after: goError)
         )
     }
 
