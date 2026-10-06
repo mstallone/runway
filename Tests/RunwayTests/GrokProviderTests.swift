@@ -279,14 +279,14 @@ final class GrokProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertFalse(snapshot.lines.contains { $0.isError })
-        XCTAssertNil(snapshot.warning)
+        XCTAssertEqual(snapshot.warning, GrokUsageMapper.teamBillingUnavailableWarning)
+        // A refresh cannot change the account type, so the notice offers no Refresh button.
+        XCTAssertEqual(snapshot.warningAction, .wait)
         XCTAssertEqual(snapshot.plan, "SuperGrok Heavy")
         XCTAssertNil(progress(snapshot.lines, "Weekly limit"))
         XCTAssertNil(badge(snapshot.lines, "Pay as you go"))
         XCTAssertEqual(values(snapshot.lines, "Today"),
                        [MetricValue(number: 2.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count, label: "tokens")])
-        // The quota rows don't apply to a team login, so they are hidden rather than left as "No data".
-        XCTAssertEqual(snapshot.applicableMetricIDs, ["grok.trend", "grok.today", "grok.yesterday", "grok.last30"])
         // No personal quota means no reset grants to ask for either.
         XCTAssertFalse(httpClient.requests.contains { $0.url == GrokUsageClient.remainingResetsURL })
     }
@@ -302,7 +302,7 @@ final class GrokProviderTests: XCTestCase {
         let snapshot = await makeProvider(httpClient: httpClient).refresh()
 
         XCTAssertTrue(snapshot.lines.contains { $0.isError })
-        XCTAssertNil(snapshot.applicableMetricIDs)
+        XCTAssertNil(snapshot.warning)
     }
 
     func testIsTeamBillingUnavailableMatchesLive412BodyOnly() {

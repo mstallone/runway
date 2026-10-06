@@ -65,6 +65,11 @@ enum GrokUsageMapper {
         return error.localizedCaseInsensitiveContains("no personal team")
     }
 
+    /// Notice shown when the credits endpoint refuses a team principal. This is an account type,
+    /// not a transient failure: the quota rows have nothing to show, and local spend still loads.
+    static let teamBillingUnavailableWarning =
+        "Team accounts have no personal quota. Spend is still estimated from your Grok logs."
+
     static func planName(from response: HTTPResponse) -> String? {
         guard (200..<300).contains(response.statusCode),
               let body = ProviderParse.jsonObject(response.body),

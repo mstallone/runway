@@ -105,16 +105,16 @@ final class GrokProvider: ProviderRuntime {
         // team-principal 412, which means the account has no personal quota to show.
         let creditsResponse = try await fetchCreditsConfigWithRetry(accessToken: accessToken, state: &state)
         var mapped: GrokMappedUsage
-        var applicableMetricIDs: Set<String>?
+        var warning: String?
         if GrokUsageMapper.isTeamBillingUnavailable(creditsResponse) {
-            // Same shape as OpenCode without a Go subscription: the quota rows don't apply to this
-            // account, so hide them instead of failing the card and losing the local spend tiles.
+            // Same shape as Claude without live usage: keep the snapshot successful so the local
+            // spend tiles load, and let the dashboard's notice explain the missing quota rows.
             AppLog.warn(
                 LogTag.plugin("grok"),
-                "credits config unavailable: team principal has no personal team; quota rows hidden, local spend still loads"
+                "credits config unavailable: team principal has no personal team; quota rows omitted, local spend still loads"
             )
             mapped = GrokMappedUsage(lines: [])
-            applicableMetricIDs = Self.localSpendMetricIDs
+            warning = GrokUsageMapper.teamBillingUnavailableWarning
         } else {
             // Token may have rotated during the credits retry; use the live one for the extra RPC.
             let remainingResets = await fetchRemainingResetsBestEffort(accessToken: state.token)
@@ -154,14 +154,11 @@ final class GrokProvider: ProviderRuntime {
             lines: mapped.lines,
             refreshedAt: now(),
             usageHistory: usageHistory,
-            applicableMetricIDs: applicableMetricIDs
+            warning: warning,
+            // An account type, not something a refresh clears.
+            warningAction: warning == nil ? nil : .wait
         )
     }
-
-    /// The rows that still apply when Grok's billing endpoint has no personal quota for the login.
-    private static let localSpendMetricIDs: Set<String> = [
-        "grok.trend", "grok.today", "grok.yesterday", "grok.last30"
-    ]
 
     private func fetchCreditsConfigWithRetry(accessToken: String, state: inout GrokAuthState) async throws -> HTTPResponse {
         var working = state
