@@ -73,8 +73,12 @@ struct CursorUsageClient: Sendable {
 
     /// GET the dashboard usage CSV for `[start, end]` (epoch-ms query params, token strategy) using the
     /// same `WorkosCursorSessionToken` cookie as the Stripe/REST calls. Returns nil when the access token
-    /// carries no usable session.
-    func fetchUsageCSV(accessToken: String, start: Date, end: Date) async throws -> HTTPResponse? {
+    /// carries no usable session. The request's own timeout only fires on an idle connection and the
+    /// export can stream for minutes, so the whole download is held to `deadline` seconds and throws
+    /// `DeadlineExceeded` past it.
+    func fetchUsageCSV(
+        accessToken: String, start: Date, end: Date, deadline: TimeInterval
+    ) async throws -> HTTPResponse? {
         guard let session = Self.session(from: accessToken) else { return nil }
         var components = URLComponents(url: Self.exportCSVURL, resolvingAgainstBaseURL: false)
         components?.queryItems = [
@@ -84,7 +88,7 @@ struct CursorUsageClient: Sendable {
         ]
         guard let url = components?.url else { return nil }
 
-        return try await http.send(HTTPRequest(
+        let request = HTTPRequest(
             method: "GET",
             url: url,
             headers: [
@@ -92,7 +96,9 @@ struct CursorUsageClient: Sendable {
                 "Accept": "text/csv"
             ],
             timeout: 30
-        ))
+        )
+        let http = http
+        return try await withDeadline(seconds: deadline) { try await http.send(request) }
     }
 
     private func connectPost(_ url: URL, accessToken: String) async throws -> HTTPResponse {

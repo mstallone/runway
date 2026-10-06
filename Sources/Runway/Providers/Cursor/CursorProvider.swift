@@ -260,8 +260,9 @@ final class CursorProvider: ProviderRuntime {
     }
 
     /// Wall-clock bound on the usage CSV export. The export can stream for minutes on heavy accounts
-    /// and the request's own timeout only fires on an idle connection. The six 10s calls ahead of it
-    /// can take 60s, so this keeps the whole refresh inside the 150s `refreshTimeout`, which would
+    /// and the request's own timeout only fires on an idle connection. Up to seven 10s calls can
+    /// run ahead of it (six in a probe, plus one when a rejected login restarts the probe), so this
+    /// keeps the expected worst case near 130s, inside the 150s `refreshTimeout` that would
     /// otherwise discard the live plan usage along with the spend history.
     static let usageCSVDeadline: TimeInterval = 60
 
@@ -276,10 +277,9 @@ final class CursorProvider: ProviderRuntime {
 
         let response: HTTPResponse?
         do {
-            let client = usageClient
-            response = try await withDeadline(seconds: Self.usageCSVDeadline) {
-                try await client.fetchUsageCSV(accessToken: accessToken, start: start, end: end)
-            }
+            response = try await usageClient.fetchUsageCSV(
+                accessToken: accessToken, start: start, end: end, deadline: Self.usageCSVDeadline
+            )
         } catch is DeadlineExceeded {
             AppLog.warn(
                 LogTag.plugin("cursor"),

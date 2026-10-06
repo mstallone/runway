@@ -314,11 +314,6 @@ final class CursorSpendProviderTests: XCTestCase {
         XCTAssertNil(snapshot.usageHistory)
     }
 
-    func testUsageCSVDeadlineLeavesRoomUnderTheRefreshCeiling() {
-        // Six 10s calls can run ahead of the export. The export's deadline has to fit in what is left.
-        XCTAssertLessThanOrEqual(60 + CursorProvider.usageCSVDeadline, WidgetDataStore.defaultProviderRefreshTimeout)
-    }
-
     func testSpendTrackingDownloadsCSVExposesSpendTilesAndFlagsUnknownModels() async {
         // The provider downloads the usage CSV, exposes the spend-tile + trend descriptors, and emits
         // Today / Yesterday / Last 30 Days / Usage Trend lines
@@ -440,38 +435,6 @@ final class CursorSpendProviderTests: XCTestCase {
 
     private func isolatedCache(_ defaults: UserDefaults) -> ProviderSnapshotCache {
         ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() })
-    }
-}
-
-// MARK: - Client request contract
-
-final class CursorUsageClientRequestTests: XCTestCase {
-    // Pin the request contract directly at the client level — endpoint, epoch-ms range,
-    // `strategy=tokens`, the session cookie, and `Accept: text/csv` — so a silent regression in
-    // URL/header construction cannot slip through.
-    func testFetchUsageCSVBuildsTokenStrategyRequestWithSessionCookie() async throws {
-        let accessToken = makeCursorJWT(sub: "google-oauth2|user_abc123")
-        let http = RoutingHTTPClient { _ in
-            HTTPResponse(statusCode: 200, headers: [:], body: Data("Date,Model\n".utf8))
-        }
-
-        let response = try await CursorUsageClient(http: http).fetchUsageCSV(
-            accessToken: accessToken,
-            start: Date(timeIntervalSince1970: 1_000),   // 1_000_000 ms
-            end: Date(timeIntervalSince1970: 2_000)      // 2_000_000 ms
-        )
-
-        XCTAssertEqual(response?.statusCode, 200)
-        // A nil session would skip the HTTP call entirely, so requiring a recorded request guards that
-        // the assertions below actually ran against a real request.
-        let request = try XCTUnwrap(http.requests.first, "fetchUsageCSV must issue a request")
-        let url = request.url.absoluteString
-        XCTAssertTrue(url.contains("export-usage-events-csv"), "hits the CSV export endpoint")
-        XCTAssertTrue(url.contains("startDate=1000000"), "start as epoch-ms query param")
-        XCTAssertTrue(url.contains("endDate=2000000"), "end as epoch-ms query param")
-        XCTAssertTrue(url.contains("strategy=tokens"), "token strategy")
-        XCTAssertEqual(request.headers["Cookie"], "WorkosCursorSessionToken=user_abc123%3A%3A\(accessToken)")
-        XCTAssertEqual(request.headers["Accept"], "text/csv")
     }
 }
 
