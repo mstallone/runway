@@ -13,7 +13,7 @@ Antigravity has two shared quota pools, and each pool has a rolling 5-hour windo
 | Claude | The shared non-Gemini pool (Claude, GPT-OSS, and others), rolling 5-hour window |
 | Claude Weekly | The same non-Gemini pool's weekly window |
 
-When Antigravity reports your subscription tier (such as `Pro` or `Ultra`), Runway shows it beside the provider name.
+When Antigravity reports your subscription tier (such as `Pro` or `Ultra`), Runway shows it in the provider's header.
 
 Gemini Pro and Gemini Flash are one pool, so Runway shows one meter per window instead of separate Pro and Flash meters. That pair is named Session and Weekly to match the other providers. Every non-Gemini model shares the second pool, shown under the Claude name. Quotas are reported as a fraction, so there are no token or dollar spend tiles.
 

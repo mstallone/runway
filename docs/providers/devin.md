@@ -10,7 +10,7 @@ Tracks your Devin quota using the login from the Devin CLI or the Devin app.
 | Daily | Daily quota used (hidden when Devin hides the daily quota) |
 | Extra Balance | Overage or extra-usage balance in dollars |
 
-When Devin reports your plan name, Runway shows it beside the provider name.
+When Devin reports your plan name, Runway shows it in the provider's header.
 
 ## Where credentials come from
 
