@@ -23,6 +23,15 @@ final class LoginShellEnvironmentTests: XCTestCase {
         XCTAssertNil(parsed["MOTD"])
     }
 
+    func testBannerPrintedBeforeTheMarkerSharesItsToken() {
+        // What a real shell emits: rc-file output (an echo, fastfetch) has no NUL of its own, so it
+        // is glued onto the begin marker's token, with or without a trailing newline.
+        for banner in ["Welcome to your shell!\n", "  memory  34.76 GiB / 48.00 GiB (72%)"] {
+            let output = [banner + begin, "CODEX_HOME=/Users/dev/.codex-work", end].joined(separator: "\0")
+            XCTAssertEqual(LoginShellEnvironment.parse(output)["CODEX_HOME"], "/Users/dev/.codex-work", banner)
+        }
+    }
+
     func testKeepsValuesContainingEquals() {
         let output = [begin, "TOKEN=a=b=c", end].joined(separator: "\0")
         XCTAssertEqual(LoginShellEnvironment.parse(output)["TOKEN"], "a=b=c")

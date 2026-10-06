@@ -30,8 +30,6 @@ final class LayoutStore {
         get { navigation.customizeProviderID }
         set { navigation.customizeProviderID = newValue }
     }
-    /// Placed widget being drag-reordered (transient). `PlacedWidget.id`, never persisted.
-    var draggingID: UUID?
     /// Persisted provider display order (provider IDs). Drives both the dashboard groups and the
     /// Customize sections, so the user can drag whole providers into the order they want.
     var providerOrder: [String]
@@ -256,7 +254,6 @@ final class LayoutStore {
     /// Provider card expand/collapse (`expandedProviderIDs`) is deliberately excluded: it's transient
     /// view state, not a layout edit, so undo must not rewind caret toggles done between steps.
     private func restore(_ snapshot: LayoutSnapshot) {
-        cancelDrag()
         placed = snapshot.placed
         providerOrder = snapshot.providerOrder
         metricOrderByProvider = snapshot.metricOrderByProvider
@@ -281,10 +278,6 @@ final class LayoutStore {
         registry.descriptor(id: descriptorID) != nil && pinnedMetricIDs.contains(descriptorID)
     }
 
-    func pinnedCount(forProvider providerID: String) -> Int {
-        pinnedCount(forProvider: providerID, matching: { _ in true })
-    }
-
     /// Count only pins that can render for the current account. Dormant pins remain persisted so an
     /// account/plan change can restore them, but they must not consume one of the current account's
     /// two usable menu-bar slots.
@@ -300,10 +293,6 @@ final class LayoutStore {
 
     /// Whether `descriptorID` can be newly pinned without breaking a cap. Already-pinned ids return
     /// `true`, so the toggle stays active for unpinning.
-    func canPin(_ descriptorID: String) -> Bool {
-        canPin(descriptorID, matching: { _ in true })
-    }
-
     func canPin(
         _ descriptorID: String,
         matching isApplicable: (WidgetDescriptor) -> Bool
@@ -321,10 +310,6 @@ final class LayoutStore {
 
     /// Why `descriptorID` can't be pinned right now, or `nil` when it can. The single source for the
     /// pin button's tooltip and the denied-click feedback, so both always state the same rule.
-    func pinDenialReason(_ descriptorID: String) -> String? {
-        pinDenialReason(descriptorID, matching: { _ in true })
-    }
-
     func pinDenialReason(
         _ descriptorID: String,
         matching isApplicable: (WidgetDescriptor) -> Bool
@@ -339,10 +324,6 @@ final class LayoutStore {
 
     /// Record a denied pin attempt so the footer can explain the cap (shown for a few seconds,
     /// with a deny shake on every attempt).
-    func notePinDenied(_ descriptorID: String) {
-        notePinDenied(descriptorID, matching: { _ in true })
-    }
-
     func notePinDenied(
         _ descriptorID: String,
         matching isApplicable: (WidgetDescriptor) -> Bool
@@ -404,10 +385,6 @@ final class LayoutStore {
         }
     }
 
-    func togglePin(_ descriptorID: String) {
-        togglePin(descriptorID, matching: { _ in true })
-    }
-
     func togglePin(
         _ descriptorID: String,
         matching isApplicable: (WidgetDescriptor) -> Bool
@@ -432,20 +409,17 @@ final class LayoutStore {
     func add(_ descriptorID: String) {
         guard registry.descriptor(id: descriptorID) != nil else { return }
         guard !placed.contains(where: { $0.descriptorID == descriptorID }) else { return }
-        cancelDrag()
         placed.append(PlacedWidget(descriptorID: descriptorID))
         syncPlacedOrder()
     }
 
     func remove(_ id: UUID) {
         guard let index = placed.firstIndex(where: { $0.id == id }) else { return }
-        cancelDrag()
         placed.remove(at: index)
         persist()
     }
 
     func resetToDefault() {
-        cancelDrag()
         // Reset is its own deliberate action, not an undoable layout edit; the recorded snapshots
         // describe the pre-reset layout, so the undo stack is dropped wholesale here.
         undoHistory.clear()
@@ -474,7 +448,6 @@ final class LayoutStore {
     /// unknown provider.
     func resetProvider(_ providerID: String) {
         guard registry.provider(id: providerID) != nil else { return }
-        cancelDrag()
         // A reset is its own action, not an undoable edit. Snapshots are whole-layout, so there's no
         // per-provider trim to do — clear the stack so undo can't restore into the pre-reset layout.
         undoHistory.clear()
@@ -511,10 +484,6 @@ final class LayoutStore {
         expandedProviderIDs.remove(providerID)
 
         syncPlacedOrder() // persists `placed`
-    }
-
-    func cancelDrag() {
-        draggingID = nil
     }
 
     func persist() {

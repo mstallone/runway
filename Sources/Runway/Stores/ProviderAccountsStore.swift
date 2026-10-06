@@ -306,15 +306,6 @@ final class ProviderAccountsStore {
         persist()
     }
 
-    /// The record currently holding a family's default badge, if any.
-    func defaultBadgeHolder(family: String) -> ProviderAccountRecord? {
-        records.first { record in
-            record.family == family
-                && !record.removedTombstone
-                && record.sources.contains(where: \.holdsDefaultSource)
-        }
-    }
-
     /// The bare family id when free (the migration-killing rule: the first account observed at the
     /// default home IS the existing card), else an identity-derived `family@<hash8>` id. Only an
     /// account observed at the family's DEFAULT home may claim the bare id — that id's runtime reads

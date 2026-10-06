@@ -312,9 +312,21 @@ final class KimiProviderTests: XCTestCase {
         }
         let provider = makeKimiProvider(http: http, files: files)
 
-        _ = await provider.refresh()
+        let snapshot = await provider.refresh()
 
         XCTAssertEqual(http.requests.count, 2)
+        XCTAssertNil(snapshot.errorText)
+    }
+
+    func test401WithUnchangedCredentialReportsSessionExpiredWithoutRetry() async {
+        let files = FakeFiles([kimiCredentialPath: kimiTokenJSON()])
+        let http = RoutingHTTPClient { _ in kimiJSONResponse("{}", status: 401) }
+        let provider = makeKimiProvider(http: http, files: files)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(http.requests.count, 1)
+        XCTAssertEqual(snapshot.errorText, KimiAuthError.sessionExpired.localizedDescription)
     }
 
     func testMissingCredentialsAreDetectedWithoutNetwork() async {

@@ -125,7 +125,7 @@ final class OpenCodeProviderTests: XCTestCase {
             files: FakeFiles(),
             scanner: OpenCodeUsageScanner(sqlite: StubSQLite(), databasePaths: { [] })
         ).refresh()
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, OpenCodeUsageError.notLoggedIn.localizedDescription)
     }
 
     func testRefreshShowsAPIMetersWithGoKeyButNoDatabase() async {
@@ -164,7 +164,7 @@ final class OpenCodeProviderTests: XCTestCase {
                 databasePaths: { ["/oc/opencode.db"] }
             )
         ).refresh()
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, OpenCodeUsageError.databaseUnreadable.localizedDescription)
         XCTAssertNil(snapshot.line(label: "Session"))
     }
 
@@ -173,7 +173,7 @@ final class OpenCodeProviderTests: XCTestCase {
             files: UnreadableFiles(present: ["/oc/auth.json"]),
             scanner: OpenCodeUsageScanner(sqlite: StubSQLite(), databasePaths: { [] })
         ).refresh()
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, OpenCodeUsageError.credentialsUnreadable(detail: "").localizedDescription)
     }
 
     func testHasLocalCredentialsTrueWhenAuthFileUnreadable() async {
@@ -212,7 +212,7 @@ final class OpenCodeProviderTests: XCTestCase {
                 body: Data(#"{"type":"error","error":{"type":"AuthError","message":"Unauthorized"}}"#.utf8)
             )))
         ).refresh()
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, OpenCodeUsageError.unauthorized.localizedDescription)
     }
 
     func testEntitlementErrorWithoutLocalUsageIsNoGoSubscription() async {
@@ -225,7 +225,7 @@ final class OpenCodeProviderTests: XCTestCase {
                 body: Data(#"{"type":"error","error":{"type":"EntitlementError","message":"OpenCode Go subscription required."}}"#.utf8)
             )))
         ).refresh()
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, OpenCodeUsageError.noGoSubscription.localizedDescription)
     }
 
     func testEntitlementErrorWithZenUsageShowsTilesWithoutGoMeters() async {
@@ -261,7 +261,7 @@ final class OpenCodeProviderTests: XCTestCase {
                 statusCode: 403, headers: [:], body: Data("<html>denied</html>".utf8)
             )))
         ).refresh()
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, OpenCodeUsageError.requestFailed(403).localizedDescription)
     }
 
     func testConnectionFailureFailsLoudly() async {
@@ -270,7 +270,7 @@ final class OpenCodeProviderTests: XCTestCase {
             scanner: OpenCodeUsageScanner(sqlite: StubSQLite(), databasePaths: { [] }),
             client: OpenCodeUsageClient(http: ThrowingHTTPClient())
         ).refresh()
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, OpenCodeUsageError.connectionFailed.localizedDescription)
     }
 }
 

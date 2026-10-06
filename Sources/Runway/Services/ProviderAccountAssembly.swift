@@ -115,19 +115,39 @@ struct ProviderAccountAssembly {
         // walks and non-interactive keychain probes). Run the two family chains concurrently off
         // the main actor, then assemble on it — before this split, all of that IO ran synchronously
         // on the main actor and delayed the menu-bar icon.
+        var assembly = await make(
+            observer: observer,
+            accountsStore: accountsStore ?? ProviderAccountsStore(defaults: defaults),
+            families: families,
+            claudeDiscovery: claudeDiscovery,
+            codexDiscovery: codexDiscovery
+        )
+        assembly.codexIdentityCache = codexIdentityCache
+        return assembly
+    }
+
+    /// The environment-independent core: the off-main readout, then the main-actor assembly.
+    /// `families` limits the pass to the families whose home facts are readable this launch; a
+    /// family left out is simply not observed — no identity key, no reconciliation, exactly as if
+    /// the pass never ran for it. A `nil` discovery skips that family's custom-home scan.
+    static func make(
+        observer: DefaultAccountObserver,
+        accountsStore: ProviderAccountsStore,
+        families: Set<String> = ProviderAccountID.families,
+        claudeDiscovery: ClaudeConfigDirDiscovery? = nil,
+        codexDiscovery: CodexHomeDiscovery? = nil
+    ) async -> ProviderAccountAssembly {
         let readout = await observeAndDiscover(
             observer: observer,
             families: families,
             claudeDiscovery: claudeDiscovery,
             codexDiscovery: codexDiscovery
         )
-        var assembly = assemble(
+        return assemble(
             readout: readout,
-            accountsStore: accountsStore ?? ProviderAccountsStore(defaults: defaults),
-            codexKeychain: codexDiscovery.keychain
+            accountsStore: accountsStore,
+            codexKeychain: codexDiscovery?.keychain
         )
-        assembly.codexIdentityCache = codexIdentityCache
-        return assembly
     }
 
     /// The environment variable that relocates each family's default home — the fact whose
@@ -137,40 +157,6 @@ struct ProviderAccountAssembly {
         "claude": "CLAUDE_CONFIG_DIR",
         "codex": "CODEX_HOME",
     ]
-
-    /// The environment-independent core, separated so tests inject a fixed observer, discovery, and
-    /// scratch store. `families` limits the pass to the families whose home facts are readable this
-    /// launch (see `make(defaults:waitsForLoginShell:)`); a family left out is simply not observed —
-    /// no identity key, no reconciliation, exactly as if the pass never ran for it. `claudeDiscovery`
-    /// is skipped alongside the claude family (its exclusion set needs the same home facts).
-    /// Synchronous (sequential readouts) — the app's launch path goes through the async
-    /// `make(defaults:accountsStore:waitsForLoginShell:)`, which runs the same readouts in parallel
-    /// off the main actor.
-    static func make(
-        observer: DefaultAccountObserver,
-        accountsStore: ProviderAccountsStore,
-        families: Set<String> = ProviderAccountID.families,
-        claudeDiscovery: ClaudeConfigDirDiscovery? = nil,
-        codexDiscovery: CodexHomeDiscovery? = nil
-    ) -> ProviderAccountAssembly {
-        let claude = claudeReadout(
-            observer: observer, discovery: claudeDiscovery, enabled: families.contains("claude")
-        )
-        let codex = codexReadout(
-            observer: observer, discovery: codexDiscovery, enabled: families.contains("codex")
-        )
-        return assemble(
-            readout: DiscoveryReadout(
-                claudeOutcome: claude.outcome,
-                codexOutcome: codex.outcome,
-                hasAmbientClaudeToken: claude.hasAmbientToken,
-                claudeScan: claude.scan,
-                codexScan: codex.scan
-            ),
-            accountsStore: accountsStore,
-            codexKeychain: codexDiscovery?.keychain
-        )
-    }
 
     /// The main-actor half: group the scans' findings, reconcile the account registry, and build
     /// the per-card identity map plus the extra-card build plans.

@@ -6,9 +6,11 @@ Tracks your Devin quota using the login from the Devin CLI or the Devin app.
 
 | Metric | Meaning |
 |---|---|
-| Weekly | Weekly quota used (falls back to the daily figure when Devin reports no weekly quota) |
+| Weekly | Weekly quota used (falls back to the daily figure when Devin reports neither a weekly percentage nor a weekly reset) |
 | Daily | Daily quota used (hidden when Devin hides the daily quota) |
 | Extra Balance | Overage or extra-usage balance in dollars |
+
+If Devin supplies a weekly reset but omits the weekly percentage, the weekly quota is exhausted (100% used).
 
 When Devin reports your plan name, Runway shows it in the provider's header.
 
@@ -24,7 +26,7 @@ If the CLI credentials fail but the app is signed in with a different account, R
 ## Troubleshooting
 
 - **"Not logged in"**: run `devin auth login`, or sign into the Devin app, then refresh.
-- **Weekly shows the daily figure**: when Devin reports no separate weekly quota, the daily quota is shown in the Weekly row.
+- **Weekly shows the daily figure**: when Devin reports neither a weekly percentage nor a weekly reset, the daily quota is shown in the Weekly row.
 
 ## Under the hood
 
