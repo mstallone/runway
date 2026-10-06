@@ -222,6 +222,15 @@ final class WidgetDataStore {
             }
         self.localSnapshots = loaded
         self.snapshots = loaded
+        // Only an entry the card's current account provably produced may seed a provider's fallback
+        // state: stamp present AND equal. The paint above is more lenient (an unresolved card keeps
+        // its cache); a provider may keep serving what it is handed, so this is not.
+        for (cardID, snapshot) in loaded {
+            guard let identityKey = providerIdentityKeys[cardID],
+                  cache.producedByIdentityKey(providerID: cardID) == identityKey
+            else { continue }
+            providersByID[cardID]?.adoptLaunchSnapshot(snapshot, producedByIdentityKey: identityKey)
+        }
     }
 
     /// Refresh every enabled provider, concurrently — one slow provider never delays the rest.
@@ -611,12 +620,27 @@ final class WidgetDataStore {
             AppLog.debug(.refresh, "preserved last-good history for \(providerID) after scan miss")
         }
         localSnapshots[providerID] = snapshot
-        providersRefreshedThisLaunch.insert(providerID)
-        // Stamp the write with the card's launch-resolved account identity; nil (no stamp) for
-        // non-account providers and for cards whose identity didn't resolve this launch.
+        // A wait-notice snapshot shows values the provider could not revalidate (Claude's limits
+        // kept through a rate limit), so it does not unlock new reset-credit reminders.
+        if snapshot.resolvedWarningAction != .wait {
+            providersRefreshedThisLaunch.insert(providerID)
+        }
+        // Stamp the write with the account that produced it: the one the provider's own local
+        // evidence named for this refresh when it reports one (a login can change while the app
+        // runs), else the card's launch-resolved identity. nil (no stamp) for non-account providers
+        // and for cards whose identity didn't resolve this launch.
+        //
+        // A snapshot whose notice says to wait (Claude's rate limit) can carry values dated when
+        // they were really fetched. Its freshness counts from this check instead, or every reader
+        // with no in-memory cooldown (each one-shot CLI run) would ask again at once, which is the
+        // one thing the notice says not to do.
+        let launchIdentityKey = providerIdentityKeys[providerID]
         cache.store(
             snapshot,
-            producedByIdentityKey: providerIdentityKeys[providerID],
+            producedByIdentityKey: launchIdentityKey == nil
+                ? nil
+                : provider.snapshotAccountIdentityKey ?? launchIdentityKey,
+            checkedAt: snapshot.resolvedWarningAction == .wait ? now() : nil,
             persist: snapshotRebuildDeferrals == 0
         )
         requestSnapshotRebuild()

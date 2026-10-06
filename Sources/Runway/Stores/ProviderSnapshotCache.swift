@@ -9,6 +9,12 @@ struct ProviderSnapshotCache {
         /// HTTP API (`LocalUsageAPI`) — the stamp is cache bookkeeping, not wire data. Absent for
         /// providers without an account identity (everything outside the claude/codex families).
         var producedByIdentityKeys: [String: String]
+        /// Card id → when the provider was asked for the stored snapshot, recorded only when the
+        /// writer says freshness must count from the check rather than from the snapshot's
+        /// `refreshedAt`: limits carried through a rate limit keep the time they were fetched, and
+        /// that must not make every reader refetch at once. Optional so a payload written before
+        /// this existed still decodes; an absent entry measures from `refreshedAt` as always.
+        var checkedAt: [String: Date]?
     }
 
     /// In-memory mirror of the persisted blob. Reads (`snapshot`, `loadSnapshots`, and the read inside
@@ -102,7 +108,7 @@ struct ProviderSnapshotCache {
         // persisted blob is shown for instant paint but never gates a refresh, so every launch refetches
         // promptly instead of waiting out the previous session's remaining interval (#697).
         let writtenThisSession = sessionWrites.withLock { $0.contains(providerID) }
-        let age = now().timeIntervalSince(snapshot.refreshedAt)
+        let age = now().timeIntervalSince(loadPayload().checkedAt?[providerID] ?? snapshot.refreshedAt)
         let trusted = allowsPersistedFreshness || writtenThisSession
         let fresh = trusted && age < ttl
         let reason = !trusted ? "stale (not written this session)"
@@ -113,9 +119,16 @@ struct ProviderSnapshotCache {
 
     /// `producedByIdentityKey` is the account identity that produced this snapshot (the card's identity
     /// at write time); `nil` for providers without account identity, or when the identity is unresolved.
+    /// `checkedAt` is when the provider was asked (see `Payload.checkedAt`); `nil` measures freshness
+    /// from the snapshot's own `refreshedAt`.
     /// `persist: false` updates only the in-memory mirror — batch refresh uses it so a pass encodes and
     /// writes the all-providers blob once (via `persistPending`) instead of once per provider.
-    func store(_ snapshot: ProviderSnapshot, producedByIdentityKey: String? = nil, persist: Bool = true) {
+    func store(
+        _ snapshot: ProviderSnapshot,
+        producedByIdentityKey: String? = nil,
+        checkedAt: Date? = nil,
+        persist: Bool = true
+    ) {
         guard !snapshot.lines.contains(where: \.isError) else {
             AppLog.debug(.cache, "skip write \(snapshot.providerID) (error snapshot)")
             return
@@ -130,6 +143,9 @@ struct ProviderSnapshotCache {
         // prior stamp rather than keep it: the new snapshot is unattributable, and leaving the old
         // account's stamp would falsely bless it at the next launch's identity check.
         payload.producedByIdentityKeys[snapshot.providerID] = producedByIdentityKey
+        var checkTimes = payload.checkedAt ?? [:]
+        checkTimes[snapshot.providerID] = checkedAt
+        payload.checkedAt = checkTimes.isEmpty ? nil : checkTimes
         if persist {
             save(payload)
         } else {
@@ -168,6 +184,14 @@ struct ProviderSnapshotCache {
             return payload.producedByIdentityKeys[providerID] != nil
         }
         return false
+    }
+
+    /// The account identity stamped on this provider's stored entry, `nil` when there is no entry
+    /// or it is unstamped.
+    func producedByIdentityKey(providerID: String) -> String? {
+        let payload = loadPayload()
+        guard payload.snapshots[providerID] != nil else { return nil }
+        return payload.producedByIdentityKeys[providerID]
     }
 
     private func loadPayload() -> Payload {

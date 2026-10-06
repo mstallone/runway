@@ -86,7 +86,7 @@ In the [CLI](../cli.md) and [local API](../local-http-api.md), extra cards appea
 - **"Claude Desktop login is stale"** (amber warning): open Claude Desktop so it can renew the login, then refresh.
 - **"Claude login needs renewal"** (amber warning): every stored login has an expired or revoked token, and Runway's own renewal could not recover it (usually the refresh token itself is revoked). Open Claude Code, then refresh. The spend tiles keep working.
 - **"Re-login for live usage"** (amber warning): your saved login can authenticate for inference but cannot read your subscription limits, because it lacks `user:profile` access (an inference-only token from `claude setup-token`). Run `claude` and sign in again with your Claude account, then refresh. The spend tiles keep working.
-- **"Updates blocked by Anthropic"** (amber warning): the usage API is throttling Runway. It keeps the last values, shows when it will retry, and backs off. A reset whose deadline passes while the last values are showing drops out of Rate Limit Resets. A different login starts with a fresh cache and cooldown. This is the one header warning you cannot click to refresh, because manual refreshes extend the block.
+- **"Updates blocked by Anthropic"** (amber warning): the usage API is throttling Runway. It keeps the last values, shows when it will retry, and backs off. The kept values show their real last-updated time, so the card is tagged **Outdated** once they are more than about ten minutes old. A reset whose deadline passes while the last values are showing drops out of Rate Limit Resets. A different login starts with a fresh cache and cooldown. This is the one header warning you cannot click to refresh, because manual refreshes extend the block. See [Rate limits right after launch](#rate-limits-right-after-launch) for what a relaunch keeps.
 - **Spend tiles show "No data"**: Runway found no Claude Code logs in the last 30 days. If your logs live somewhere custom, set `CLAUDE_CONFIG_DIR` so both Claude Code and Runway look in the same place.
 
 ## Under the hood
@@ -96,5 +96,21 @@ In the [CLI](../cli.md) and [local API](../local-http-api.md), extra cards appea
 When the 5-hour session window has no usage yet, the Session row shows **Not started**. Hover it for an explanation.
 
 When Weekly is Always Visible and exhausted, the dashboard replaces its bar with **Usage Exhausted** and a live countdown plus the reset date and time, and temporarily hides the other Always Visible bars until a refresh reports available usage. On Demand rows and saved settings are preserved; independent model pools affect only their own session bar. See [Dashboard](../dashboard.md) for details.
+
+### Rate limits right after launch
+
+The values Runway keeps during a rate limit live in memory, so a relaunch starts without them. If Anthropic rate-limits the first fetch after launch, Runway keeps the limits it loaded from its saved snapshot and shows them under the same notice. It does this only when all of these hold:
+
+- The saved snapshot is marked with the account that produced it, and that is the account this card was built for at launch.
+- The login that was rate-limited is the one Claude Code's state file describes: this home's own Keychain item, or its `.credentials.json` when there is no Keychain item.
+- That state file still names the same account when the login is read.
+
+Runway does not ask Anthropic which account a token belongs to, so these checks use only files already on your Mac. They show that the state file has not changed since the snapshot was saved, not that the token belongs to that account. A Claude Desktop login, a login tried after another one was rejected, a `CLAUDE_CONFIG_DIR` home borrowing the default home's Keychain item, a card whose account could not be read at launch, and a snapshot with no account mark all get the plain rate-limit status with no limits. If the state file names a different account, the saved limits are dropped until the next launch.
+
+Only limit windows with a reset time still in the future are kept (Session, Weekly, Sonnet, Fable). Extra Usage and a Session that has not started have no reset time, so they are not kept and read "No data" until a fetch succeeds. A kept window disappears once its reset time passes.
+
+Rate Limit Resets follows the same rule for each reset. Resets whose deadline is still ahead are kept, and each drops out when its deadline passes. A reset with no deadline is not kept, so the row can show fewer resets than you have until a fetch succeeds. With none left to keep, the row reads "No data". Kept resets do not start a new expiry reminder until a fetch succeeds, and a reminder you already received is not sent again. Spend tiles are always recomputed from local logs. The first successful fetch replaces the saved limits.
+
+Kept limits keep the time they were last fetched. The card's **Outdated** tag, the local API and CLI `fetchedAt`, and the iCloud snapshot all report that time, however many relaunches and rate limits happen in between.
 
 If this account is pinned and its login becomes unavailable, its menu-bar icon stays visible but faded, with no usage values, until a refresh confirms a usable login. See [Menu Bar](../menu-bar.md#login-unavailable).

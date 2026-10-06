@@ -54,9 +54,25 @@ protocol ProviderRuntime: AnyObject {
     /// budgets can legitimately exceed it (Copilot's multi-org billing probe does), so the ceiling
     /// stays what it's for: killing genuinely dead work, not policing slow-but-valid paths.
     var refreshTimeout: TimeInterval { get }
+
+    /// Hands the provider the snapshot `WidgetDataStore` painted from the launch cache. Called once,
+    /// at launch, and only when the entry's account stamp equals the card's resolved identity
+    /// (`identityKey`); an unstamped entry or an unresolved card is never handed over. A provider
+    /// whose in-memory fallback state does not survive a relaunch can hold it for its first degraded
+    /// refresh. The snapshot is this Mac's own cached result, never a peer's.
+    func adoptLaunchSnapshot(_ snapshot: ProviderSnapshot, producedByIdentityKey identityKey: String)
+
+    /// The account identity the provider's local evidence named for the account-bound values in the
+    /// snapshot `refresh()` just returned, in the launch account pass's key format. `nil` means no
+    /// evidence, and `WidgetDataStore` then stamps the cache entry with the card's launch identity.
+    /// Read once, right after `refresh()` returns. Never persisted or synced.
+    var snapshotAccountIdentityKey: String? { get }
 }
 
 extension ProviderRuntime {
+    func adoptLaunchSnapshot(_ snapshot: ProviderSnapshot, producedByIdentityKey identityKey: String) {}
+    var snapshotAccountIdentityKey: String? { nil }
+
     /// 150s default: above Kimi's full OAuth retry budget (~93s plus loading and the usage
     /// request), Cursor's sequential probe (up to ~130s when the usage export runs to its
     /// deadline), and Codex's claim probe (~45s).

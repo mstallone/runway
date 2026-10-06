@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 @MainActor
@@ -31,15 +30,13 @@ final class ClaudeProvider: ProviderRuntime {
     /// unrecoverable chain doesn't get a token-endpoint call every 5-minute cycle.
     private var tokenRenewalCooldownUntil: [String: Date] = [:]
 
-    /// Last successful live-usage result and a rate-limit cooldown, carried across refreshes (the provider
-    /// is a long-lived singleton). `/api/oauth/usage` rate-limits aggressively, so on a 429 we serve the
-    /// last-good bars with a staleness note instead of blanking the dashboard, and skip the live call
-    /// entirely until the cooldown expires so we don't keep hammering an endpoint that's already limiting
-    /// us.
-    private var cachedCredentialFingerprint: Data?
-    private var lastGoodUsage: ClaudeMappedUsage?
-    private var rateLimitedUntil: Date?
-    private static let rateLimitCooldown: TimeInterval = 5 * 60
+    /// Last-good live usage, the rate-limit cooldown, and the launch-cached limits that stand in
+    /// for last-good usage on a relaunch's first 429.
+    private var liveUsageCache = ClaudeLiveUsageCache()
+    /// The account the state file named for the login behind the snapshot this refresh returns
+    /// (its limits, or just its plan badge), so the cache entry is stamped with that account. `nil`
+    /// when the pass read none for that login: no login, or one the state file does not describe.
+    private(set) var snapshotAccountIdentityKey: String?
 
     init(
         provider: Provider = ClaudeProvider.makeProvider(),
@@ -84,6 +81,10 @@ final class ClaudeProvider: ProviderRuntime {
         ] + WidgetDescriptor.spendTiles(provider: provider)
     }
 
+    func adoptLaunchSnapshot(_ snapshot: ProviderSnapshot, producedByIdentityKey identityKey: String) {
+        liveUsageCache.holdLaunchSnapshot(snapshot, producedByIdentityKey: identityKey)
+    }
+
     func hasLocalCredentials() async -> Bool {
         // Detection validates local files, environment, Keychain attributes, and Desktop material with
         // Keychain interaction forbidden. It can never raise a launch-time password dialog.
@@ -91,7 +92,8 @@ final class ClaudeProvider: ProviderRuntime {
     }
 
     func refresh() async -> ProviderSnapshot {
-        await refresh(forceDesktopFallback: false, previousFallbackError: nil)
+        snapshotAccountIdentityKey = nil
+        return await refresh(forceDesktopFallback: false, previousFallbackError: nil)
     }
 
     private func refresh(
@@ -231,6 +233,7 @@ final class ClaudeProvider: ProviderRuntime {
     /// hard error card so an empty machine does not grow a blank Claude card.
     private func unauthenticatedLocalUsageSnapshot() async -> ProviderSnapshot {
         let error = ClaudeAuthError.notLoggedIn
+        snapshotAccountIdentityKey = nil
         let snapshot = await localUsageSnapshot(
             mapped: ClaudeMappedUsage(plan: nil, lines: []),
             warning: error.localizedDescription,
@@ -257,6 +260,7 @@ final class ClaudeProvider: ProviderRuntime {
             return ProviderSnapshot.error(provider: provider, error: error)
         }
         AppLog.info(LogTag.auth("claude"), "login needs renewal; serving local usage with a renewal notice")
+        snapshotAccountIdentityKey = renewalState?.stateFileIdentityKey
         let mapped = ClaudeMappedUsage(
             plan: renewalState.flatMap {
                 ClaudeUsageMapper.formatPlan(
@@ -281,6 +285,7 @@ final class ClaudeProvider: ProviderRuntime {
             lines: []
         )
 
+        snapshotAccountIdentityKey = state.stateFileIdentityKey
         var warning: String?
         var loginRequired: Bool?
         // Everything below is a "fix this, then refresh" notice; only the rate-limited fetch overrides it.
@@ -288,6 +293,8 @@ final class ClaudeProvider: ProviderRuntime {
         switch authStore.liveUsageAvailability(state) {
         case .available:
             mapped = try await fetchLiveUsage(state: state)
+            // Carried limits keep the account they were fetched under.
+            snapshotAccountIdentityKey = mapped.limitsIdentityKey ?? state.stateFileIdentityKey
             // A rate-limited fetch rides its "Updates blocked by Anthropic" notice on the mapped usage so
             // it reaches the header triangle even when the badge/note lines aren't in the user's layout.
             warning = mapped.warning
@@ -367,7 +374,9 @@ final class ClaudeProvider: ProviderRuntime {
             provider: provider,
             plan: mapped.plan,
             lines: mapped.lines,
-            refreshedAt: now(),
+            // Limits carried through a rate limit keep the time they were fetched, so the card's
+            // Outdated tag and every export report their real age.
+            refreshedAt: mapped.limitsFetchedAt ?? now(),
             usageHistory: usageHistory,
             warning: warning,
             warningAction: warningAction,
@@ -385,13 +394,17 @@ final class ClaudeProvider: ProviderRuntime {
         state: ClaudeCredentialState,
         allowRenewal: Bool = true
     ) async throws -> ClaudeMappedUsage {
-        activateLiveUsageCache(for: state.oauth)
+        liveUsageCache.activate(for: state)
 
         // Inside an active rate-limit cooldown, skip the live call and serve the last-good usage so a
         // constantly-limited endpoint doesn't blank the dashboard (and we don't pile on more 429s).
-        if let until = rateLimitedUntil, now() < until {
-            AppLog.info(LogTag.plugin("claude"), "rate-limited (cooldown active, serving \(lastGoodUsage == nil ? "badge" : "last-good usage"))")
-            return rateLimitedSnapshot(credentials: state.displayOAuth, retryAfterSeconds: Int(until.timeIntervalSince(now()).rounded(.up)))
+        if let until = liveUsageCache.rateLimitedUntil, now() < until {
+            return liveUsageCache.rateLimitedUsage(
+                for: state,
+                retryAfterSeconds: Int(until.timeIntervalSince(now()).rounded(.up)),
+                cooldownActive: true,
+                now: now()
+            )
         }
 
         // An expired stamp means the call below is doomed. Renew it first when the guards allow;
@@ -426,14 +439,18 @@ final class ClaudeProvider: ProviderRuntime {
         // than a bare badge.
         if response.statusCode == 429 {
             let retryAfterSeconds = ClaudeUsageMapper.parseRetryAfterSeconds(response, now: now())
-            rateLimitedUntil = now().addingTimeInterval(TimeInterval(retryAfterSeconds ?? Int(Self.rateLimitCooldown)))
-            AppLog.info(LogTag.plugin("claude"), "rate-limited (serving \(lastGoodUsage == nil ? "badge" : "last-good usage"))")
-            return rateLimitedSnapshot(credentials: state.displayOAuth, retryAfterSeconds: retryAfterSeconds)
+            liveUsageCache.startCooldown(until: now().addingTimeInterval(
+                TimeInterval(retryAfterSeconds ?? Int(ClaudeLiveUsageCache.rateLimitCooldown))
+            ))
+            return liveUsageCache.rateLimitedUsage(
+                for: state, retryAfterSeconds: retryAfterSeconds, cooldownActive: false, now: now()
+            )
         }
 
-        let mapped = try ClaudeUsageMapper.mapUsageResponse(response, credentials: state.displayOAuth, now: now())
-        lastGoodUsage = mapped
-        rateLimitedUntil = nil
+        var mapped = try ClaudeUsageMapper.mapUsageResponse(response, credentials: state.displayOAuth, now: now())
+        mapped.limitsFetchedAt = now()
+        mapped.limitsIdentityKey = state.stateFileIdentityKey
+        liveUsageCache.recordLiveUsage(mapped)
         return mapped
     }
 
@@ -471,46 +488,4 @@ final class ClaudeProvider: ProviderRuntime {
             return nil
         }
     }
-
-    /// Last-good usage with an appended staleness note when we have it; otherwise the plain rate-limited
-    /// badge (no successful fetch yet this run). `lastGoodUsage` only ever holds a clean `mapUsageResponse`
-    /// result (never a rate-limited snapshot), so the note is never duplicated and no stale spend tiles
-    /// ride along — the provider appends those fresh after this returns.
-    private func rateLimitedSnapshot(credentials: ClaudeOAuth, retryAfterSeconds: Int?) -> ClaudeMappedUsage {
-        guard var mapped = lastGoodUsage else {
-            return ClaudeUsageMapper.rateLimitedUsage(credentials: credentials, retryAfterSeconds: retryAfterSeconds)
-        }
-        // The cached mapping's plan is from fetch time; the tier can change during a long cooldown,
-        // so re-derive it from the credentials the caller just loaded.
-        mapped.plan = ClaudeUsageMapper.formatPlan(
-            subscriptionType: credentials.subscriptionType,
-            rateLimitTier: credentials.rateLimitTier
-        )
-        mapped.lines = ClaudeUsageMapper.droppingLapsedResetGrants(from: mapped.lines, now: now())
-        mapped.lines.append(ClaudeUsageMapper.rateLimitedNote(retryAfterSeconds: retryAfterSeconds))
-        mapped.warning = ClaudeUsageMapper.rateLimitedWarning(retryAfterSeconds: retryAfterSeconds)
-        // Last-good usage is a clean fetch, so its action is `.refresh`; the rate-limit notice replacing
-        // its warning must carry `.wait` with it or the triangle stays clickable on stale bars.
-        mapped.warningAction = .wait
-        return mapped
-    }
-
-    /// Cache state belongs to the complete access + refresh credential pair. A login change therefore
-    /// clears both last-good usage and cooldown, even when the two accounts share an access token.
-    private func activateLiveUsageCache(for credentials: ClaudeOAuth) {
-        let fingerprint = Self.credentialFingerprint(credentials)
-        guard cachedCredentialFingerprint != fingerprint else { return }
-        cachedCredentialFingerprint = fingerprint
-        lastGoodUsage = nil
-        rateLimitedUntil = nil
-    }
-
-    private static func credentialFingerprint(_ credentials: ClaudeOAuth) -> Data {
-        let access = Data((credentials.accessToken ?? "").utf8)
-        let refresh = Data((credentials.refreshToken ?? "").utf8)
-        var pair = Data(SHA256.hash(data: access))
-        pair.append(contentsOf: SHA256.hash(data: refresh))
-        return Data(SHA256.hash(data: pair))
-    }
-
 }

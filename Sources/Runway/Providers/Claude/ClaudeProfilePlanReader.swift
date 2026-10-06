@@ -6,12 +6,23 @@ import Foundation
 /// nothing usable) to keep the blob's values. A file that exists but can't be read or parsed also
 /// falls back — the badge must never fail a refresh — but is logged so a stale badge stays
 /// diagnosable.
+///
+/// The same read also reports which account the state file names right now, with the launch
+/// account pass's own key derivation, so a refresh can tell whether the login it just loaded is
+/// still the account the card was built for.
 struct ClaudeProfilePlanReader: Sendable {
+    struct Profile: Sendable {
+        /// `DefaultAccountObserver.claudeIdentityKey` of the state file's account.
+        var identityKey: String?
+        /// `nil` keeps the login blob's plan values.
+        var plan: (subscriptionType: String?, rateLimitTier: String?)?
+    }
+
     var environment: EnvironmentReading
     var files: TextFileAccessing
     let scope: ClaudeCredentialScope
 
-    func read() -> (subscriptionType: String?, rateLimitTier: String?)? {
+    func read() -> Profile? {
         let text: String?
         do {
             text = try files.readTextIfPresent(stateFilePath())
@@ -39,8 +50,11 @@ struct ClaudeProfilePlanReader: Sendable {
         // indistinguishable from a pre-plan-fields Claude Code state file, and unknown org shapes
         // (Team/enterprise) land here too. The blob's login-time values stand; a truly lapsed
         // subscription surfaces through the failing usage fetch, not the badge.
-        guard tier != nil || subscription != nil else { return nil }
-        return (subscription, tier)
+        let plan: (subscriptionType: String?, rateLimitTier: String?)? =
+            tier != nil || subscription != nil ? (subscription, tier) : nil
+        let identityKey = DefaultAccountObserver.claudeIdentityKey(account)
+        guard plan != nil || identityKey != nil else { return nil }
+        return Profile(identityKey: identityKey, plan: plan)
     }
 
     /// Claude Code's state file for this scope — inside a custom config dir, but next to (not
