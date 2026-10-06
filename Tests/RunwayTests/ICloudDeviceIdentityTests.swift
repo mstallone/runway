@@ -212,7 +212,7 @@ final class ICloudDeviceIdentityTests: XCTestCase {
             bundleIdentifier: "com.mattstallone.runway"
         )
 
-        XCTAssertThrowsError(try store.migrateLegacyDeviceID())
+        XCTAssertThrowsError(try store.migrateLegacyDeviceID(allowInteraction: false))
         XCTAssertEqual(approvedReads.value, 0, "automatic recovery must never obtain the secret via a dialog")
 
         XCTAssertEqual(
@@ -237,7 +237,7 @@ final class ICloudDeviceIdentityTests: XCTestCase {
             legacyKeychain: IndeterminateProbeKeychain(),
             bundleIdentifier: "com.mattstallone.runway"
         )
-        XCTAssertThrowsError(try store.migrateLegacyDeviceID())
+        XCTAssertThrowsError(try store.migrateLegacyDeviceID(allowInteraction: false))
 
         let sync = ICloudUsageSyncStore(
             dataStore: makeDataStore(defaults),
@@ -368,7 +368,7 @@ final class ICloudDeviceIdentityTests: XCTestCase {
             legacyKeychain: ProbeOnlyKeychain(),
             bundleIdentifier: "com.mattstallone.runway"
         )
-        XCTAssertNil(try store.migrateLegacyDeviceID())
+        XCTAssertNil(try store.migrateLegacyDeviceID(allowInteraction: false))
     }
 
     func testAReadableButInvalidStoredIDNeverMintsAReplacement() async throws {
@@ -450,7 +450,7 @@ final class ICloudDeviceIdentityTests: XCTestCase {
             bundleIdentifier: "com.mattstallone.runway"
         )
         XCTAssertNil(try store.readDeviceID())
-        XCTAssertNil(try store.migrateLegacyDeviceID())
+        XCTAssertNil(try store.migrateLegacyDeviceID(allowInteraction: false))
     }
 
     /// Sync ON by default, matching a real install — these tests must be able to prove that an
@@ -476,8 +476,6 @@ final class TrappingKeychain: KeychainReading, @unchecked Sendable {
         XCTFail("the legacy Keychain path must not be consulted")
         return nil
     }
-
-    func writeGenericPassword(service: String, value: String) throws {}
 }
 
 /// Answers the prompt-free existence probe with "absent" and fails the test if any secret read runs.
@@ -494,8 +492,6 @@ final class ProbeOnlyKeychain: KeychainReading, @unchecked Sendable {
     func genericPasswordExists(service: String, account: String) -> Bool? {
         false
     }
-
-    func writeGenericPassword(service: String, value: String) throws {}
 }
 
 /// The legacy item's existence cannot be determined (locked keychain / suppressed probe), and any
@@ -561,15 +557,15 @@ private final class KeychainReadCounter: @unchecked Sendable {
     }
 }
 
-/// Unresolvable until `recover` is called, then returns a real id — models a keychain that becomes
-/// readable during the session.
 /// No v2 item, and the legacy recovery hands back a value that is readable but not a UUID.
 private final class InvalidLegacyDeviceIDStore: ICloudDeviceIDStoring, @unchecked Sendable {
     func readDeviceID() throws -> String? { nil }
     func writeDeviceID(_ deviceID: String) throws {}
-    func migrateLegacyDeviceID() throws -> String? { "definitely-not-a-uuid" }
+    func migrateLegacyDeviceID(allowInteraction: Bool) throws -> String? { "definitely-not-a-uuid" }
 }
 
+/// Unresolvable until `recover` is called, then returns a real id — models a keychain that becomes
+/// readable during the session.
 final class RecoveringDeviceIDStore: ICloudDeviceIDStoring, @unchecked Sendable {
     private let lock = NSLock()
     private var stored: String?
@@ -586,7 +582,7 @@ final class RecoveringDeviceIDStore: ICloudDeviceIDStoring, @unchecked Sendable 
         lock.withLock { stored = deviceID }
     }
 
-    func migrateLegacyDeviceID() throws -> String? {
+    func migrateLegacyDeviceID(allowInteraction: Bool) throws -> String? {
         guard lock.withLock({ stored }) != nil else {
             throw KeychainError.readFailed("keychain unavailable")
         }

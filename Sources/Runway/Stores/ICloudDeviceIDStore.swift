@@ -6,21 +6,9 @@ protocol ICloudDeviceIDStoring: Sendable {
     /// Recover the device id from a legacy login-keychain location and persist it in the
     /// current one, or return nil when there is nothing to migrate. Callers reach for this LAST —
     /// only when both the current store and the saved preference are empty — because the legacy
-    /// location may sit behind a prompt-capable Keychain path.
-    func migrateLegacyDeviceID() throws -> String?
-    /// User-attended counterpart used only when the user explicitly asks Runway to recover an
-    /// unresolved legacy identity. Stores without a prompt-capable legacy source use the default.
+    /// location may sit behind a prompt-capable Keychain path. `allowInteraction` is true only when
+    /// the user explicitly asks Runway to recover an unresolved legacy identity.
     func migrateLegacyDeviceID(allowInteraction: Bool) throws -> String?
-}
-
-extension ICloudDeviceIDStoring {
-    func migrateLegacyDeviceID() throws -> String? {
-        nil
-    }
-
-    func migrateLegacyDeviceID(allowInteraction: Bool) throws -> String? {
-        try migrateLegacyDeviceID()
-    }
 }
 
 struct KeychainICloudDeviceIDStore: ICloudDeviceIDStoring {
@@ -57,10 +45,6 @@ struct KeychainICloudDeviceIDStore: ICloudDeviceIDStoring {
     /// old value interactively. Copying it keeps this device's existing iCloud record instead of
     /// minting a duplicate. The old items remain orphaned once the current file exists; Runway does
     /// not modify or silently delete them.
-    func migrateLegacyDeviceID() throws -> String? {
-        try migrateLegacyDeviceID(allowInteraction: false)
-    }
-
     func migrateLegacyDeviceID(allowInteraction: Bool) throws -> String? {
         if allowInteraction {
             // Go straight through the coordinator's interactive path. The automatic attempt that

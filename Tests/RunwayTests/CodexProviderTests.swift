@@ -970,8 +970,6 @@ private final class ProtectedKeyringKeychain: KeychainReading, @unchecked Sendab
     func genericPasswordExists(service: String, account: String) -> Bool? {
         true
     }
-
-    func writeGenericPassword(service: String, value: String) throws {}
 }
 
 @MainActor
