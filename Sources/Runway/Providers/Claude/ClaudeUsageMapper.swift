@@ -189,7 +189,8 @@ enum ClaudeUsageMapper {
     /// reset for Pro and Max"), shown read-only like Codex's and Grok's reset rows: the row reads
     /// "N available" and each remaining reset's grant deadline (`ends_at`) rides along in `expiriesAt`
     /// for the resets popover and the expiry reminders. A grant with several resets left contributes
-    /// one expiry per reset. Grants already past their deadline or with none left are skipped. An
+    /// one expiry per reset, up to `maxResetGrants` in total. Grants already past their deadline or with
+    /// none left are skipped. An
     /// ineligible account (`eligible: false`) reads "0 available"; a missing or `null` block (plans
     /// outside the program) emits no row. Paused grants still count: they are owned, just not usable
     /// this instant.
@@ -197,17 +198,44 @@ enum ClaudeUsageMapper {
         guard let object = value as? [String: Any] else { return }
         var count = 0
         var expiries: [Date] = []
+        var overCap = false
         if object["eligible"] as? Bool == true {
             for case let grant as [String: Any] in object["grants"] as? [Any] ?? [] {
                 guard let left = ProviderParse.number(grant["resets_left"]), left >= 1 else { continue }
-                let resets = Int(left.rounded(.down))
-                let endsAt = resetDate(grant["ends_at"])
+                let endsAt = grantDeadline(grant["ends_at"])
                 if let endsAt, endsAt <= now { continue }
+                // Compared as a Double BEFORE converting: the field is external and unbounded, and
+                // `Int(1e19)` traps while a merely huge value would build a huge expiry list.
+                let room = maxResetGrants - count
+                let resets = left > Double(room) ? room : Int(left.rounded(.down))
+                overCap = overCap || left > Double(room)
                 count += resets
                 if let endsAt { expiries += Array(repeating: endsAt, count: resets) }
             }
         }
+        if overCap {
+            AppLog.warn(LogTag.plugin("claude"), "reset grants exceed the \(maxResetGrants)-reset cap; showing \(maxResetGrants)")
+        }
         lines.append(resetGrantsLine(count: count, expiries: expiries.sorted()))
+    }
+
+    /// Upper bound on the resets one account can show, across all grants. Grants are one-off promos
+    /// (one or two resets each), so a real account sits far below this; the bound exists because
+    /// `resets_left` comes straight off the wire and each reset becomes a popover node (the timeline
+    /// does not scroll) and a reminder candidate. An over-cap response is clamped and logged rather
+    /// than trusted or dropped: the account does have resets, just not a count worth believing.
+    static let maxResetGrants = 10
+
+    /// A grant's `ends_at`. Absent or `null` is a grant without a deadline. A value that is present but
+    /// unreadable also yields no date (the reset still counts), but is logged: the row then shows no
+    /// deadline and sends no reminder for a reset that does have one.
+    private static func grantDeadline(_ value: Any?) -> Date? {
+        guard let value, !(value is NSNull) else { return nil }
+        guard let date = resetDate(value) else {
+            AppLog.warn(LogTag.plugin("claude"), "reset grant ends_at could not be parsed; counting the reset without a deadline")
+            return nil
+        }
+        return date
     }
 
     private static func resetGrantsLine(count: Int, expiries: [Date]) -> MetricLine {

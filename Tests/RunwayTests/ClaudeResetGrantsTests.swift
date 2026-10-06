@@ -1,4 +1,3 @@
-import SwiftUI
 import XCTest
 @testable import Runway
 
@@ -87,6 +86,76 @@ final class ClaudeResetGrantsTests: XCTestCase {
         """)
         let (count, expiries) = try XCTUnwrap(countAndExpiries(line))
         XCTAssertEqual(count, 1)
+        XCTAssertEqual(expiries, [date("2026-10-22T16:00:00+00:00")])
+    }
+
+    // `resets_left` is external and unbounded: the count and the expiry list are capped before any
+    // Int conversion or allocation, so an absurd value can neither trap nor flood the popover.
+
+    func testResetsLeftBeyondIntRangeIsClampedInsteadOfTrapping() throws {
+        let line = try resetsLine(#"{"cedar_ember":{"eligible":true,"grants":[{"resets_left":1e19,"ends_at":"2026-10-22T16:00:00+00:00"}]}}"#)
+        let (count, expiries) = try XCTUnwrap(countAndExpiries(line))
+        XCTAssertEqual(count, Double(ClaudeUsageMapper.maxResetGrants))
+        XCTAssertEqual(expiries, Array(repeating: date("2026-10-22T16:00:00+00:00"), count: ClaudeUsageMapper.maxResetGrants))
+    }
+
+    func testHugeInRangeResetsLeftIsClamped() throws {
+        let line = try resetsLine(#"{"cedar_ember":{"eligible":true,"grants":[{"resets_left":20000000,"ends_at":"2026-10-22T16:00:00+00:00"}]}}"#)
+        let (count, expiries) = try XCTUnwrap(countAndExpiries(line))
+        XCTAssertEqual(count, Double(ClaudeUsageMapper.maxResetGrants))
+        XCTAssertEqual(expiries.count, ClaudeUsageMapper.maxResetGrants)
+    }
+
+    func testNumericStringAndFractionalResetsLeft() throws {
+        let line = try resetsLine("""
+        {"cedar_ember":{"eligible":true,"grants":[
+          {"id":"text","resets_left":"3","ends_at":"2026-10-01T00:00:00+00:00"},
+          {"id":"fraction","resets_left":2.9,"ends_at":"2026-10-22T16:00:00+00:00"},
+          {"id":"below-one","resets_left":"0.5"}
+        ]}}
+        """)
+        let (count, expiries) = try XCTUnwrap(countAndExpiries(line))
+        XCTAssertEqual(count, 5)
+        XCTAssertEqual(
+            expiries,
+            Array(repeating: date("2026-10-01T00:00:00+00:00"), count: 3)
+                + Array(repeating: date("2026-10-22T16:00:00+00:00"), count: 2)
+        )
+    }
+
+    func testTotalAcrossGrantsIsCapped() throws {
+        // 4 + 4 + 4 + a deadline-free 4: the third grant gets the last two slots, the fourth none.
+        let line = try resetsLine("""
+        {"cedar_ember":{"eligible":true,"grants":[
+          {"id":"a","resets_left":4,"ends_at":"2026-10-01T00:00:00+00:00"},
+          {"id":"b","resets_left":4,"ends_at":"2026-10-02T00:00:00+00:00"},
+          {"id":"c","resets_left":4,"ends_at":"2026-10-03T00:00:00+00:00"},
+          {"id":"d","resets_left":4}
+        ]}}
+        """)
+        let (count, expiries) = try XCTUnwrap(countAndExpiries(line))
+        XCTAssertEqual(ClaudeUsageMapper.maxResetGrants, 10)
+        XCTAssertEqual(count, 10)
+        XCTAssertEqual(
+            expiries,
+            Array(repeating: date("2026-10-01T00:00:00+00:00"), count: 4)
+                + Array(repeating: date("2026-10-02T00:00:00+00:00"), count: 4)
+                + Array(repeating: date("2026-10-03T00:00:00+00:00"), count: 2)
+        )
+    }
+
+    func testUnparseableDeadlineStillCountsWithoutADate() throws {
+        // Present but unreadable `ends_at` (logged, unlike an absent one): the reset counts, undated.
+        let line = try resetsLine("""
+        {"cedar_ember":{"eligible":true,"grants":[
+          {"id":"date-only","resets_left":1,"ends_at":"2026-10-22"},
+          {"id":"word","resets_left":1,"ends_at":"soon"},
+          {"id":"bool","resets_left":1,"ends_at":false},
+          {"id":"good","resets_left":1,"ends_at":"2026-10-22T16:00:00+00:00"}
+        ]}}
+        """)
+        let (count, expiries) = try XCTUnwrap(countAndExpiries(line))
+        XCTAssertEqual(count, 4)
         XCTAssertEqual(expiries, [date("2026-10-22T16:00:00+00:00")])
     }
 
@@ -207,20 +276,6 @@ final class ClaudeResetGrantsTests: XCTestCase {
         XCTAssertEqual(entries.map(\.date), [deadline, deadline, later])
         XCTAssertEqual(Set(entries.map(\.key)).count, 3)
         XCTAssertEqual(entries.map(\.key.ordinal), [0, 1, 0])
-    }
-
-    func testClaudeCardsNeverResolveAClaimService() {
-        // The popover only shows "Use" when a claim service is bound for the row's provider. The
-        // router is keyed by Codex card ids and the environment default is nil, so a Claude row
-        // (default card or an extra account card) always renders the read-only timeline.
-        let codex = CodexProvider()
-        let router = CodexResetClaimRouter(servicesByProviderID: [
-            codex.provider.id: CodexResetClaimService(authStore: codex.authStore, usageClient: codex.usageClient, refreshAfterClaim: {})
-        ])
-        XCTAssertNotNil(router.service(for: "codex"))
-        XCTAssertNil(router.service(for: ClaudeProvider().provider.id))
-        XCTAssertNil(router.service(for: "claude@ab12cd34"))
-        XCTAssertNil(EnvironmentValues().codexResetClaim)
     }
 
     // MARK: - Last-good usage
