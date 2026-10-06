@@ -331,6 +331,4 @@ private final class SummaryCursorSQLite: SQLiteAccessing, @unchecked Sendable {
 
     // JSON row queries are not exercised here.
     func queryJSONRows(path: String, sql: String) throws -> String? { nil }
-
-    func execute(path: String, sql: String) throws {}
 }

@@ -62,30 +62,21 @@ final class ShareCardRendererTests: XCTestCase {
         XCTAssertGreaterThan(rep.pixelsHigh, 0)
     }
 
-    func testCondensedTextRowIndicesFollowsNeighborRule() {
-        let rows = MockData.descriptors(for: MockData.claude.id).map { $0.sample }
-        XCTAssertGreaterThan(rows.count, 1, "sample fixture should have multiple rows")
-        let condensed = ShareCardView.condensedTextRowIndices(rows)
-        XCTAssertFalse(condensed.contains(0), "the first row is never condensed")
-        for i in 1..<rows.count {
-            let expected = !rows[i - 1].isBounded && !rows[i].isBounded
-            XCTAssertEqual(condensed.contains(i), expected,
-                           "row \(i) condensing should match the neighbor-aware text-only rule")
+    func testCondensedTextRowIndicesFollowNeighborRuleAndExpandBoundary() {
+        func row(_ title: String, bounded: Bool) -> WidgetData {
+            WidgetData(title: title, icon: .providerMark("claude"), kind: bounded ? .percent : .dollars,
+                       used: 1, limit: bounded ? 100 : nil)
         }
-    }
+        let meter = row("Session", bounded: true)
+        let text = row("Today", bounded: false)
 
-    func testCondensedTextRowIndicesRespectExpandBoundary() {
-        let rows = MockData.descriptors(for: MockData.claude.id).map { $0.sample }
-        XCTAssertGreaterThan(rows.count, 1, "sample fixture should have multiple rows")
-        let boundary = rows.count / 2
-        let condensed = ShareCardView.condensedTextRowIndices(rows, boundary: boundary)
-        XCTAssertFalse(condensed.contains(boundary), "the first expanded row (at the boundary) is never condensed")
-        for i in 1..<rows.count {
-            let sameSide = (i < boundary) == (i - 1 < boundary)
-            let expected = sameSide && !rows[i - 1].isBounded && !rows[i].isBounded
-            XCTAssertEqual(condensed.contains(i), expected,
-                           "row \(i) condensing should not bridge the expand caret boundary")
-        }
+        // A text row condenses only directly under another text row; the first row never does.
+        XCTAssertEqual(ShareCardView.condensedTextRowIndices([meter, text, text, text]), [2, 3])
+        XCTAssertEqual(ShareCardView.condensedTextRowIndices([text, meter, text]), [])
+        // The expand caret splits the run: the first expanded row starts a new cluster.
+        XCTAssertEqual(ShareCardView.condensedTextRowIndices([text, text, text]), [1, 2])
+        XCTAssertEqual(ShareCardView.condensedTextRowIndices([text, text, text], boundary: 1), [2])
+        XCTAssertEqual(ShareCardView.condensedTextRowIndices([text, text, text, text], boundary: 2), [1, 3])
     }
 
     func testTextRowAfterSubtitleKeepsNormalTopSpacing() {

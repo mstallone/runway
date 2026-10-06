@@ -5,7 +5,7 @@ import XCTest
 final class CursorReadOnlyCredentialTests: XCTestCase {
     func testExpiredTokenNeverRefreshesOrWritesAndReportsRenewal() async {
         // Runway is a read-only consumer of Cursor's credentials: an expired token means NO
-        // token-endpoint call, NO state-database or keychain write, and a renewal notice.
+        // token-endpoint call and a renewal notice. (`SQLiteAccessing` has no write method.)
         let sqlite = FakeCursorSQLite(values: [
             CursorAuthStore.accessTokenKey: makeSharedCursorJWT(exp: 1),
             CursorAuthStore.membershipTypeKey: "pro"
@@ -19,7 +19,6 @@ final class CursorReadOnlyCredentialTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertTrue(http.requests.isEmpty, "an expired token short-circuits before any network call")
-        XCTAssertTrue(sqlite.writtenValues.isEmpty, "Cursor's state database is never written by Runway")
         XCTAssertEqual(
             snapshot.lines.compactMap { line -> String? in
                 guard case .badge(_, let text, _, _) = line, line.label == "Error" else { return nil }

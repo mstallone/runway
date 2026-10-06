@@ -13,7 +13,6 @@ func makeSharedCursorJWT(sub: String = "google-oauth2|user", exp: Double = 9_999
 
 final class FakeCursorSQLite: SQLiteAccessing, @unchecked Sendable {
     var values: [String: String]
-    private(set) var writtenValues: [String: String] = [:]
 
     init(values: [String: String] = [:]) {
         self.values = values
@@ -32,7 +31,6 @@ final class FakeCursorSQLite: SQLiteAccessing, @unchecked Sendable {
 final class EmptySQLite: SQLiteAccessing, @unchecked Sendable {
     func queryValue(path: String, sql: String) throws -> String? { nil }
     func queryJSONRows(path: String, sql: String) throws -> String? { nil }
-    func execute(path: String, sql: String) throws {}
 }
 
 final class UnavailableCursorKeychain: KeychainReading, @unchecked Sendable {

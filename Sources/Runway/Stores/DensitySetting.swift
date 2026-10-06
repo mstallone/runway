@@ -2,7 +2,7 @@ import AppKit
 
 /// The popover's single compact layout definition. Type, rows, provider sections, and management
 /// controls all use these values so the app keeps one consistent information-dense rhythm.
-enum DensitySetting: String, Hashable, Sendable, CaseIterable {
+enum DensitySetting: Hashable, Sendable {
     case compact
 
     // MARK: - Type

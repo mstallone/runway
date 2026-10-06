@@ -264,8 +264,6 @@ private struct SakanaSQLiteDouble: SQLiteAccessing {
 
     // JSON row queries are not exercised here.
     func queryJSONRows(path: String, sql: String) throws -> String? { nil }
-
-    func execute(path: String, sql: String) throws {}
 }
 
 private enum SakanaSQLiteDoubleError: Error {

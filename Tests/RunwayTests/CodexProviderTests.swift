@@ -211,26 +211,6 @@ final class CodexUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, CodexUsageMapper.sessionPeriodMs)
     }
 
-    func testMapsLimitWindowSecondsFromAPI() throws {
-        let body = Data("""
-        {
-          "rate_limit": {
-            "primary_window": {
-              "reset_after_seconds": 60,
-              "used_percent": 1,
-              "limit_window_seconds": 18000
-            }
-          }
-        }
-        """.utf8)
-        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
-        let mapped = try CodexUsageMapper.mapUsageResponse(
-            response,
-            now: Date(timeIntervalSince1970: 1_800_000_000)
-        )
-        XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, 18_000_000)
-    }
-
     func testMapsWeeklyOnlyPrimaryWindowByDuration() throws {
         let body = Data("""
         {
@@ -269,6 +249,9 @@ final class CodexUsageMapperTests: XCTestCase {
 
         XCTAssertEqual(progress(mapped.lines, "Session")?.used, 11)
         XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 22)
+        // The reported durations pass through rather than the positional defaults.
+        XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, 86_400_000)
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.periodDurationMs, 2_592_000_000)
     }
 
     func testMapsWindowsCreditsAndPlan() throws {
