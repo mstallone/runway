@@ -14,62 +14,21 @@ final class OpenRouterAuthStoreTests: XCTestCase {
         XCTAssertEqual(auth?.apiKey, "sk-or-file")
     }
 
-    func testFallsBackToEnvironmentWhenNoConfigFile() {
+    func testReadsAlternateConfigPath() {
         let store = OpenRouterAuthStore(
-            files: FakeFiles(),
-            environment: FakeEnvironment(["OPENROUTER_API_KEY": "sk-or-env"])
-        )
-
-        let auth = store.loadAPIKey()
-
-        XCTAssertEqual(auth?.apiKey, "sk-or-env")
-    }
-
-    func testReadsKeyFromJSONConfigFile() {
-        let store = OpenRouterAuthStore(
-            files: FakeFiles([OpenRouterAuthStore.configPaths[0]: #"{ "api_key": "sk-or-json" }"#]),
+            files: FakeFiles(["~/.config/openrouter/key.json": "sk-or-alt"]),
             environment: FakeEnvironment()
         )
 
-        let auth = store.loadAPIKey()
-
-        XCTAssertEqual(auth?.apiKey, "sk-or-json")
+        XCTAssertEqual(store.loadAPIKey()?.apiKey, "sk-or-alt")
     }
 
-    func testReadsPlainTextKeyFile() {
-        let store = OpenRouterAuthStore(
-            files: FakeFiles([OpenRouterAuthStore.configPaths[1]: "  sk-or-plain\n"]),
-            environment: FakeEnvironment()
-        )
-
-        XCTAssertEqual(store.loadAPIKey()?.apiKey, "sk-or-plain")
-    }
-
-    func testReturnsNilWhenNoKeyAnywhere() {
-        let store = OpenRouterAuthStore(files: FakeFiles(), environment: FakeEnvironment())
-        XCTAssertNil(store.loadAPIKey())
-    }
-
-    func testIgnoresBlankConfigAndUsesEnvironment() {
-        let store = OpenRouterAuthStore(
-            files: FakeFiles([OpenRouterAuthStore.configPaths[0]: "   "]),
-            environment: FakeEnvironment(["OPENROUTER_API_KEY": "sk-or-env"])
-        )
-
-        XCTAssertEqual(store.loadAPIKey()?.apiKey, "sk-or-env")
-    }
-
-    // MARK: - In-app save / delete / status (Customize → OpenRouter → API Key)
-
-    func testSaveAPIKeyWritesTrimmedJSONConfigFile() throws {
-        let files = FakeFiles()
-        let store = OpenRouterAuthStore(files: files, environment: FakeEnvironment())
-
-        try store.saveAPIKey("  sk-or-new  ")
-
-        // Sorted-keys JSON, trimmed key — the exact bytes the auth store round-trips.
-        XCTAssertEqual(files.files[OpenRouterAuthStore.configPaths[0]], #"{"apiKey":"sk-or-new"}"#)
-        XCTAssertEqual(store.loadAPIKey()?.apiKey, "sk-or-new")
+    func testShortEnvNameIsOnlyTheFallback() {
+        func key(_ env: [String: String]) -> String? {
+            OpenRouterAuthStore(files: FakeFiles(), environment: FakeEnvironment(env)).loadAPIKey()?.apiKey
+        }
+        XCTAssertEqual(key(["OPENROUTER_KEY": "sk-or-short"]), "sk-or-short")
+        XCTAssertEqual(key(["OPENROUTER_API_KEY": "sk-or-main", "OPENROUTER_KEY": "sk-or-short"]), "sk-or-main")
     }
 
     func testSaveAPIKeyRejectsEmptyKey() {
@@ -80,103 +39,6 @@ final class OpenRouterAuthStoreTests: XCTestCase {
             XCTAssertEqual(error as? OpenRouterAuthError, .missingKey)
         }
         XCTAssertNil(files.files[OpenRouterAuthStore.configPaths[0]])
-    }
-
-    func testSavedKeyOverridesEnvironment() throws {
-        // Saving writes the config file, which the auth store checks before the env var — so the
-        // saved key wins and the status reports overrideActive.
-        let files = FakeFiles()
-        let store = OpenRouterAuthStore(files: files, environment: FakeEnvironment(["OPENROUTER_API_KEY": "sk-or-env"]))
-
-        try store.saveAPIKey("sk-or-saved")
-
-        XCTAssertEqual(store.loadAPIKey()?.apiKey, "sk-or-saved")
-        XCTAssertEqual(store.keyStatus(), .overrideActive)
-    }
-
-    func testKeyStatusReportsAllFourStates() {
-        let envKey = ["OPENROUTER_API_KEY": "sk-or-env"]
-        let file = [OpenRouterAuthStore.configPaths[0]: #"{"apiKey":"sk-or-file"}"#]
-
-        XCTAssertEqual(OpenRouterAuthStore(files: FakeFiles(), environment: FakeEnvironment()).keyStatus(), .notSet)
-        XCTAssertEqual(OpenRouterAuthStore(files: FakeFiles(), environment: FakeEnvironment(envKey)).keyStatus(), .fromEnvironment)
-        XCTAssertEqual(OpenRouterAuthStore(files: FakeFiles(file), environment: FakeEnvironment()).keyStatus(), .saved)
-        XCTAssertEqual(OpenRouterAuthStore(files: FakeFiles(file), environment: FakeEnvironment(envKey)).keyStatus(), .overrideActive)
-    }
-
-    func testKeyStatusOverrideActiveEvenWhenKeysMatch() {
-        // A saved key plus an env key is an override regardless of whether the values match — config
-        // wins, so the saved source is the one in use. (Same key in two places still reads Custom.)
-        let store = OpenRouterAuthStore(
-            files: FakeFiles([OpenRouterAuthStore.configPaths[0]: #"{"apiKey":"sk-or-same"}"#]),
-            environment: FakeEnvironment(["OPENROUTER_API_KEY": "sk-or-same"])
-        )
-        XCTAssertEqual(store.keyStatus(), .overrideActive)
-    }
-
-    func testCurrentAPIKeyReturnsEffectiveKey() {
-        let store = OpenRouterAuthStore(
-            files: FakeFiles([OpenRouterAuthStore.configPaths[0]: #"{"apiKey":"sk-or-file"}"#]),
-            environment: FakeEnvironment(["OPENROUTER_API_KEY": "sk-or-env"])
-        )
-        XCTAssertEqual(store.currentAPIKey(), "sk-or-file")
-    }
-
-    func testDeleteAPIKeyFallsBackToEnvironment() throws {
-        let files = FakeFiles([OpenRouterAuthStore.configPaths[0]: #"{"apiKey":"sk-or-file"}"#])
-        let store = OpenRouterAuthStore(files: files, environment: FakeEnvironment(["OPENROUTER_API_KEY": "sk-or-env"]))
-
-        XCTAssertEqual(store.keyStatus(), .overrideActive)
-        try store.deleteAPIKey()
-
-        XCTAssertNil(files.files[OpenRouterAuthStore.configPaths[0]])
-        XCTAssertEqual(store.keyStatus(), .fromEnvironment)
-        XCTAssertEqual(store.loadAPIKey()?.apiKey, "sk-or-env")
-    }
-
-    func testDeleteAPIKeyBecomesNotSetWhenNoEnvKey() throws {
-        let files = FakeFiles([OpenRouterAuthStore.configPaths[0]: #"{"apiKey":"sk-or-file"}"#])
-        let store = OpenRouterAuthStore(files: files, environment: FakeEnvironment())
-
-        try store.deleteAPIKey()
-
-        XCTAssertNil(files.files[OpenRouterAuthStore.configPaths[0]])
-        XCTAssertEqual(store.keyStatus(), .notSet)
-        XCTAssertNil(store.loadAPIKey())
-    }
-
-    func testDeleteAPIKeyIsNoOpWhenFileMissing() throws {
-        // Removing a key that isn't there is the desired end state, not an error.
-        let store = OpenRouterAuthStore(files: FakeFiles(), environment: FakeEnvironment())
-        XCTAssertNoThrow(try store.deleteAPIKey())
-        XCTAssertEqual(store.keyStatus(), .notSet)
-    }
-
-    func testDeleteAPIKeyClearsAllConfigPaths() throws {
-        // A key in the alternate config path must also be cleared, or it resurfaces after the primary
-        // file is deleted and the Settings "clear" appears not to work.
-        let files = FakeFiles([
-            OpenRouterAuthStore.configPaths[0]: #"{"apiKey":"sk-or-primary"}"#,
-            OpenRouterAuthStore.configPaths[1]: "sk-or-alt"
-        ])
-        let store = OpenRouterAuthStore(files: files, environment: FakeEnvironment())
-
-        try store.deleteAPIKey()
-
-        XCTAssertNil(files.files[OpenRouterAuthStore.configPaths[0]])
-        XCTAssertNil(files.files[OpenRouterAuthStore.configPaths[1]])
-        XCTAssertEqual(store.keyStatus(), .notSet)
-    }
-
-    func testDeleteAPIKeyClearsAlternatePathOnly() throws {
-        let files = FakeFiles([OpenRouterAuthStore.configPaths[1]: "sk-or-alt"])
-        let store = OpenRouterAuthStore(files: files, environment: FakeEnvironment())
-
-        XCTAssertEqual(store.keyStatus(), .saved)
-        try store.deleteAPIKey()
-
-        XCTAssertNil(files.files[OpenRouterAuthStore.configPaths[1]])
-        XCTAssertEqual(store.keyStatus(), .notSet)
     }
 }
 

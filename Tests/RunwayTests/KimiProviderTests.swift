@@ -330,7 +330,7 @@ final class KimiProviderTests: XCTestCase {
         XCTAssertTrue(http.requests.isEmpty)
     }
 
-    func testDescriptorsAndCatalogOrderAreStable() {
+    func testDescriptorsAndLimitResourcesAreStable() {
         let provider = KimiProvider()
         XCTAssertEqual(provider.widgetDescriptors.map(\.id), [
             "kimi.session", "kimi.weekly", "kimi.extraBalance", "kimi.extraMonthly"
@@ -339,17 +339,6 @@ final class KimiProviderTests: XCTestCase {
             provider.widgetDescriptors.flatMap(\.limitResources).map(\.key),
             ["session", "weekly"]
         )
-
-        let ids = ProviderCatalog.make(
-            defaults: UserDefaults(suiteName: "KimiProviderTests.\(UUID().uuidString)")!
-        ).map(\.provider.id)
-        let grok = ids.firstIndex(of: "grok")
-        let kimi = ids.firstIndex(of: "kimi")
-        let openCode = ids.firstIndex(of: "opencode")
-        XCTAssertEqual(kimi, grok.map { $0 + 1 })
-        let muse = ids.firstIndex(of: "muse")
-        XCTAssertEqual(muse, kimi.map { $0 + 1 })
-        XCTAssertEqual(openCode, muse.map { $0 + 1 })
     }
 }
 

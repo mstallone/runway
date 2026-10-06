@@ -218,13 +218,6 @@ final class GrokProviderTests: XCTestCase {
         XCTAssertEqual(remainingResets(snapshot.lines)?.expiries, [])
     }
 
-    func testRateLimitResetsDescriptorOptsIntoTheExpiryPopover() {
-        let descriptor = GrokProvider().widgetDescriptors.first { $0.id == "grok.rateLimitResets" }
-        XCTAssertEqual(descriptor?.sample.showsResetExpiries, true)
-        XCTAssertEqual(descriptor?.sample.isUsagePeriod, false)
-        XCTAssertEqual(descriptor?.sample.traySuffix, "resets")
-    }
-
     func testCreditsFetchFailureFailsTheProvider() async {
         // The credits config is the provider's only remote meter now — its failure is a provider
         // error, not a partial degrade.

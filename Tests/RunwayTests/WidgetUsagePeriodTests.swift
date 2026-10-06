@@ -34,10 +34,11 @@ final class WidgetUsagePeriodTests: XCTestCase {
         XCTAssertEqual(descriptors.first { $0.id == "codex.today" }?.sample.isUsagePeriod, true)
     }
 
-    func testGrokRateLimitResetsIsNotAUsagePeriod() {
+    func testGrokRateLimitResetsIsAResetExpiryRowNotAUsagePeriod() {
         let descriptors = GrokProvider().widgetDescriptors
         XCTAssertEqual(descriptors.first { $0.id == "grok.rateLimitResets" }?.sample.isUsagePeriod, false)
         XCTAssertEqual(descriptors.first { $0.id == "grok.rateLimitResets" }?.sample.showsResetExpiries, true)
+        XCTAssertEqual(descriptors.first { $0.id == "grok.rateLimitResets" }?.sample.traySuffix, "resets")
     }
 
     /// A depleted balance (every value zero, not a usage period) is depleted, not idle: no "No usage

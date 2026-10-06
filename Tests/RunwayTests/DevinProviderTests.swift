@@ -190,14 +190,7 @@ final class DevinProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertEqual(snapshot.lines.first?.label, "Error")
-        XCTAssertEqual(errorText(snapshot.lines), DevinAuthError.notLoggedIn.localizedDescription)
-    }
-
-    private func errorText(_ lines: [MetricLine]) -> String? {
-        guard case .badge(_, let text, _, _) = lines.first else {
-            return nil
-        }
-        return text
+        XCTAssertEqual(snapshot.errorText, DevinAuthError.notLoggedIn.localizedDescription)
     }
 }
 
