@@ -55,9 +55,9 @@ final class CodexResetClaimService {
     /// Production wiring: shares the Codex provider's auth store and usage client, so credential
     /// selection can't drift from `refresh()` — every usable candidate in the provider's order (files
     /// first, then keychain), and `claim` falls back across them on an auth rejection the same way the
-    /// provider's probe does. No token refresh here: the claim runs seconds after a successful usage
-    /// fetch (which rotates tokens back to disk), so a candidate that still fails auth is genuinely
-    /// dead and the next one is the right move.
+    /// provider's probe does. No token refresh here: Runway never rotates Codex tokens, and the claim
+    /// runs seconds after a successful usage fetch, so a candidate that still fails auth is
+    /// genuinely dead and the next one is the right move.
     convenience init(
         authStore: CodexAuthStore,
         usageClient: CodexUsageClient,

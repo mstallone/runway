@@ -54,14 +54,10 @@ struct WidgetRowView: View {
 
     var body: some View {
         // A row with a concrete reset date derives time-sensitive state (reset countdown, pace marker,
-        // "Runs out in …") from the current clock, so it re-renders on a 30s tick instead of waiting
-        // for the next data refresh. The tick mounts only while the popover is visible (the same
-        // structural gate `PopoverFooter` and `VisibilityGatedTimeline` use): the panel is hidden
-        // with `orderOut`, which keeps this tree alive, and every reset-bearing row would otherwise
-        // hold a scattered-phase 30s timer forever. Reopening remounts the timeline, so the first
-        // render carries a fresh clock. Rows without a reset date are static: they never read the
-        // clock, so they never subscribe to its ticks. Dated rows subscribe via this read and
-        // re-render every half minute.
+        // "Runs out in …") from the shared clock (see `clock` above), so it re-renders on its 30s
+        // tick instead of waiting for the next data refresh. Rows without a reset date are static:
+        // they never read the clock, so they never subscribe to its ticks. Dated rows subscribe
+        // via this read and re-render every half minute.
         let _ = (data.resetsAt != nil || !data.expiriesAt.isEmpty) ? clock?.halfMinute : nil
         rowContent
         .frame(maxWidth: .infinity, alignment: .leading)

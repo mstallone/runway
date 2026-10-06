@@ -25,8 +25,8 @@ struct ProviderMetrics: Identifiable {
 }
 
 /// One row in the Customize provider list (L1): the provider plus the derived bits the row renders —
-/// whether it's enabled (the master toggle + Active/Inactive label), how many metrics it supports
-/// (the badge), and how many are pinned. Drives `CustomizeProviderListView`. Unlike `ProviderMetrics`,
+/// whether it's enabled (the master toggle + Active/Inactive label) and how many metrics it supports
+/// (the badge). Drives `CustomizeProviderListView`. Unlike `ProviderMetrics`,
 /// this includes disabled providers so they stay visible in the list.
 struct ProviderRow: Identifiable {
     let provider: Provider

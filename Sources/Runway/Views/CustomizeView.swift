@@ -3,7 +3,7 @@ import SwiftUI
 /// The Customize screen is a two-level master/detail: the provider list (L1) or, when
 /// `layout.customizeProviderID` is set, that provider's detail (L2). The two slide horizontally — L2
 /// enters from the trailing edge, L1 returns from the leading edge — on the same spring. The back
-/// chevron (handled in `DashboardView`) is context-aware: L2 → L1, L1 → dashboard.
+/// chevron (`PopoverTopBar.customizeBack`) is context-aware: L2 → L1, L1 → dashboard.
 ///
 /// Reordering uses `DragGesture` plus local row geometry, kept inside the menu-bar popover instead
 /// of SwiftUI's pasteboard-backed drag/drop (unreliable here). The router owns the scroll view and

@@ -16,14 +16,13 @@ struct MenuBarStripPresentation {
 }
 
 /// Renders the Text-style menu-bar strip (`MenuBarContent`) into a template `NSImage` for the
-/// `MenuBarExtra` label: provider mark + bare value for a single metric, or a tight labeled stack for
-/// two. Black-on-clear so macOS tints it for light/dark; sized to its natural width. The image is built
-/// outside the `label:` view builder (an `ImageRenderer` inline there throws obscure errors).
+/// status item's button: provider mark + bare value for a single metric, or a tight labeled stack
+/// for two. Black-on-clear so macOS tints it for light/dark; sized to its natural width.
 @MainActor
 enum MenuBarStripRenderer {
-    /// Last render, memoized on (content, style). The label view re-evaluates on every snapshot
+    /// Last render, memoized on (content, style). The status item is re-evaluated on every snapshot
     /// write — several times per refresh pass — but the strip's visible content rarely changes.
-    /// Returning the same `NSImage` instance lets SwiftUI skip the status-item update, and keeps
+    /// Returning the same `NSImage` instance lets the caller skip the status-item update, and keeps
     /// `ImageRenderer` (which retains a little memory per run on macOS) to actual visual changes.
     private static var lastRender: (
         content: MenuBarContent,

@@ -190,7 +190,7 @@ final class StatusItemOcclusionMonitor {
 /// Hosting view for the pill that accepts first-mouse: another app is almost always active (this
 /// is an accessory app), and a stock `NSHostingView` in a nonactivating panel can swallow the first
 /// click as window activation before the SwiftUI action runs — the same AppKit behavior
-/// `NativeMenuButton` overrides for the footer's gear menu.
+/// `NativeMenuButton` overrides for the Total Spend metric menu.
 private final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }

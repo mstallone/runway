@@ -69,9 +69,9 @@ struct ClaudeCredentialState: Hashable, Sendable {
 
     /// A token-free, log-safe one-line descriptor for diagnosing auth failures from a default-level
     /// (info) log: the source kind plus whether its access token is already expired (`expiresAt`,
-    /// epoch ms, vs `now`). NEVER includes any token value or the credential blob. Runway never
-    /// refreshes a Claude token, so `expired=yes` explains exactly why a candidate was skipped and
-    /// the login-renewal notice shown.
+    /// epoch ms, vs `now`). NEVER includes any token value or the credential blob. An expired
+    /// candidate is used only if guarded renewal can rotate it (see `ClaudeTokenRenewal`), so
+    /// `expired=yes` explains why a candidate was skipped and the login-renewal notice shown.
     func diagnosticsLabel(now: Date) -> String {
         let expired: String
         if let expiresAt = oauth.expiresAt {
@@ -182,8 +182,8 @@ enum ClaudeAuthError: Error, LocalizedError, Equatable {
 
     /// The renewal cases where Runway still has a login on file but its token has lapsed. The provider
     /// degrades these to a header warning over the local spend tiles instead of a hard error card:
-    /// Runway is a read-only consumer of Claude's credentials, so the fix is always "open the owning
-    /// Claude app", never a Runway-side action.
+    /// by the time one surfaces, guarded renewal has already declined or failed, so the fix is to
+    /// open the owning Claude app.
     var isLoginRenewal: Bool {
         switch self {
         case .loginRenewalRequired, .desktopTokenExpired:
@@ -566,6 +566,11 @@ struct ClaudeAuthStore: Sendable {
         return parsed
     }
 
+    private struct StoredCandidateLoad {
+        var candidates: [ClaudeCredentialState]
+        var keychainAccessStatus: ClaudeKeychainAccessStatus
+    }
+
     /// Keychain and file credentials in fixed keychain-before-file order. The keychain is Claude Code's
     /// source of truth on macOS — recent versions keep the current session there and can leave a stale
     /// `~/.claude/.credentials.json` behind — so it must win when valid; the file is only a fallback
@@ -574,11 +579,6 @@ struct ClaudeAuthStore: Sendable {
     /// up (#687) WITHOUT letting a stale file outrank the live keychain just because its token carries a
     /// later expiry (the #738 regression from ranking purely by expiry). The source kind (never the
     /// token) is logged so a "locked out" report can be diagnosed from which source was chosen.
-    private struct StoredCandidateLoad {
-        var candidates: [ClaudeCredentialState]
-        var keychainAccessStatus: ClaudeKeychainAccessStatus
-    }
-
     private func orderedStoredCandidates(allowKeychainInteraction: Bool) -> StoredCandidateLoad {
         var candidates: [ClaudeCredentialState] = []
         let keychainLoad = loadKeychainCredentials(allowInteraction: allowKeychainInteraction)

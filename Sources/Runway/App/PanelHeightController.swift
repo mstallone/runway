@@ -126,8 +126,8 @@ final class PanelHeightController {
         // animates, so per-frame values only leave the range during spring overshoot — and SwiftUI
         // renders those raw values. Re-clamping here would pin the backdrop at the boundary while the
         // panel dips past it (visible at a target sitting exactly on the 200pt minimum), splitting the
-        // two bottom edges. Past the maximum both sides clip at the window bounds — the backdrop via
-        // its below-required height constraint, the panel via the host layer mask — so they agree there.
+        // two bottom edges. Past the maximum both sides clip at the window bounds — the backdrop
+        // because its frame runs past the window, the panel via the host layer mask — so they agree there.
         guard abs(visualHeight - rawHeight) > 0.5 else { return }
         visualHeight = rawHeight
         onVisualHeightChange?(rawHeight)
@@ -145,8 +145,8 @@ final class PanelHeightController {
             guard !Task.isCancelled, let self else { return }
             self.isMorphing = false
             self.panel.invalidateShadow()
-            // Saves for hidden settles too: the collapse-on-close re-measure settles after the panel
-            // is ordered out, and its save is what makes the next open remember the collapsed height.
+            // A close cancels this timer (`finishClosing`); the collapse-on-close re-measure is
+            // saved by `saveAfterHiddenSettle` instead.
             self.saveHeight(self.visualHeight, for: self.currentScreen())
         }
     }

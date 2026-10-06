@@ -164,8 +164,8 @@ final class CopilotProvider: ProviderRuntime {
                 case .empty(let usageLines, _):
                     // A month-start zero is self-correcting — any real usage under this login shows
                     // up in the org report on the next refresh — so an unverified zero renders
-                    // without a warning; `enterpriseUnverified` still steers the credential
-                    // aggregation above.
+                    // without a warning; the lookup's `enterpriseVerified` flag still steers the
+                    // credential aggregation above.
                     lines += usageLines
                 case .managed:
                     // An unusable GitHub CLI credential is the likely reason billing could not

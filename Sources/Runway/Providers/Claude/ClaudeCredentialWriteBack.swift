@@ -16,9 +16,9 @@ struct ClaudeCredentialWriteBack: Sendable {
     var stdinRunner: any StdinProcessRunning = SystemProcessRunner()
     var helperIsSilentlyAuthorized: @Sendable (String, String?) -> Bool = PartitionWallFallbackReader.helperIsSilentlyAuthorized
 
-    /// Whether SOME write path to this item is verified before a refresh token is consumed: the
-    /// helper's silent authorization is checkable up front and also covers the in-process path's
-    /// partition-wall failure mode, so it is the precondition renewal requires.
+    /// Whether the write path to this item is verified before a refresh token is consumed: the
+    /// security helper is the only writer (see `writeKeychain`), and its silent authorization is
+    /// checkable up front, so it is the precondition renewal requires.
     func canWriteKeychain(service: String, account: String) -> Bool {
         helperIsSilentlyAuthorized(service, account)
     }

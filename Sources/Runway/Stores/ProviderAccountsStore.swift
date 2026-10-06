@@ -36,8 +36,7 @@ enum ProviderAccountID {
 
 /// One place an account is signed in. "Default" is a badge on a source (`holdsDefaultSource`), never
 /// a key: it marks who currently occupies the default home, and it never drives ids or sort order —
-/// a swap re-points source edges, cards don't move. Phase 1 only observes the default home; later
-/// phases add config dirs, cswap vault slots, Codex homes, and Desktop logins as more kinds.
+/// a swap re-points source edges, cards don't move.
 struct ProviderAccountSource: Codable, Equatable, Sendable {
     enum Kind: String, Codable, Sendable {
         /// The provider's standard home for this machine (`~/.claude`, `~/.codex`, env override).
@@ -139,8 +138,8 @@ final class ProviderAccountsStore {
         var sources: [ProviderAccountSource]
     }
 
-    /// Merges this launch's observations into the persisted set. Phase 1 semantics: an observation
-    /// updates its account's label and sources, or creates the record; the first account of a family
+    /// Merges this launch's observations into the persisted set: an observation updates its
+    /// account's label and sources, or creates the record; the first account of a family
     /// gets the bare family id, a later one mints `family@<hash8>`. Records never move or vanish here
     /// — an account that went unobserved (logged out, unreadable identity) is simply left as it was,
     /// except that a newly observed default-home holder takes the default badge off every sibling.

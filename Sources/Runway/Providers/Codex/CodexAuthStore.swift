@@ -129,8 +129,8 @@ enum CodexKeychainLoad {
 
 struct CodexAuthStore: Sendable {
     static let keychainService = "Codex Auth"
-    /// Refresh once the access token is within this window of its JWT `exp` — the same 5-minute slack
-    /// the `codex` CLI itself uses, so Runway rotates on the same schedule rather than guessing.
+    /// Re-read the live store once the access token is within this window of its JWT `exp` — the same
+    /// 5-minute slack the `codex` CLI uses to rotate, so a fresh token is likely already there.
     static let accessTokenRefreshWindow: TimeInterval = 5 * 60
     private static let authFile = "auth.json"
     private static let defaultAuthHomes = ["~/.config/codex", "~/.codex"]
@@ -163,7 +163,7 @@ struct CodexAuthStore: Sendable {
     }
 
     /// Codex CLI keyring account for one home: `cli|` plus the first 16 hex characters of the
-    /// canonical home's SHA-256. This lets every read/write target one item without enumerating the
+    /// canonical home's SHA-256. This lets every read target one item without enumerating the
     /// shared service or borrowing another home's credential.
     static func keychainAccountName(forHome path: String) -> String {
         let canonical = canonicalHome(path)
@@ -325,9 +325,8 @@ struct CodexAuthStore: Sendable {
     }
 
     /// Reload exactly the source that produced a state. A standard store can know several homes, so
-    /// repeating its normal precedence walk during token rotation could jump accounts.
-    /// Re-reads the state's own credential store mid-refresh (e.g. before a rotation). Keychain
-    /// reloads are prompt-free by construction: the item was already read to get here, so the
+    /// repeating its normal precedence walk could jump accounts. Keychain reloads are prompt-free
+    /// by construction: the item was already read to get here, so the
     /// non-interactive in-process read serves it from the coordinator without touching securityd's
     /// approval machinery again.
     func reload(_ state: CodexAuthState) -> CodexAuthState? {
@@ -377,15 +376,13 @@ struct CodexAuthStore: Sendable {
         return recordResolvedIdentity(state.auth, home: home)?.bindingRecorded == true
     }
 
-    /// Whether the access token should be proactively refreshed.
+    /// Whether the credential is at (or within `accessTokenRefreshWindow` of) its expiry — the
+    /// trigger for re-reading the live store, where the `codex` CLI may already have rotated a
+    /// fresh token. Runway never rotates it itself.
     ///
-    /// Prefers the access token's own JWT `exp` — refresh only when it is at (or within
-    /// `accessTokenRefreshWindow` of) expiry, mirroring the `codex` CLI. The hardcoded 8-day
-    /// wall-clock age is only a fallback for tokens whose `exp` we can't read; on its own it forced a
-    /// refresh while the access token was still valid, tripping `refresh_token_reused` (issue #516).
-    /// A brand-new login with no `last_refresh` and no readable `exp` does NOT need a refresh.
-    /// Whether the credential is at (or within a slack window of) its expiry — the trigger for
-    /// re-reading the live store, where the `codex` CLI may already have rotated a fresh token.
+    /// Prefers the access token's own JWT `exp`. The 8-day wall-clock age is only a fallback for
+    /// tokens whose `exp` can't be read, and a brand-new login with no `last_refresh` and no
+    /// readable `exp` does not count as due.
     func needsRefresh(_ auth: CodexAuth) -> Bool {
         if let accessToken = auth.tokens?.accessToken,
            let expiresAt = accessTokenExpiresAt(accessToken) {
