@@ -268,7 +268,8 @@ final class SettingsMigratorTests: XCTestCase {
         XCTAssertTrue((defaults.persistentDomain(forName: telemetryDomain) ?? [:]).isEmpty)
         XCTAssertEqual(defaults.string(forKey: "openusage.layout.v1"), "custom")
 
-        // The cleanup is safe to retry after an interrupted launch.
+        // The cleanup is safe to retry after an interrupted launch that left data behind.
+        telemetryDefaults.set("install-uuid", forKey: "installID")
         defaults.set(3, forKey: SettingsMigrator.schemaVersionKey)
         XCTAssertEqual(SettingsMigrator.migrate(defaults: defaults, domainName: domain), SettingsSchema.current)
         XCTAssertTrue((defaults.persistentDomain(forName: telemetryDomain) ?? [:]).isEmpty)

@@ -90,9 +90,10 @@ final class AppLogTests: XCTestCase {
         XCTAssertFalse(contents.contains("sk-1234567890abcdefghij"), contents)
     }
 
-    func testCorruptSnapshotCacheWritesWarningInsteadOfDroppingSilently() throws {
-        // Dropping every provider's cached snapshot at once feeds a refresh storm, so an undecodable
-        // blob must be loud. A missing blob (first launch) stays silent.
+    func testCorruptSnapshotCacheRecoversToEmptyWithAWarning() throws {
+        // A non-decodable blob (post-upgrade schema drift, a half-written write, a manual `defaults`
+        // edit) recovers to an empty cache. Dropping every provider's snapshot at once feeds a refresh
+        // storm, so it must be loud. A missing blob (first launch) stays silent.
         AppLog.reloadLevel(.info)
         let defaultsName = "RunwayTests.AppLog.corrupt-cache.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
@@ -102,7 +103,9 @@ final class AppLogTests: XCTestCase {
         XCTAssertFalse(try fileContents().contains("cache decode failed"))
 
         defaults.set(Data("not a valid snapshot payload".utf8), forKey: "snapshots")
-        _ = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots").loadSnapshots(providerIDs: ["test"])
+        let loaded = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
+            .loadSnapshots(providerIDs: ["test"])
+        XCTAssertTrue(loaded.isEmpty)
         let contents = try fileContents()
         XCTAssertTrue(contents.contains("[WARN] [cache] cache decode failed, dropping stored snapshots"), contents)
     }

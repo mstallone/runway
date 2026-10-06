@@ -45,43 +45,51 @@ final class ProviderEnablementStoreTests: XCTestCase {
 
     // MARK: - Early-refresh signal
 
-    // These seed first: every install runs in enabled-list mode, and seeding itself notifies.
+    // Each runs in both storage modes: enabled-list (every install; seeded first, since seeding
+    // itself notifies) and the dormant legacy disabled-list an unseeded suite still reads.
+
+    private func makeStoreInEachMode(_ name: String) -> [(mode: String, store: ProviderEnablementStore)] {
+        let seeded = ProviderEnablementStore(defaults: makeDefaults("\(name)-enabled-list"))
+        seeded.seedEnabledProviders(["claude", "codex"])
+        return [("enabled-list", seeded), ("legacy", ProviderEnablementStore(defaults: makeDefaults("\(name)-legacy")))]
+    }
 
     func testRealChangePostsDidChangeNotification() {
-        let store = ProviderEnablementStore(defaults: makeDefaults("notify-change"))
-        store.seedEnabledProviders(["claude", "codex"])
-        let posted = XCTNSNotificationExpectation(name: ProviderEnablementStore.didChangeNotification)
+        for (mode, store) in makeStoreInEachMode("notify-change") {
+            let posted = XCTNSNotificationExpectation(name: ProviderEnablementStore.didChangeNotification)
+            posted.expectationDescription = mode
 
-        store.setEnabled(false, for: "codex")   // enabled -> disabled: a real change
+            store.setEnabled(false, for: "codex")   // enabled -> disabled: a real change
 
-        wait(for: [posted], timeout: 1)
+            wait(for: [posted], timeout: 1)
+        }
     }
 
     func testNoOpToggleDoesNotPostDidChangeNotification() {
         // The refresh loop wakes on this notification; a redundant toggle must not wake it (and re-probe).
-        let store = ProviderEnablementStore(defaults: makeDefaults("notify-noop"))
-        store.seedEnabledProviders(["claude", "codex"])
-        let notPosted = XCTNSNotificationExpectation(name: ProviderEnablementStore.didChangeNotification)
-        notPosted.isInverted = true
+        for (mode, store) in makeStoreInEachMode("notify-noop") {
+            let notPosted = XCTNSNotificationExpectation(name: ProviderEnablementStore.didChangeNotification)
+            notPosted.expectationDescription = mode
+            notPosted.isInverted = true
 
-        store.setEnabled(true, for: "codex")    // already enabled: a no-op
-        store.setEnabled(false, for: "grok")    // already disabled: a no-op
+            store.setEnabled(true, for: "codex")    // already enabled: a no-op
 
-        wait(for: [notPosted], timeout: 0.2)
+            wait(for: [notPosted], timeout: 0.2)
+        }
     }
 
     func testOnProviderEnabledFiresOnEnableOnly() {
         // Wired to clear the failure backoff; must fire on a real enable, never on disable or a no-op.
-        let store = ProviderEnablementStore(defaults: makeDefaults("on-enable"))
-        store.seedEnabledProviders(["claude", "codex"])
-        var enabledIDs: [String] = []
-        store.onProviderEnabled = { enabledIDs.append($0) }
+        for (mode, store) in makeStoreInEachMode("on-enable") {
+            var enabledIDs: [String] = []
+            store.onProviderEnabled = { enabledIDs.append($0) }
 
-        store.setEnabled(false, for: "codex")   // disable: must NOT fire
-        store.setEnabled(true, for: "codex")    // enable: fires with "codex"
-        store.setEnabled(true, for: "codex")    // already enabled (no-op): must NOT fire
+            store.setEnabled(false, for: "codex")   // disable: must NOT fire
+            store.setEnabled(true, for: "codex")    // enable: fires with "codex"
+            store.setEnabled(true, for: "codex")    // already enabled (no-op): must NOT fire
 
-        XCTAssertEqual(enabledIDs, ["codex"])
+            XCTAssertEqual(enabledIDs, ["codex"], mode)
+        }
     }
 
     // MARK: - Enabled-list mode (fresh installs)

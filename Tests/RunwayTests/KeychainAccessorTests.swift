@@ -88,12 +88,20 @@ final class KeychainAccessorTests: XCTestCase {
         super.tearDown()
     }
 
-    func testMissingItemReadsNilWithoutThrowing() throws {
-        // The plain throwing read reports "no credential stored" as nil, not as an error — and it is
-        // prompt-free: this runs with no approval dialog possible.
-        let accessor = SecurityKeychainAccessor()
+    func testMissingItemReadsNilAndAnUnreadableOneThrows() throws {
+        // The plain throwing read must keep "no credential stored" (nil) apart from "couldn't be
+        // read" (throw) — collapsing them is how a locked keychain gets mislabeled "not signed in".
+        func accessor(answering status: OSStatus) -> SecurityKeychainAccessor {
+            SecurityKeychainAccessor(
+                coordinator: KeychainReadCoordinator(),
+                copyMatching: { _, _ in status },
+                setUserInteractionAllowed: { _ in errSecSuccess },
+                partitionWallFallback: { _, _ in nil }
+            )
+        }
 
-        XCTAssertNil(try accessor.readGenericPassword(service: "RunwayTests.absent.\(UUID().uuidString)"))
+        XCTAssertNil(try accessor(answering: errSecItemNotFound).readGenericPassword(service: "service"))
+        XCTAssertThrowsError(try accessor(answering: errSecAuthFailed).readGenericPassword(service: "service"))
     }
 
     func testQuietAutomaticReadReportsAMissingItemAndRestoresTheUISwitch() {
