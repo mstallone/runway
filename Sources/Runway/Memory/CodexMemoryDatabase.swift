@@ -24,7 +24,7 @@ struct CodexMemoryDatabase: Sendable {
     /// missing database and an empty table both come back as an empty list.
     func listDocuments(dbPath: String) throws -> [MemoryDocument] {
         let sql = """
-        SELECT thread_id, rollout_slug, generated_at, usage_count, last_usage \
+        SELECT thread_id, rollout_slug, generated_at, usage_count \
         FROM stage1_outputs ORDER BY generated_at DESC LIMIT 500
         """
         guard let json = try sqlite.queryJSONRows(path: dbPath, sql: sql) else { return [] }
@@ -72,7 +72,6 @@ struct CodexMemoryDatabase: Sendable {
         var rolloutSlug: String?
         var generatedAt: String?
         var usageCount: Int?
-        var lastUsage: String?
 
         enum CodingKeys: String, CodingKey {
             case threadID = "thread_id"
@@ -81,7 +80,6 @@ struct CodexMemoryDatabase: Sendable {
             case rolloutSlug = "rollout_slug"
             case generatedAt = "generated_at"
             case usageCount = "usage_count"
-            case lastUsage = "last_usage"
         }
 
         init(from decoder: Decoder) throws {
@@ -92,7 +90,6 @@ struct CodexMemoryDatabase: Sendable {
             rolloutSlug = try container.decodeIfPresent(String.self, forKey: .rolloutSlug)
             generatedAt = try Self.timestamp(container, .generatedAt)
             usageCount = try Self.count(container, .usageCount)
-            lastUsage = try Self.timestamp(container, .lastUsage)
         }
 
         /// TEXT passes through; numeric unix seconds (or milliseconds) become an ISO-8601 string

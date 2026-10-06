@@ -20,7 +20,6 @@ struct ProviderMetrics: Identifiable {
     let expandedMetrics: [WidgetDescriptor]
     var id: String { provider.id }
 
-
     /// Every supported metric in custom order (always-shown first, then expanded).
     var metrics: [WidgetDescriptor] { alwaysShownMetrics + expandedMetrics }
 }

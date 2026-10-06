@@ -74,10 +74,6 @@ struct CopilotOrgBillingClient: Sendable {
           viewer {
             enterprises(first: 100) {
               nodes { slug }
-              pageInfo {
-                hasNextPage
-                endCursor
-              }
             }
           }
         }
