@@ -87,7 +87,7 @@ A provider's **detail** has a back button and a Reset control in its top bar. Cl
 
 Drag-reorder also works on the dashboard: drag a row within its provider, drag it across the caret boundary while the card is open, or drag a provider header to reorder cards. On a Force Touch trackpad you feel a light tap each time the dragged item snaps into a new slot.
 
-For Claude, the default layout keeps Session, Weekly, and Fable always visible. Codex and Grok keep only Weekly always visible. Sakana Fugu and Muse keep Five-Hour Usage and Weekly Usage always visible. For Claude, Codex, Grok, Muse, and Sakana Fugu, Usage Trend and the Today, Yesterday, and Last 30 Days rows start on demand. Codex and Grok also put Rate Limit Resets there, above the usage history. Their other metrics start off. Other providers keep their core meters above the caret and secondary details on demand.
+For Claude, the default layout keeps Session, Weekly, and Fable always visible. Codex and Grok keep only Weekly always visible. Sakana Fugu and Muse keep Five-Hour Usage and Weekly Usage always visible. For Claude, Codex, Grok, Muse, and Sakana Fugu, Usage Trend and the Today, Yesterday, and Last 30 Days rows start on demand. Claude, Codex, and Grok also put Rate Limit Resets there, above the usage history. Their other metrics start off. Other providers keep their core meters above the caret and secondary details on demand.
 
 Press **⌘Z** to undo. It works anywhere in the popover and steps back through your recent customization changes one at a time: hiding or showing a metric, reordering metrics or providers, starring or unstarring, and moving a metric across the divider. Undo is per session and resetting clears it.
 

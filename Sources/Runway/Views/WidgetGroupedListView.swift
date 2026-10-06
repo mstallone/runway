@@ -336,7 +336,7 @@ struct WidgetGroupedListView: View {
             condensedTop: condensedTop
         )
             // Reset credits are the app's only provider write. Bind this row to the service for its
-            // exact Codex card; Grok and other non-Codex rows receive nil (read-only timeline).
+            // exact Codex card; Claude, Grok, and other non-Codex rows receive nil (read-only timeline).
             .environment(
                 \.codexResetClaim,
                 container.codexResetClaims.service(for: providerID)

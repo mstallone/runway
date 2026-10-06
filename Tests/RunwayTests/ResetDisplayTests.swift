@@ -53,7 +53,7 @@ final class ResetDisplayTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let period: TimeInterval = 5 * 3600
         var data = WidgetData(title: "Session", icon: .providerMark("codex"), kind: .percent, used: 0, limit: 100)
-        data.isSessionWindow = true   // descriptor opt-in the session tiles now carry
+        data.sessionStartSignal = .zeroUsage   // descriptor opt-in the session tiles carry
         data.periodDurationMs = Int(period * 1000)
         // Half the window has elapsed on the clock, so pace would otherwise project — but usage is
         // still zero, which is what "Not started" keys off (see `isFreshSessionWindow`).
@@ -70,24 +70,106 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertNil(data.paceTick(for: state, now: now))
     }
 
+    func testMissingResetDateSignalReadsNotStartedOnlyWithoutAReset() {
+        // The `.missingResetDate` signal (OpenCode): zero usage alone is not trusted, because a
+        // whole-percent API reads 0 for a started window under 1%. Only a missing reset is fresh.
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let period: TimeInterval = 5 * 3600
+        var data = WidgetData(title: "Session", icon: .providerMark("opencode"), kind: .percent, used: 0, limit: 100)
+        data.sessionStartSignal = .missingResetDate
+        data.periodDurationMs = Int(period * 1000)
+
+        data.resetsAt = now.addingTimeInterval(period - 30)
+        XCTAssertFalse(data.isFreshSessionWindow(now: now))
+        XCTAssertEqual(data.boundedTrailingText(now: now)?.hasPrefix("Resets in "), true)
+        XCTAssertTrue(data.hasResetLabel(now: now))
+
+        data.resetsAt = nil
+        XCTAssertTrue(data.isFreshSessionWindow(now: now))
+        XCTAssertEqual(data.boundedTrailingText(now: now), "Not started")
+        XCTAssertFalse(data.hasResetLabel(now: now))
+        XCTAssertEqual(data.resetTooltip(now: now), WidgetData.freshSessionTooltip)
+        XCTAssertEqual(data.meterState(now: now), .level(.normal))
+
+        // Usage with no reset is a started window with nothing to count down to, not a fresh one.
+        var started = WidgetData(title: "Session", icon: .providerMark("opencode"), kind: .percent, used: 4, limit: 100)
+        started.sessionStartSignal = .missingResetDate
+        XCTAssertFalse(started.isFreshSessionWindow(now: now))
+        XCTAssertNotEqual(started.boundedTrailingText(now: now), "Not started")
+    }
+
     @MainActor
-    func testSessionWindowFlagIsWiredOnExactlyTheShippingSessionDescriptors() {
-        // The test above hand-sets `isSessionWindow`, so it pins the mechanism but not the wiring.
+    func testZeroUsageSessionRowsKeepTheirNotStartedRule() throws {
+        // Pins the rows that did not change with the OpenCode fix, from each provider's real
+        // descriptor: zero usage with a reset ahead reads "Not started", a missing reset does not,
+        // and a passed reset falls back to the normal label.
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let descriptors = ([
+            ClaudeProvider(), AntigravityProvider(), KimiProvider(), MuseProvider(), SakanaProvider()
+        ] as [ProviderRuntime]).flatMap(\.widgetDescriptors)
+        for id in ["claude.session", "antigravity.geminiPro", "antigravity.claude",
+                   "kimi.session", "muse.session", "sakana.session"] {
+            let sample = try XCTUnwrap(descriptors.first { $0.id == id }, id).sample
+            let ahead = now.addingTimeInterval(4 * 3600)
+
+            XCTAssertEqual(liveRow(sample, used: 0, resetsAt: ahead).boundedTrailingText(now: now), "Not started", id)
+
+            let noReset = liveRow(sample, used: 0, resetsAt: nil)
+            XCTAssertFalse(noReset.isFreshSessionWindow(now: now), id)
+            XCTAssertNotEqual(noReset.boundedTrailingText(now: now), "Not started", id)
+
+            let passed = liveRow(sample, used: 0, resetsAt: now.addingTimeInterval(-60))
+            XCTAssertEqual(passed.boundedTrailingText(now: now), "Resets soon", id)
+
+            let used = liveRow(sample, used: 1, resetsAt: ahead)
+            XCTAssertEqual(used.boundedTrailingText(now: now)?.hasPrefix("Resets in "), true, id)
+        }
+
+        // Codex carries no signal: a zero-usage Session row keeps its countdown.
+        let codex = try XCTUnwrap(CodexProvider().widgetDescriptors.first { $0.id == "codex.session" }).sample
+        XCTAssertNil(codex.sessionStartSignal)
+        let codexRow = liveRow(codex, used: 0, resetsAt: now.addingTimeInterval(4 * 3600))
+        XCTAssertEqual(codexRow.boundedTrailingText(now: now)?.hasPrefix("Resets in "), true)
+    }
+
+    /// A session row with live numbers, carrying the descriptor sample's signal the way
+    /// `WidgetDataStore.resolve` does.
+    private func liveRow(_ sample: WidgetData, used: Double, resetsAt: Date?) -> WidgetData {
+        var data = WidgetData(title: sample.title, icon: sample.icon, kind: .percent, used: used, limit: 100)
+        data.sessionStartSignal = sample.sessionStartSignal
+        data.periodDurationMs = MetricPeriod.sessionMs
+        data.resetsAt = resetsAt
+        return data
+    }
+
+    @MainActor
+    func testSessionStartSignalIsWiredOnExactlyTheShippingSessionDescriptors() {
+        // The tests above hand-set `sessionStartSignal`, so they pin the mechanism but not the wiring.
         // This one pins the wiring: the descriptor opt-in replaced a model-level widget-ID set, so a
-        // provider dropping (or spuriously gaining) the flag must fail here, not ship silently.
+        // provider dropping (or spuriously gaining) the signal, or flipping which signal it uses, must
+        // fail here, not ship silently. OpenCode must stay on `.missingResetDate`: its whole-percent
+        // usage reads 0 for a started window under 1%.
         let providers: [ProviderRuntime] = [
             ClaudeProvider(), CodexProvider(), CursorProvider(),
             AntigravityProvider(), CopilotProvider(), DevinProvider(),
-            GrokProvider(), OpenRouterProvider(), ZAIProvider()
+            GrokProvider(), OpenRouterProvider(), ZAIProvider(),
+            KimiProvider(), MuseProvider(), OpenCodeProvider(), SakanaProvider()
         ]
         let descriptors = providers.flatMap(\.widgetDescriptors)
-        let sessionIDs = Set(descriptors.filter(\.sample.isSessionWindow).map(\.id))
-        XCTAssertEqual(sessionIDs, ["claude.session",
-                                    "antigravity.geminiPro", "antigravity.claude"])
+        let signals = Dictionary(uniqueKeysWithValues: descriptors.compactMap { descriptor in
+            descriptor.sample.sessionStartSignal.map { (descriptor.id, $0) }
+        })
+        XCTAssertEqual(signals, ["claude.session": .zeroUsage,
+                                 "antigravity.geminiPro": .zeroUsage,
+                                 "antigravity.claude": .zeroUsage,
+                                 "kimi.session": .zeroUsage,
+                                 "muse.session": .zeroUsage,
+                                 "sakana.session": .zeroUsage,
+                                 "opencode.session": .missingResetDate])
 
         // Same wiring pin for the menu-bar tray suffix (it replaced a title-string match).
         let suffixed = descriptors.filter { $0.sample.traySuffix != nil }
-        XCTAssertEqual(Set(suffixed.map(\.id)), ["codex.rateLimitResets", "grok.rateLimitResets"])
+        XCTAssertEqual(Set(suffixed.map(\.id)), ["claude.rateLimitResets", "codex.rateLimitResets", "grok.rateLimitResets"])
         XCTAssertTrue(suffixed.allSatisfy { $0.sample.traySuffix == "resets" })
     }
 

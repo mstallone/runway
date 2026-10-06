@@ -61,7 +61,7 @@ final class ClaudeProvider: ProviderRuntime {
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
-            .percent(id: "\(provider.id).session", provider: provider, title: "Session", isSessionWindow: true)
+            .percent(id: "\(provider.id).session", provider: provider, title: "Session", sessionStartSignal: .zeroUsage)
                 .exportingLimit("session", unit: "percent"),
             .percent(id: "\(provider.id).weekly", provider: provider, title: "Weekly")
                 .exportingLimit("weekly", unit: "percent"),
@@ -71,6 +71,10 @@ final class ClaudeProvider: ProviderRuntime {
                 .exportingLimit("fable", unit: "percent"),
             .boundedDollars(id: "\(provider.id).extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100, valueWord: "spent")
                 .exportingLimit("extraUsage", unit: "usd", source: .progressOrValue(kind: .dollars)),
+            // Anthropic's one-off usage-limit reset grants (`cedar_ember`), shown read-only in the same
+            // resets popover as Codex and Grok. Seeded On Demand and unpinned in `DefaultLayout`.
+            .values(id: "\(provider.id).rateLimitResets", provider: provider, title: "Rate Limit Resets", metricLabel: ClaudeUsageMapper.resetGrantsLabel, traySuffix: "resets", showsResetExpiries: true)
+                .exportingLimit("rateLimitResets", kind: .balance, unit: "resets", source: .value(kind: .count, label: "available")),
             .usageTrend(provider: provider)
                 .exportingHistory(
                     scope: .machineLocal,
@@ -482,6 +486,7 @@ final class ClaudeProvider: ProviderRuntime {
             subscriptionType: credentials.subscriptionType,
             rateLimitTier: credentials.rateLimitTier
         )
+        mapped.lines = ClaudeUsageMapper.droppingLapsedResetGrants(from: mapped.lines, now: now())
         mapped.lines.append(ClaudeUsageMapper.rateLimitedNote(retryAfterSeconds: retryAfterSeconds))
         mapped.warning = ClaudeUsageMapper.rateLimitedWarning(retryAfterSeconds: retryAfterSeconds)
         // Last-good usage is a clean fetch, so its action is `.refresh`; the rate-limit notice replacing

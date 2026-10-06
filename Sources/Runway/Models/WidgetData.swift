@@ -30,7 +30,7 @@ struct WidgetData: Hashable {
     /// always show the tick when a reset window exists; this toggle only adds it on blue.
     var alwaysShowPacing: Bool = false
     var resetsAt: Date?
-    /// Zero or more future expiry instants surfaced in the row's hover tooltip (Codex and Grok
+    /// Zero or more future expiry instants surfaced in the row's hover tooltip (Claude, Codex, and Grok
     /// rate-limit-reset credits — one entry per still-available credit). Empty for every other row.
     /// Kept as raw `Date`s so the tooltip formats live and follows the global relative/absolute mode
     /// (see `expiryTooltip`).
@@ -39,7 +39,7 @@ struct WidgetData: Hashable {
     /// column reveals the resets popover on hover (a timeline of each credit's expiry, or an empty
     /// state when none are available) and lights up like the spend rows — so it stays reachable even
     /// at "0 available", where `expiriesAt` is empty. Off for every other row. Codex can claim from
-    /// that popover; Grok is list-only.
+    /// that popover; Claude and Grok are list-only.
     var showsResetExpiries: Bool = false
     /// Names of models this period's spend used that the pricing sources can't price. Their usage is
     /// left out of the displayed total, so the period's figures can be understated.
@@ -83,10 +83,12 @@ struct WidgetData: Hashable {
     /// Rate Limit Resets → "2 resets"). Set by the descriptor, so renaming the tile can't silently drop
     /// the suffix — replaces matching on the tile's title. `nil` for tiles that show the bare value.
     var traySuffix: String?
-    /// Session-window meters (Claude/Antigravity 5-hour pools) that read "Not started" when unused.
-    /// Set by those descriptors and carried through `WidgetDataStore.resolve`, so the "fresh window"
-    /// treatment is a descriptor opt-in rather than a hardcoded widget-ID list in the model.
-    var isSessionWindow: Bool = false
+    /// Session-window meters (rolling 5-hour pools) that read "Not started" while the window hasn't
+    /// begun. The value names the signal that detects that state, because providers report an untouched
+    /// window differently (see `SessionStartSignal`). Set by those descriptors and carried through
+    /// `WidgetDataStore.resolve`, so the "fresh window" treatment is a descriptor opt-in rather than a
+    /// hardcoded widget-ID list in the model. `nil` for every other row.
+    var sessionStartSignal: SessionStartSignal?
     /// Dashboard-only replacement for an exhausted Always Visible weekly meter.
     var exhaustedWeeklyTitle: String? = nil
     /// Per-day points for a Usage Trend row (empty for every other tile). Set true `isChart` flags the

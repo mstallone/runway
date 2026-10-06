@@ -94,7 +94,7 @@ final class OpenCodeProvider: ProviderRuntime {
         // Go plan windows from `/zen/go/v1/usage` (Session/Weekly/Monthly + trend above the fold);
         // the spend tiles below sum combined OpenCode-hosted (Go + Zen) spend from local logs.
         [
-            .percent(id: "opencode.session", provider: provider, title: "Session", isSessionWindow: true)
+            .percent(id: "opencode.session", provider: provider, title: "Session", sessionStartSignal: .missingResetDate)
                 .exportingLimit("session", unit: "percent"),
             .percent(id: "opencode.weekly", provider: provider, title: "Weekly")
                 .exportingLimit("weekly", unit: "percent"),
@@ -179,8 +179,9 @@ final class OpenCodeProvider: ProviderRuntime {
                 // the card notice otherwise.
                 rejectedKey = true
             case .failed(let error):
-                // Anything else (network, server error, malformed body) is likely transient: fail
-                // the refresh so the store keeps the last good meters and tiles and retries soon.
+                // Anything else (network, server error, a malformed body, a rolling window without a
+                // usable reset time) is likely transient: fail the refresh so the store keeps the
+                // last good meters and tiles and retries soon.
                 return ProviderSnapshot.error(provider: provider, error: error)
             }
         }
@@ -271,6 +272,7 @@ final class OpenCodeProvider: ProviderRuntime {
 
     private func fetchGoMeters(apiKey: String) async -> GoFetch {
         let response: HTTPResponse
+        let requestedAt = now()
         do {
             response = try await usageClient.fetchUsage(apiKey: apiKey)
         } catch {
@@ -287,7 +289,7 @@ final class OpenCodeProvider: ProviderRuntime {
             return .failed(.requestFailed(response.statusCode))
         }
         do {
-            return .meters(try OpenCodeUsageMapper.meterLines(response))
+            return .meters(try OpenCodeUsageMapper.meterLines(response, requestedAt: requestedAt, receivedAt: now()))
         } catch let error as OpenCodeUsageError {
             return .failed(error)
         } catch {
