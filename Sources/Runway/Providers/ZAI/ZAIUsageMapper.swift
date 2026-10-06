@@ -129,9 +129,9 @@ enum ZAIUsageMapper {
         let unitMs: Double
         switch unit {
         case 3: unitMs = 60 * 60 * 1000
-        case 4: unitMs = 24 * 60 * 60 * 1000
-        case 6: unitMs = 7 * 24 * 60 * 60 * 1000
-        case 5: unitMs = 30 * 24 * 60 * 60 * 1000
+        case 4: unitMs = Double(MetricPeriod.dayMs)
+        case 6: unitMs = Double(MetricPeriod.weekMs)
+        case 5: unitMs = Double(MetricPeriod.monthMs)
         default: return nil
         }
         let duration = unitMs * number
@@ -141,7 +141,7 @@ enum ZAIUsageMapper {
         let periodMs = Int(duration)
         // Sub-daily → session; multi-day → weekly. The computed window rides along so the meter's
         // cadence reflects the payload instead of a hardcoded constant.
-        if periodMs < 24 * 60 * 60 * 1000 {
+        if periodMs < MetricPeriod.dayMs {
             return .session(periodMs: periodMs)
         }
         return .weekly(periodMs: periodMs)
