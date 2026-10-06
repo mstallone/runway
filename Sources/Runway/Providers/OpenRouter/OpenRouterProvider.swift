@@ -92,7 +92,7 @@ final class OpenRouterProvider: ProviderRuntime {
     private func load(_ call: () async throws -> HTTPResponse) async -> EndpointResult {
         do {
             let response = try await call()
-            if response.statusCode == 401 || response.statusCode == 403 { return .authFailure }
+            if ProviderAuthRetry.isAuthFailure(response) { return .authFailure }
             guard (200..<300).contains(response.statusCode) else {
                 return .failed(.requestFailed(response.statusCode))
             }

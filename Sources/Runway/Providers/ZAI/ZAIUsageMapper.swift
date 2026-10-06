@@ -16,7 +16,7 @@ enum ZAIUsageMapper {
     /// and weekly meters instead carry the *payload's* actual window (see `classifyTokenWindow`), so
     /// their cadence tracks the plan rather than a hardcoded assumption; this monthly constant is the
     /// web-search line's period and the widget-descriptor default.
-    static let monthlyPeriodMs = 30 * 24 * 60 * 60 * 1000
+    static let monthlyPeriodMs = MetricPeriod.monthMs
 
     /// `(plan, lines)` from the quota + subscription payloads. `subscription` may be `nil` (the
     /// request is best-effort) and the quota's `limits` array may carry one to three entries — only

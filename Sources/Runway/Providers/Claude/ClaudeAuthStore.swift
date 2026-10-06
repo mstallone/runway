@@ -789,6 +789,6 @@ struct ClaudeAuthStore: Sendable {
     private static func hashSuffix(_ value: String) -> String {
         let normalized = value.precomposedStringWithCanonicalMapping
         let digest = SHA256.hash(data: Data(normalized.utf8))
-        return String(digest.map { String(format: "%02x", $0) }.joined().prefix(8))
+        return String(digest.hexString.prefix(8))
     }
 }

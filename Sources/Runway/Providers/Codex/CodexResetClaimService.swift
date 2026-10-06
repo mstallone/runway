@@ -255,7 +255,7 @@ final class CodexResetClaimService {
                 AppLog.error(LogTag.plugin("codex"), "reset claim: consume request failed: \(error.localizedDescription)")
                 return (.failed, false)
             }
-            if response.statusCode == 401 || response.statusCode == 403 {
+            if ProviderAuthRetry.isAuthFailure(response) {
                 lastRejection = response.statusCode
                 continue
             }
@@ -298,7 +298,7 @@ final class CodexResetClaimService {
                 AppLog.error(LogTag.plugin("codex"), "reset claim: credit list fetch failed: \(error.localizedDescription)")
                 return .failed
             }
-            if list.statusCode == 401 || list.statusCode == 403 {
+            if ProviderAuthRetry.isAuthFailure(list) {
                 lastFailure = "credit list fetch rejected (\(list.statusCode))"
                 continue
             }
@@ -321,7 +321,7 @@ final class CodexResetClaimService {
         guard let credits = body["credits"] as? [[String: Any]] else { return nil }
         return credits.first { credit in
             if let status = credit["status"] as? String, status != "available" { return false }
-            guard let date = parseExpiry(credit["expires_at"]) else { return false }
+            guard let date = CodexUsageMapper.parseExpiry(credit["expires_at"]) else { return false }
             return abs(date.timeIntervalSince(expiry)) < 1
         }?["id"] as? String
     }
@@ -345,16 +345,6 @@ final class CodexResetClaimService {
         default:
             return .failed
         }
-    }
-
-    private static func parseExpiry(_ value: Any?) -> Date? {
-        if let string = value as? String, let date = RunwayISO8601.date(from: string) {
-            return date
-        }
-        if let seconds = ProviderParse.number(value) {
-            return Date(timeIntervalSince1970: seconds)
-        }
-        return nil
     }
 }
 

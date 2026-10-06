@@ -232,7 +232,7 @@ struct KimiAuthStore: Sendable {
         }
         let identity = #"{"oauthHost":\#(jsonQuoted(oauthHost)),"baseUrl":\#(jsonQuoted(apiBaseURL))}"#
         let digest = SHA256.hash(data: Data(identity.utf8))
-        let prefix = digest.prefix(8).map { String(format: "%02x", $0) }.joined()
+        let prefix = digest.prefix(8).hexString
         return "kimi-code-env-\(prefix)"
     }
 

@@ -52,7 +52,7 @@ enum CursorUsageSummaryMapper {
         }
 
         return CursorMappedUsage(
-            plan: planLabel(planName) ?? planLabel(summary?["membershipType"] as? String),
+            plan: CursorUsageMapper.planLabel(planName) ?? CursorUsageMapper.planLabel(summary?["membershipType"] as? String),
             lines: lines
         )
     }
@@ -239,12 +239,6 @@ enum CursorUsageSummaryMapper {
             resetsAt: requestStart?.addingTimeInterval(TimeInterval(CursorUsageMapper.billingPeriodMs) / 1000),
             periodDurationMs: CursorUsageMapper.billingPeriodMs
         )
-    }
-
-    private static func planLabel(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed.titleCased(separator: \.isWhitespace)
     }
 
     private struct BillingCycle {

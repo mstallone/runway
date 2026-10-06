@@ -116,7 +116,7 @@ final class CopilotProvider: ProviderRuntime {
         do {
             let response = try await usageClient.fetchUsage(token: token.value)
 
-            if response.statusCode == 401 || response.statusCode == 403 {
+            if ProviderAuthRetry.isAuthFailure(response) {
                 return ProviderSnapshot.error(provider: provider, error: CopilotAuthError.tokenInvalid)
             }
             guard (200..<300).contains(response.statusCode) else {

@@ -103,9 +103,7 @@ final class CodexHomeIdentityCache: CodexHomeIdentityCaching, @unchecked Sendabl
     private func homeKey(_ path: String) -> String {
         let canonical = URL(fileURLWithPath: expandHome(path))
             .resolvingSymlinksInPath().standardizedFileURL.path
-        let digest = SHA256.hash(data: Data(canonical.precomposedStringWithCanonicalMapping.utf8))
-            .map { String(format: "%02x", $0) }
-            .joined()
+        let digest = SHA256.hash(data: Data(canonical.precomposedStringWithCanonicalMapping.utf8)).hexString
         // Matches the opaque representation used by the earlier provider-instance prototype, so a
         // developer build that already warmed this cache keeps its safe binding.
         return "codex-home:\(digest)"
@@ -116,9 +114,7 @@ final class CodexHomeIdentityCache: CodexHomeIdentityCaching, @unchecked Sendabl
         guard !trimmed.isEmpty else { return nil }
         // The production accessor already returns SHA-256. Hash again at the persistence boundary so
         // a custom accessor can never cause raw attributes to reach UserDefaults.
-        return SHA256.hash(data: Data(trimmed.precomposedStringWithCanonicalMapping.utf8))
-            .map { String(format: "%02x", $0) }
-            .joined()
+        return SHA256.hash(data: Data(trimmed.precomposedStringWithCanonicalMapping.utf8)).hexString
     }
 
     private func load() -> [String: Entry] {

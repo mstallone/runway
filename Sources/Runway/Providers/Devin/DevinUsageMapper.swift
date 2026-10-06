@@ -6,9 +6,6 @@ struct DevinMappedUsage: Equatable, Sendable {
 }
 
 enum DevinUsageMapper {
-    static let dayPeriodMs = MetricPeriod.dayMs
-    static let weekPeriodMs = MetricPeriod.weekMs
-
     static func mapUserStatusResponse(_ response: HTTPResponse) throws -> DevinMappedUsage {
         guard let body = ProviderParse.jsonObject(response.body),
               let userStatus = body["userStatus"] as? [String: Any]
@@ -47,7 +44,7 @@ enum DevinUsageMapper {
                 label: "Daily quota",
                 remaining: dailyRemaining,
                 resetsAt: dailyReset,
-                periodDurationMs: dayPeriodMs
+                periodDurationMs: MetricPeriod.dayMs
             ))
         }
 
@@ -57,7 +54,7 @@ enum DevinUsageMapper {
                 label: "Weekly quota",
                 remaining: weeklyRemaining,
                 resetsAt: weeklyReset,
-                periodDurationMs: weekPeriodMs
+                periodDurationMs: MetricPeriod.weekMs
             ))
         } else if hideDailyQuota,
                   let dailyRemaining {
@@ -67,7 +64,7 @@ enum DevinUsageMapper {
                 label: "Weekly quota",
                 remaining: dailyRemaining,
                 resetsAt: weeklyReset,
-                periodDurationMs: weekPeriodMs
+                periodDurationMs: MetricPeriod.weekMs
             ))
         }
 

@@ -86,7 +86,7 @@ final class DevinProvider: ProviderRuntime {
         let apiServerURL = authStore.effectiveAPIServerURL(auth)
         do {
             let response = try await usageClient.fetchUserStatus(auth: auth, apiServerURL: apiServerURL)
-            if response.statusCode == 401 || response.statusCode == 403 {
+            if ProviderAuthRetry.isAuthFailure(response) {
                 return .authFailure
             }
             guard (200..<300).contains(response.statusCode) else {
