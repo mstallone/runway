@@ -18,7 +18,8 @@ struct CursorPlanUsageFacts {
     let limit: Double?
     /// `planUsage.totalPercentUsed`, when numeric.
     let totalPercentUsed: Double?
-    /// Two usable model-pool percentages, excluding legacy zero placeholders beside positive spend.
+    /// Both model-pool percentages are numeric and at least one is above zero. Two zeros carry no
+    /// information: legacy accounts send them as placeholders.
     let hasModelPools: Bool
     /// `spendLimitUsage.limitType`, lowercased.
     let spendLimitType: String?
@@ -33,10 +34,8 @@ struct CursorPlanUsageFacts {
         totalPercentUsed = planUsage.flatMap { ProviderParse.number($0["totalPercentUsed"]) }
         let auto = planUsage.flatMap { ProviderParse.number($0["autoPercentUsed"]) }
         let api = planUsage.flatMap { ProviderParse.number($0["apiPercentUsed"]) }
-        let spent = planUsage.flatMap { ProviderParse.number($0["totalSpend"]) }
-            ?? ((limit ?? 0) - (planUsage.flatMap { ProviderParse.number($0["remaining"]) } ?? limit ?? 0))
         if let auto, let api, auto >= 0, api >= 0 {
-            hasModelPools = auto > 0 || api > 0 || spent == 0
+            hasModelPools = auto > 0 || api > 0
         } else {
             hasModelPools = false
         }
@@ -49,13 +48,16 @@ struct CursorPlanUsageFacts {
     var hasTotalUsagePercent: Bool { totalPercentUsed != nil }
     /// `planUsage` exists but carries no usable limit — the "present but unusable" state the fallbacks key on.
     var planUsageLimitMissing: Bool { hasPlanUsage && !hasLimit }
-    var planUsageUnusable: Bool { !hasPlanUsage || (planUsageLimitMissing && !hasModelPools) }
+    var planUsageUnusable: Bool { !hasPlanUsage || (planUsageLimitMissing && !hasTeamModelPools) }
     /// Team account inferred from the spend-limit shape alone (independent of the plan name).
     var isTeamByShape: Bool { spendLimitType == "team" || pooledLimit > 0 }
+    /// Model pools on a team-shaped account: the one case where a missing dollar limit is still
+    /// usable plan data. Other account types need a limit or a total percentage as before.
+    var hasTeamModelPools: Bool { isTeamByShape && hasModelPools }
     /// The generic request-based fallback trigger: an enabled account with a `planUsage` that carries
     /// neither a limit nor a total-percent figure.
     var shouldTryGenericRequestFallback: Bool {
-        isEnabled && hasPlanUsage && !hasLimit && !hasTotalUsagePercent && !hasModelPools
+        isEnabled && hasPlanUsage && !hasLimit && !hasTotalUsagePercent && !hasTeamModelPools
     }
 }
 
@@ -137,7 +139,7 @@ enum CursorUsageMapper {
 
         let normalizedPlan = planName?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
 
-        guard facts.hasLimit || facts.hasTotalUsagePercent || facts.hasModelPools else {
+        guard facts.hasLimit || facts.hasTotalUsagePercent || facts.hasTeamModelPools else {
             throw CursorUsageError.totalUsageLimitMissing
         }
 
@@ -299,7 +301,7 @@ enum CursorUsageMapper {
             return (true, "Cursor request-based usage data unavailable. Try again later.")
         }
 
-        if facts.isTeamByShape && facts.planUsageLimitMissing && !facts.hasModelPools {
+        if facts.isTeamByShape && facts.planUsageLimitMissing && !facts.hasTeamModelPools {
             return (true, "Cursor request-based usage data unavailable. Try again later.")
         }
 

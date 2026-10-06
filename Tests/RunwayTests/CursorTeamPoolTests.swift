@@ -25,7 +25,7 @@ final class CursorTeamPoolTests: XCTestCase {
     func testPoolsWithoutLimitDoNotTriggerRequestFallback() throws {
         let usage: [String: Any] = [
             "enabled": true,
-            "planUsage": ["autoPercentUsed": 0, "apiPercentUsed": 0],
+            "planUsage": ["autoPercentUsed": 3, "apiPercentUsed": 0],
             "spendLimitUsage": ["limitType": "team"]
         ]
         for name: String? in ["Team", "Enterprise", nil] {
@@ -37,8 +37,55 @@ final class CursorTeamPoolTests: XCTestCase {
         let mapped = try CursorUsageMapper.mapUsage(
             usage: usage, planName: nil, creditGrants: nil, stripeBalanceCents: 0
         )
-        assertPercent(mapped, "Cursor models", 0)
+        assertPercent(mapped, "Cursor models", 3)
         assertPercent(mapped, "Other models", 0)
+    }
+
+    func testZeroPoolsWithoutLimitStillUseRequestFallback() {
+        // Two zeros say nothing about the account, so a team payload with no limit keeps the
+        // request-based path that reports real numbers.
+        let usage: [String: Any] = [
+            "enabled": true,
+            "planUsage": ["autoPercentUsed": 0, "apiPercentUsed": 0],
+            "spendLimitUsage": ["limitType": "team"]
+        ]
+        XCTAssertTrue(CursorUsageMapper.shouldUseRequestBasedFallback(
+            usage: usage, planName: "Team", planInfoUnavailable: false
+        ).shouldFallback)
+        XCTAssertTrue(CursorPlanUsageFacts(usage: usage).shouldTryGenericRequestFallback)
+    }
+
+    func testLegacyPoolAtZeroSpendKeepsDollarMeter() throws {
+        // The start of a billing cycle must not flip a dollar-pool team to a percent meter.
+        let mapped = try map([
+            "limit": 500_000, "totalSpend": 0,
+            "autoPercentUsed": 0, "apiPercentUsed": 0, "totalPercentUsed": 0
+        ])
+        guard case .progress(_, let used, let limit, let format, _, _, _) =
+            mapped.lines.first(where: { $0.label == "Total usage" }) else {
+            return XCTFail("Missing legacy total")
+        }
+        XCTAssertEqual(used, 0)
+        XCTAssertEqual(limit, 5000)
+        XCTAssertEqual(format, .dollars)
+    }
+
+    func testNonTeamPoolsWithoutLimitAreNotTreatedAsUsablePlanData() {
+        // Only the team branch can render a pools-only payload. Any other account keeps the
+        // fallbacks and the missing-limit error instead of a made-up 0% total.
+        let usage: [String: Any] = [
+            "enabled": true,
+            "planUsage": ["autoPercentUsed": 30, "apiPercentUsed": 50]
+        ]
+        XCTAssertTrue(CursorPlanUsageFacts(usage: usage).shouldTryGenericRequestFallback)
+        XCTAssertTrue(CursorUsageMapper.shouldUseRequestBasedFallback(
+            usage: usage, planName: "Enterprise", planInfoUnavailable: false
+        ).shouldFallback)
+        XCTAssertThrowsError(try CursorUsageMapper.mapUsage(
+            usage: usage, planName: "Pro", creditGrants: nil, stripeBalanceCents: 0
+        )) { error in
+            XCTAssertEqual(error as? CursorUsageError, .totalUsageLimitMissing)
+        }
     }
 
     func testLegacyFiveThousandDollarPoolWithZeroPlaceholdersKeepsDollarMeter() throws {

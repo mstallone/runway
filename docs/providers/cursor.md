@@ -14,7 +14,7 @@ Tracks your Cursor plan usage using the login from the Cursor app.
 | Grok Bot | Grok Bot weekly usage percent and reset countdown. Enabled by default, below the caret |
 | Extra Usage | On-demand spend, user-scoped when available, otherwise the team aggregate. Shown as a meter when Cursor returns a limit |
 
-Team seats that report both model-pool percentages use those percentages instead of the legacy included-dollar cap. Total Usage shows Cursor's own total percentage when Cursor sends one, and has no data when Cursor sends only the two pools. Older team accounts without usable pool data keep the dollar meter, including accounts that return zero placeholders next to real spend.
+Team seats that report both model-pool percentages, with at least one above zero, use those percentages instead of the legacy included-dollar cap. Total Usage shows Cursor's own total percentage when Cursor sends one, and has no data when Cursor sends only the two pools. Team accounts without usable pool data keep the dollar meter, including accounts that return two zero pools.
 
 When Cursor reports your plan name, Runway shows it in the provider's header.
 
