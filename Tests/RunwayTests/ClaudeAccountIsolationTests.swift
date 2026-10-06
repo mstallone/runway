@@ -86,7 +86,7 @@ final class ClaudeAccountIsolationTests: XCTestCase {
         XCTAssertEqual(usageRequests(fixture.http).count, 2)
     }
 
-    func testRejectedKeychainCandidateFallsBackToNextSource() async {
+    func testRejectedKeychainCandidateFallsBackToNextSourceWithoutARefreshAttempt() async {
         let fileAccount = credentials(access: "file-b", refresh: "file-refresh", plan: "pro")
         let keychainAccount = credentials(
             access: "keychain-a", refresh: "keychain-refresh", plan: "max"
@@ -116,12 +116,17 @@ final class ClaudeAccountIsolationTests: XCTestCase {
             usageRequests(fixture.http).compactMap { $0.headers["Authorization"] },
             ["Bearer keychain-a", "Bearer file-b"]
         )
+        XCTAssertTrue(
+            fixture.tokenEndpoint.requests.isEmpty,
+            "a rejected token must fall through to the next source, never to the token endpoint"
+        )
     }
 
     private struct Fixture {
         var provider: ClaudeProvider
         var files: FakeFiles
         var http: RoutingHTTPClient
+        var tokenEndpoint: FakeHTTPClient
     }
 
     private func makeFixture(
@@ -137,6 +142,7 @@ final class ClaudeAccountIsolationTests: XCTestCase {
         handler: @escaping @Sendable (HTTPRequest) async throws -> HTTPResponse
     ) -> Fixture {
         let http = RoutingHTTPClient(handler: handler)
+        let tokenEndpoint = ClaudeTokenRenewal.rotatingTokenEndpoint()
         let now = Date(timeIntervalSince1970: 1_771_603_200)
         return Fixture(
             provider: ClaudeProvider(
@@ -148,11 +154,13 @@ final class ClaudeAccountIsolationTests: XCTestCase {
                 ),
                 usageClient: ClaudeUsageClient(httpClient: http),
                 logUsageScanner: ClaudeLogFixture.scanner(home: nil),
+                tokenRenewal: .observed(tokenEndpoint: tokenEndpoint, files: files, keychain: keychain),
                 now: { now },
                 pricing: { TestPricing.bundled }
             ),
             files: files,
-            http: http
+            http: http,
+            tokenEndpoint: tokenEndpoint
         )
     }
 

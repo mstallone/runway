@@ -1074,9 +1074,9 @@ final class ClaudeProviderTests: XCTestCase {
         let hashedService = authStore.keychainServiceCandidates().first!
         keychain.currentUserValues[hashedService] = #"{"claudeAiOauth":{"accessToken":"keychain-stale","refreshToken":"keychain-refresh","expiresAt":4102444800000,"subscriptionType":"max","scopes":["user:profile"]}}"#
 
-        // Every usage call 401s → both sources are dead; no other endpoint is ever contacted.
-        let httpClient = RoutingHTTPClient { request in
-            return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+        // Every usage call 401s → both sources are dead.
+        let httpClient = RoutingHTTPClient { _ in
+            HTTPResponse(statusCode: 401, headers: [:], body: Data())
         }
         let provider = ClaudeProvider(
             authStore: authStore,

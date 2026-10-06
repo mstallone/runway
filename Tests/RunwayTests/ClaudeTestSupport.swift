@@ -2,13 +2,22 @@ import Foundation
 @testable import Runway
 
 extension ClaudeTokenRenewal {
-    /// A renewal wired to the test's own token endpoint and credential file, with the kill switch
-    /// off and a clock far past any fixture expiry, so a file-sourced credential passes every
-    /// guard. "Never renews" assertions then fail if the provider ever asks for a renewal.
-    static func observed(tokenEndpoint: any HTTPClient, files: any TextFileAccessing) -> ClaudeTokenRenewal {
+    /// A renewal wired to the test's own token endpoint and credential stores, with every guard
+    /// open: the kill switch off, a clock far past any fixture expiry, and a keychain write path
+    /// that reports itself authorized. A file- or keychain-sourced credential therefore reaches
+    /// the token endpoint, so "never renews" assertions fail if the provider ever asks.
+    static func observed(
+        tokenEndpoint: any HTTPClient,
+        files: any TextFileAccessing,
+        keychain: any KeychainReading = FakeKeychain()
+    ) -> ClaudeTokenRenewal {
+        var writeBack = ClaudeCredentialWriteBack()
+        writeBack.helperIsSilentlyAuthorized = { _, _ in true }
+        writeBack.stdinRunner = AcceptingStdinRunner()
         var renewal = ClaudeTokenRenewal()
         renewal.refresher = ClaudeTokenRefresher(httpClient: tokenEndpoint)
-        renewal.keychain = FakeKeychain()
+        renewal.writeBack = writeBack
+        renewal.keychain = keychain
         renewal.files = files
         renewal.environment = FakeEnvironment()
         renewal.currentAccount = { "tester" }
@@ -24,5 +33,11 @@ extension ClaudeTokenRenewal {
             headers: [:],
             body: Data(#"{"access_token":"new-access","refresh_token":"refresh-2","expires_in":3600}"#.utf8)
         ))
+    }
+}
+
+private struct AcceptingStdinRunner: StdinProcessRunning {
+    func run(executable: String, arguments: [String], stdin: String, timeout: TimeInterval) throws -> ProcessResult {
+        ProcessResult(exitCode: 0, stdout: "", stderr: "")
     }
 }

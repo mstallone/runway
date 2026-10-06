@@ -111,14 +111,12 @@ final class CursorRevokedTokenFallbackTests: XCTestCase {
         XCTAssertEqual(tokensTried(http, revoked: revoked, live: live), ["revoked", "live"])
     }
 
-    /// The bearer credentials the provider sent, in order, collapsing each probe's requests to one
-    /// entry. Requests that carry neither token (cookie-authenticated endpoints) are skipped.
+    /// The credential each usage call carried, in order: one entry per probe, so a second probe
+    /// of either token shows up as an extra entry.
     private func tokensTried(_ http: RoutingHTTPClient, revoked: String, live: String) -> [String] {
-        http.requests.reduce(into: [String]()) { tried, request in
+        http.requests.filter { $0.url == CursorUsageClient.usageURL }.map { request in
             let authorization = request.headers["Authorization"] ?? ""
-            guard let name = authorization.contains(live) ? "live" : authorization.contains(revoked) ? "revoked" : nil
-            else { return }
-            if tried.last != name { tried.append(name) }
+            return authorization.contains(live) ? "live" : authorization.contains(revoked) ? "revoked" : "other"
         }
     }
 
