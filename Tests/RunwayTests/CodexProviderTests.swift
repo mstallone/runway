@@ -296,7 +296,7 @@ final class CodexUsageMapperTests: XCTestCase {
             now: Date(timeIntervalSince1970: 1_800_000_000)
         )
 
-        XCTAssertEqual(mapped.plan, "Pro 5x")
+        XCTAssertEqual(mapped.plan, "Pro 100")
         XCTAssertEqual(progress(mapped.lines, "Session")?.used, 10)
         XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 20)
         // Credits lead with the dollar value (4¢/credit), then the raw count — no inverted fake cap.
@@ -305,6 +305,39 @@ final class CodexUsageMapperTests: XCTestCase {
                        [MetricValue(number: 4.0, kind: .dollars), MetricValue(number: 100, kind: .count, label: "credits")])
         XCTAssertNotNil(progress(mapped.lines, "Session")?.resetsAt)
         XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, CodexUsageMapper.sessionPeriodMs)
+    }
+
+    func testFormatsProPlanTiers() {
+        XCTAssertEqual(CodexUsageMapper.formatCodexPlan("prolite"), "Pro 100")
+        XCTAssertEqual(CodexUsageMapper.formatCodexPlan("pro"), "Pro 200")
+        XCTAssertEqual(CodexUsageMapper.formatCodexPlan("promax"), "Pro 500")
+    }
+
+    func testMapsPro500WeeklyOnlyResponse() throws {
+        let body = Data("""
+        {
+          "plan_type": "promax",
+          "rate_limit": {
+            "primary_window": { "used_percent": 1, "limit_window_seconds": 604800, "reset_after_seconds": 604627 },
+            "secondary_window": null
+          },
+          "additional_rate_limits": null,
+          "credits": { "has_credits": true, "balance": "56348.8793850000" },
+          "rate_limit_reset_credits": { "available_count": 2, "applicable_available_count": 0 }
+        }
+        """.utf8)
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            HTTPResponse(statusCode: 200, headers: [:], body: body)
+        )
+
+        XCTAssertEqual(mapped.plan, "Pro 500")
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 1)
+        XCTAssertNil(progress(mapped.lines, "Session"))
+        XCTAssertEqual(values(mapped.lines, "Rate Limit Resets"),
+                       [MetricValue(number: 2, kind: .count, label: "available")])
+        // The fractional balance is floored to whole credits before pricing.
+        XCTAssertEqual(values(mapped.lines, "Credits"), CodexUsageMapper.creditValues(remaining: 56348))
+        XCTAssertEqual(values(mapped.lines, "Credits")?.last?.number, 56348)
     }
 
     func testFormatsBusinessPremiumEntitlement() throws {
