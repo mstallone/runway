@@ -33,7 +33,7 @@ final class CodexKeyringAssemblyTests: XCTestCase {
             identityCache: cache
         )
 
-        var first = ProviderAccountAssembly.make(
+        var first = await ProviderAccountAssembly.make(
             observer: observer,
             accountsStore: store,
             families: ["codex"],
@@ -47,7 +47,7 @@ final class CodexKeyringAssemblyTests: XCTestCase {
         let didBind = await bindingTask.value
         XCTAssertTrue(didBind)
 
-        let second = ProviderAccountAssembly.make(
+        let second = await ProviderAccountAssembly.make(
             observer: observer,
             accountsStore: store,
             families: ["codex"],
@@ -69,7 +69,7 @@ final class CodexKeyringAssemblyTests: XCTestCase {
             accountValues: [key: #"{"tokens":{"access_token":"at","account_id":"KEYRING"}}"#],
             requiresInteractiveRead: true
         )
-        var assembly = ProviderAccountAssembly.make(
+        var assembly = await ProviderAccountAssembly.make(
             observer: DefaultAccountObserver(
                 environment: FakeEnvironment([:]), files: FakeFiles(), keychain: keychain,
                 codexIdentityCache: cache, homeDirectory: { URL(fileURLWithPath: "/Users/dev") }

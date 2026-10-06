@@ -513,11 +513,6 @@ struct CodexAuthStore: Sendable {
 }
 
 private extension CodexAuthState.Source {
-    var isFile: Bool {
-        if case .file = self { return true }
-        return false
-    }
-
     var isKeychain: Bool {
         if case .keychain = self { return true }
         return false

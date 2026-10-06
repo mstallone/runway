@@ -40,7 +40,7 @@ extension ProviderAccountAssembly {
         )
     }
 
-    nonisolated static func claudeReadout(
+    private nonisolated static func claudeReadout(
         observer: DefaultAccountObserver,
         discovery: ClaudeConfigDirDiscovery?,
         enabled: Bool
@@ -67,7 +67,7 @@ extension ProviderAccountAssembly {
         return (outcome, scan, observer.hasAmbientClaudeToken)
     }
 
-    nonisolated static func codexReadout(
+    private nonisolated static func codexReadout(
         observer: DefaultAccountObserver,
         discovery: CodexHomeDiscovery?,
         enabled: Bool

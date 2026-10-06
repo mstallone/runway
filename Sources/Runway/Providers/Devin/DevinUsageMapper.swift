@@ -26,8 +26,18 @@ enum DevinUsageMapper {
 
         let dailyRemaining = ProviderParse.number(planStatus["dailyQuotaRemainingPercent"])
         let weeklyRemaining = ProviderParse.number(planStatus["weeklyQuotaRemainingPercent"])
+        // A present-but-unparsable percentage is schema drift, not an omitted zero: fail loudly
+        // instead of letting the exhausted-quota fallback below turn it into a credible 100% used.
+        if planStatus["weeklyQuotaRemainingPercent"] != nil, weeklyRemaining == nil {
+            throw DevinUsageError.invalidResponse
+        }
         let dailyReset = hideDailyQuota ? nil : unixSecondsToDate(planStatus["dailyQuotaResetAtUnix"])
         let weeklyReset = unixSecondsToDate(planStatus["weeklyQuotaResetAtUnix"])
+        // With no percentage, the reset alone decides between "exhausted" and "no weekly quota", so
+        // an unparsable reset is schema drift too, not an absent window.
+        if weeklyRemaining == nil, planStatus["weeklyQuotaResetAtUnix"] != nil, weeklyReset == nil {
+            throw DevinUsageError.invalidResponse
+        }
         let extraUsageBalance = dollarsFromMicros(planStatus["overageBalanceMicros"])
 
         var lines: [MetricLine] = []
@@ -41,7 +51,8 @@ enum DevinUsageMapper {
             ))
         }
 
-        if let weeklyRemaining {
+        // Proto3 JSON omits zero values. A weekly reset identifies an existing weekly window.
+        if let weeklyRemaining = weeklyRemaining ?? (weeklyReset != nil ? 0 : nil) {
             lines.append(quotaLine(
                 label: "Weekly quota",
                 remaining: weeklyRemaining,
@@ -50,7 +61,7 @@ enum DevinUsageMapper {
             ))
         } else if hideDailyQuota,
                   let dailyRemaining {
-            // No weekly quota in the response: surface the (hidden) daily quota in the Weekly row so
+            // No weekly percentage or reset in the response: surface the hidden daily quota so
             // the tile stays meaningful. Still flipped from remaining→used, just like every quota row.
             lines.append(quotaLine(
                 label: "Weekly quota",

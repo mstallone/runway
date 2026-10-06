@@ -109,20 +109,24 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
     }
 
     // Ported from ccusage `rejects_null_schema_fields_like_typescript_loader`.
-    func testRejectsNullSchemaFields() {
-        XCTAssertTrue(ClaudeLogUsageScanner.hasUnsupportedNullField(Data(
-            #"{"message":{"usage":{"speed":null}}}"#.utf8
-        )))
-        XCTAssertTrue(ClaudeLogUsageScanner.hasUnsupportedNullField(Data(
-            #"{"message":{"model":null,"usage":{"input_tokens":0}}}"#.utf8
-        )))
-        XCTAssertTrue(ClaudeLogUsageScanner.hasUnsupportedNullField(Data(
-            #"{"sessionId":null,"message":{"usage":{"input_tokens":0}}}"#.utf8
-        )))
-        // `content: null` is fine — only the known schema fields reject nulls.
-        XCTAssertFalse(ClaudeLogUsageScanner.hasUnsupportedNullField(Data(
-            #"{"message":{"content":null,"usage":{"input_tokens":0}}}"#.utf8
-        )))
+    func testRejectsNullSchemaFieldsOnlyWhereTheyAreRead() {
+        let cases: [(line: String, accepted: Bool)] = [
+            (#"{"timestamp":"2026-02-20T12:00:00Z","message":{"usage":{"input_tokens":1,"output_tokens":2,"speed":null}}}"#, false),
+            (#"{"timestamp":"2026-02-20T12:00:00Z","message":{"model":null,"usage":{"input_tokens":1,"output_tokens":2}}}"#, false),
+            (#"{"timestamp":"2026-02-20T12:00:00Z","sessionId":null,"message":{"usage":{"input_tokens":1,"output_tokens":2}}}"#, false),
+            // `content: null` is fine: only the known schema fields reject nulls.
+            (#"{"timestamp":"2026-02-20T12:00:00Z","message":{"content":null,"usage":{"input_tokens":1,"output_tokens":2}}}"#, true),
+            // An ordinary message iteration with a null nested model must not drop the parent record.
+            (#"{"timestamp":"2026-02-20T12:00:00Z","message":{"model":"claude-fable-5-1","usage":{"input_tokens":2,"output_tokens":100,"iterations":[{"type":"message","model":null,"input_tokens":2,"output_tokens":100}]}}}"#, true),
+            // Same key names inside tool content are not schema fields either.
+            (#"{"timestamp":"2026-02-20T12:00:00Z","message":{"model":"claude-fable-5-1","content":[{"type":"tool_use","input":{"id":null,"cwd":null}}],"usage":{"input_tokens":1,"output_tokens":2}}}"#, true)
+        ]
+
+        for entry in cases {
+            XCTAssertEqual(
+                ClaudeLogUsageScanner.parseFile(Data(entry.line.utf8)).count, entry.accepted ? 1 : 0, entry.line
+            )
+        }
     }
 
     func testParseFileSkipsNonUsageAndMalformedLines() {
@@ -475,9 +479,11 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
 
     func testScanSkipsFilesLastTouchedBeforeTheWindow() async throws {
         let now = Date()
+        // The entry itself is in-window, so the per-entry date filter would keep it: only the
+        // file-level mtime skip can leave the result empty.
         let home = try ClaudeLogFixture.makeHome(files: [
             "project-a/old.jsonl": ClaudeLogFixture.usageLine(
-                timestamp: RunwayISO8601.string(from: now.addingTimeInterval(-90 * 86_400)),
+                timestamp: RunwayISO8601.string(from: now.addingTimeInterval(-3_600)),
                 input: 100, output: 50, costUSD: 0.25
             )
         ])

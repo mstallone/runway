@@ -141,6 +141,14 @@ final class SakanaLogUsageScannerTests: XCTestCase {
         )
 
         XCTAssertTrue(scanner.hasSakanaFootprint())
+
+        let decoyOnly = SakanaLogUsageScanner(
+            environment: FakeEnvironment(),
+            files: files,
+            homeDirectory: { root },
+            listSubdirectories: { url in url == root ? [other] : [] }
+        )
+        XCTAssertFalse(decoyOnly.hasSakanaFootprint(), "an OpenAI-only Codex home is not a Sakana footprint")
     }
 
     private func event(

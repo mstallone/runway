@@ -34,7 +34,6 @@ enum MockData {
     ]
 
     static func descriptor(_ id: String) -> WidgetDescriptor? { descriptors.first { $0.id == id } }
-    static func provider(_ id: String) -> Provider? { providers.first { $0.id == id } }
     static func descriptors(for providerID: String) -> [WidgetDescriptor] {
         descriptors.filter { $0.providerID == providerID }
     }

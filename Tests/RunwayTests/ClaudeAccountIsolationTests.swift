@@ -101,10 +101,6 @@ final class ClaudeAccountIsolationTests: XCTestCase {
         let service = store.keychainServiceCandidates().first!
         keychain.currentUserValues[service] = keychainAccount
         let fixture = makeFixture(files: files, keychain: keychain) { request in
-            XCTAssertTrue(
-                request.url.absoluteString.hasSuffix("/api/oauth/usage"),
-                "a rejected token must fall through to the next source, never to the token endpoint"
-            )
             if request.headers["Authorization"] == "Bearer file-b" {
                 return Self.usageResponse(percent: 75)
             }
@@ -114,9 +110,15 @@ final class ClaudeAccountIsolationTests: XCTestCase {
         let snapshot = await fixture.provider.refresh()
 
         XCTAssertEqual(sessionUsage(snapshot), 75)
+        XCTAssertEqual(snapshot.plan, "Pro")
+        XCTAssertNil(snapshot.errorText)
         XCTAssertEqual(
             usageRequests(fixture.http).compactMap { $0.headers["Authorization"] },
             ["Bearer keychain-a", "Bearer file-b"]
+        )
+        XCTAssertTrue(
+            fixture.tokenEndpoint.requests.isEmpty,
+            "a rejected token must fall through to the next source, never to the token endpoint"
         )
     }
 
@@ -124,6 +126,7 @@ final class ClaudeAccountIsolationTests: XCTestCase {
         var provider: ClaudeProvider
         var files: FakeFiles
         var http: RoutingHTTPClient
+        var tokenEndpoint: FakeHTTPClient
     }
 
     private func makeFixture(
@@ -139,6 +142,7 @@ final class ClaudeAccountIsolationTests: XCTestCase {
         handler: @escaping @Sendable (HTTPRequest) async throws -> HTTPResponse
     ) -> Fixture {
         let http = RoutingHTTPClient(handler: handler)
+        let tokenEndpoint = ClaudeTokenRenewal.rotatingTokenEndpoint()
         let now = Date(timeIntervalSince1970: 1_771_603_200)
         return Fixture(
             provider: ClaudeProvider(
@@ -150,11 +154,13 @@ final class ClaudeAccountIsolationTests: XCTestCase {
                 ),
                 usageClient: ClaudeUsageClient(httpClient: http),
                 logUsageScanner: ClaudeLogFixture.scanner(home: nil),
+                tokenRenewal: .observed(tokenEndpoint: tokenEndpoint, files: files, keychain: keychain),
                 now: { now },
                 pricing: { TestPricing.bundled }
             ),
             files: files,
-            http: http
+            http: http,
+            tokenEndpoint: tokenEndpoint
         )
     }
 
