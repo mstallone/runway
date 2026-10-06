@@ -212,23 +212,21 @@ final class CodexUsageMapperTests: XCTestCase {
     }
 
     func testMapsLimitWindowSecondsFromAPI() throws {
+        // Durations no window is known by: they must pass through, not fall back to the defaults.
         let body = Data("""
         {
           "rate_limit": {
-            "primary_window": {
-              "reset_after_seconds": 60,
-              "used_percent": 1,
-              "limit_window_seconds": 18000
-            }
+            "primary_window": { "used_percent": 1, "limit_window_seconds": 86400 },
+            "secondary_window": { "used_percent": 2, "limit_window_seconds": 2592000 }
           }
         }
         """.utf8)
-        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
         let mapped = try CodexUsageMapper.mapUsageResponse(
-            response,
-            now: Date(timeIntervalSince1970: 1_800_000_000)
+            HTTPResponse(statusCode: 200, headers: [:], body: body)
         )
-        XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, 18_000_000)
+
+        XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, 86_400_000)
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.periodDurationMs, 2_592_000_000)
     }
 
     func testMapsWeeklyOnlyPrimaryWindowByDuration() throws {

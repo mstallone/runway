@@ -146,6 +146,4 @@ private final class MockSQLite: SQLiteAccessing, @unchecked Sendable {
         lastSQL = sql
         return json
     }
-
-    func execute(path: String, sql: String) throws {}
 }

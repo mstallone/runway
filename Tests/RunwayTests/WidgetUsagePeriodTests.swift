@@ -40,24 +40,23 @@ final class WidgetUsagePeriodTests: XCTestCase {
         XCTAssertEqual(descriptors.first { $0.id == "grok.rateLimitResets" }?.sample.showsResetExpiries, true)
     }
 
-    /// A depleted balance (every value zero, not a usage period): `isZeroUsage` is still true, but the
-    /// note gate `isZeroUsage && isUsagePeriod` is false, so no "No usage in this period" note shows.
-    func testZeroBalanceRowIsGatedOutOfTheNote() {
+    /// A depleted balance (every value zero, not a usage period) is depleted, not idle: no "No usage
+    /// in this period" note on its value.
+    func testZeroBalanceRowGetsNoNoUsageTooltip() {
         var row = WidgetData(title: "Rate Limit Resets", icon: .providerMark("codex"), kind: .count, used: 0,
                              limit: nil, values: [MetricValue(number: 0, kind: .count)])
         row.isUsagePeriod = false
         XCTAssertTrue(row.isZeroUsage)
-        XCTAssertFalse(row.isZeroUsage && row.isUsagePeriod)
+        XCTAssertNil(row.unboundedValueTooltip)
     }
 
-    /// A zero spend day (every value zero, a usage period): both true, so the note shows.
-    func testZeroSpendPeriodKeepsTheNote() {
+    /// A zero spend day (every value zero, a usage period) says so.
+    func testZeroSpendPeriodShowsTheNoUsageTooltip() {
         var row = WidgetData(title: "Today", icon: .providerMark("codex"), kind: .dollars, used: 0, limit: nil,
                              values: [MetricValue(number: 0, kind: .dollars),
                                       MetricValue(number: 0, kind: .count)])
         row.isUsagePeriod = true
-        XCTAssertTrue(row.isZeroUsage)
-        XCTAssertTrue(row.isZeroUsage && row.isUsagePeriod)
+        XCTAssertEqual(row.unboundedValueTooltip, "No usage in this period")
     }
 
     func testUnknownModelWarningTooltipSingularAndPlural() {

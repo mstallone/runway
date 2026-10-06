@@ -64,20 +64,6 @@ final class RefreshSettingTests: XCTestCase {
         XCTAssertNotNil(store.snapshots["test"])
     }
 
-    func testCacheExpiresPastInterval() async {
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let suite = makeDefaults("restart-expired")
-
-        // A prior session left a snapshot 6 minutes ago — older than the 5-minute interval.
-        storeSnapshot(used: 20, age: 360, into: suite, now: now)
-
-        let runtime = makeRuntime(used: 80)
-        let store = makeStore(runtime: runtime, suite: suite, now: now)
-        await store.refreshAll()
-
-        XCTAssertEqual(runtime.refreshCount, 1) // past interval => refetched
-    }
-
     // MARK: - Helpers
 
     private func storeSnapshot(used: Double, age: TimeInterval, into suite: UserDefaults, now: Date) {

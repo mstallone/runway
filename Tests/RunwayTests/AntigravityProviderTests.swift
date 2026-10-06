@@ -379,7 +379,7 @@ final class AntigravityProviderTests: XCTestCase {
             discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
         )
         let snapshot = await provider.refresh()
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, AntigravityError.notSignedIn.localizedDescription)
     }
 
     @MainActor
@@ -395,7 +395,7 @@ final class AntigravityProviderTests: XCTestCase {
             discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
         )
         let snapshot = await provider.refresh()
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, AntigravityError.unavailable.localizedDescription)
     }
 
     @MainActor
@@ -416,7 +416,7 @@ final class AntigravityProviderTests: XCTestCase {
             discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
         )
         let snapshot = await provider.refresh()
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, AntigravityError.authExpired.localizedDescription)
     }
 
     @MainActor
@@ -437,7 +437,7 @@ final class AntigravityProviderTests: XCTestCase {
             discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
         )
         let snapshot = await provider.refresh()
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, AntigravityError.unavailable.localizedDescription)
     }
 
     @MainActor
@@ -457,7 +457,7 @@ final class AntigravityProviderTests: XCTestCase {
             discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
         )
         let snapshot = await provider.refresh()
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, AntigravityError.unavailable.localizedDescription)
     }
 
     @MainActor
@@ -483,7 +483,7 @@ final class AntigravityProviderTests: XCTestCase {
             discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
         )
         let snapshot = await provider.refresh()
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, AntigravityError.unavailable.localizedDescription)
     }
 }
 

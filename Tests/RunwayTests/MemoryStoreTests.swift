@@ -42,7 +42,6 @@ final class MemoryStoreTests: XCTestCase {
         var listQueryCount = 0
 
         func queryValue(path: String, sql: String) throws -> String? { nil }
-        func execute(path: String, sql: String) throws {}
 
         func queryJSONRows(path: String, sql: String) throws -> String? {
             if let error { throw error }
