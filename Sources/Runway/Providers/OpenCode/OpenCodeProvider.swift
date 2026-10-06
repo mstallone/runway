@@ -3,7 +3,7 @@ import Foundation
 /// Typed failures for the OpenCode provider, preserving friendly user-facing descriptions.
 enum OpenCodeUsageError: Error, LocalizedError, Equatable {
     case notLoggedIn
-    /// OpenCode's credential store (an OpenCode 2 database, or `auth.json`) exists but could not be
+    /// OpenCode's credential store (`auth.json`, or a database) exists but could not be
     /// read or parsed — broken storage, not logout. `detail` carries the underlying cause for the log
     /// file and never a credential value; the user-facing description stays friendly.
     case credentialsUnreadable(detail: String)
@@ -67,8 +67,8 @@ final class OpenCodeProvider: ProviderRuntime {
     /// once per run, not once per 5-minute refresh.
     private var loggedAuthReadFailure = false
 
-    /// Edge-triggers the Go-meters-failure log the same way: once per distinct failure.
-    private var loggedGoError: OpenCodeUsageError?
+    /// Edge-triggers the rejected-key log the same way.
+    private var loggedRejectedKey = false
 
     init(
         authStore: OpenCodeAuthStore = OpenCodeAuthStore(),
@@ -102,8 +102,8 @@ final class OpenCodeProvider: ProviderRuntime {
     }
 
     func hasLocalCredentials() async -> Bool {
-        // Same sources as `refresh()`, through the same loaders: the local `opencode-go` key (OpenCode 2
-        // credential table, or OpenCode 1 `auth.json`), or any hosted usage already in the local
+        // Same sources as `refresh()`, through the same loaders: the local `opencode-go` key (`auth.json`,
+        // or the credential table once OpenCode 2 runs the database), or any hosted usage in the local
         // database. Local-only, off the main actor. An unreadable credential store is itself an
         // OpenCode footprint — enable the provider so `refresh()` can surface the actionable error.
         await loadOffMainActor { [authStore, usageScanner] in
@@ -138,7 +138,7 @@ final class OpenCodeProvider: ProviderRuntime {
 
         var meterLines: [MetricLine] = []
         var plan: String?
-        var goError: OpenCodeUsageError?
+        var rejectedKey = false
         if let goKey {
             switch await fetchGoMeters(apiKey: goKey) {
             case .meters(let lines):
@@ -146,16 +146,21 @@ final class OpenCodeProvider: ProviderRuntime {
                 plan = "Go"
             case .noSubscription:
                 AppLog.info(LogTag.plugin("opencode"), "Go usage endpoint: no active subscription")
+            case .failed(.unauthorized):
+                // A rejected key will not start working on a retry, so it must not cost the local
+                // spend tiles. It is the hard error only when there is nothing else to show, and
+                // the card notice otherwise.
+                rejectedKey = true
             case .failed(let error):
-                // A failed meters request must not cost the local spend tiles. It becomes the hard
-                // error only when there is nothing else to show, and a notice otherwise.
-                goError = error
+                // Anything else (network, server error, malformed body) is likely transient: fail
+                // the refresh so the store keeps the last good meters and tiles and retries soon.
+                return ProviderSnapshot.error(provider: provider, error: error)
             }
         }
-        if let goError, goError != loggedGoError {
-            AppLog.warn(LogTag.plugin("opencode"), "Go meters unavailable: \(goError.localizedDescription)")
+        if rejectedKey, !loggedRejectedKey {
+            AppLog.warn(LogTag.plugin("opencode"), "Go key rejected; serving local usage with a notice")
         }
-        loggedGoError = goError
+        loggedRejectedKey = rejectedKey
 
         let scan: LogUsageScan?
         do {
@@ -184,8 +189,8 @@ final class OpenCodeProvider: ProviderRuntime {
         }
 
         if lines.isEmpty {
-            if let goError {
-                return ProviderSnapshot.error(provider: provider, error: goError)
+            if rejectedKey {
+                return ProviderSnapshot.error(provider: provider, error: OpenCodeUsageError.unauthorized)
             }
             if goKey != nil {
                 return ProviderSnapshot.error(provider: provider, error: OpenCodeUsageError.noGoSubscription)
@@ -201,10 +206,10 @@ final class OpenCodeProvider: ProviderRuntime {
         // Without a Go subscription (Zen-only usage, or a key the endpoint answered with
         // `EntitlementError`), the three Go cap rows aren't applicable — hide them as documented
         // instead of rendering three "No data" meters above the local tiles. With meters present,
-        // everything applies (`nil` keeps the legacy all-applicable behavior). A failed meters request
-        // says nothing about the subscription, so the rows stay applicable and the notice below
-        // stands in for them.
-        let applicableMetricIDs: Set<String>? = meterLines.isEmpty && goError == nil
+        // everything applies (`nil` keeps the legacy all-applicable behavior). A rejected key says
+        // nothing about the subscription, so the rows stay applicable and the notice below stands in
+        // for them.
+        let applicableMetricIDs: Set<String>? = meterLines.isEmpty && !rejectedKey
             ? ["opencode.trend", "opencode.today", "opencode.yesterday", "opencode.last30"]
             : nil
 
@@ -221,8 +226,8 @@ final class OpenCodeProvider: ProviderRuntime {
                 )
             },
             applicableMetricIDs: applicableMetricIDs,
-            warning: goError?.localizedDescription,
-            loginRequired: ProviderLoginStatus.requirement(after: goError)
+            warning: rejectedKey ? OpenCodeUsageError.unauthorized.localizedDescription : nil,
+            loginRequired: rejectedKey
         )
     }
 

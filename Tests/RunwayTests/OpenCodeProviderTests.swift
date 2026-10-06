@@ -220,18 +220,43 @@ final class OpenCodeProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.loginRequired, true)
     }
 
-    func testGoMeterFailureKeepsLocalTilesUnderANotice() async {
-        // A rejected key or an unreachable usage API must not cost the local spend. The failure
-        // rides as the card notice, and the Go rows stay applicable so the notice stands in for them.
+    func testRejectedKeyKeepsLocalTilesUnderANotice() async {
+        // A rejected key does not recover on a retry, so it must not cost the local spend. The
+        // failure rides as the card notice, and the Go rows stay applicable so it stands in for them.
         let db = "[" + row("2026-07-12T10:00:00.000Z", "1.0", 500, "gpt-5.5", "opencode") + "]"
-        let cases: [(OpenCodeUsageClient, OpenCodeUsageError, Bool?)] = [
-            (unauthorizedClient(), .unauthorized, true),
-            (OpenCodeUsageClient(http: ThrowingHTTPClient()), .connectionFailed, nil),
+        let snapshot = await provider(
+            files: FakeFiles(["/oc/auth.json": authJSON]),
+            scanner: OpenCodeUsageScanner(
+                sqlite: OpenCodeFakeSQLite(data: ["/oc/opencode.db": db]),
+                databasePaths: { ["/oc/opencode.db"] }
+            ),
+            client: unauthorizedClient()
+        ).refresh()
+        XCTAssertNil(snapshot.errorText)
+        XCTAssertNotNil(snapshot.line(label: "Today"))
+        XCTAssertNotNil(snapshot.usageHistory)
+        XCTAssertNil(snapshot.line(label: "Session"))
+        XCTAssertNil(snapshot.plan)
+        XCTAssertEqual(snapshot.warning, OpenCodeUsageError.unauthorized.localizedDescription)
+        XCTAssertEqual(snapshot.loginRequired, true)
+        XCTAssertNil(snapshot.applicableMetricIDs)
+    }
+
+    func testTransientGoMeterFailureStaysAHardErrorEvenWithLocalUsage() async {
+        // A network error, a server error, or a malformed body is likely to pass. Failing the
+        // refresh lets the store keep the last good meters and tiles on screen and retry soon,
+        // where a successful meterless snapshot would replace and cache over them.
+        let db = "[" + row("2026-07-12T10:00:00.000Z", "1.0", 500, "gpt-5.5", "opencode") + "]"
+        let cases: [(OpenCodeUsageClient, OpenCodeUsageError)] = [
+            (OpenCodeUsageClient(http: ThrowingHTTPClient()), .connectionFailed),
             (OpenCodeUsageClient(http: FakeHTTPClient(response: HTTPResponse(
                 statusCode: 500, headers: [:], body: Data()
-            ))), .requestFailed(500), nil)
+            ))), .requestFailed(500)),
+            (OpenCodeUsageClient(http: FakeHTTPClient(response: HTTPResponse(
+                statusCode: 200, headers: [:], body: Data("<html>".utf8)
+            ))), .invalidResponse)
         ]
-        for (client, error, loginRequired) in cases {
+        for (client, error) in cases {
             let snapshot = await provider(
                 files: FakeFiles(["/oc/auth.json": authJSON]),
                 scanner: OpenCodeUsageScanner(
@@ -240,15 +265,44 @@ final class OpenCodeProviderTests: XCTestCase {
                 ),
                 client: client
             ).refresh()
-            XCTAssertNil(snapshot.errorText, "\(error)")
-            XCTAssertNotNil(snapshot.line(label: "Today"), "\(error)")
-            XCTAssertNotNil(snapshot.usageHistory, "\(error)")
-            XCTAssertNil(snapshot.line(label: "Session"), "\(error)")
-            XCTAssertNil(snapshot.plan, "\(error)")
-            XCTAssertEqual(snapshot.warning, error.localizedDescription)
-            XCTAssertEqual(snapshot.loginRequired, loginRequired, "\(error)")
-            XCTAssertNil(snapshot.applicableMetricIDs, "\(error)")
+            XCTAssertEqual(snapshot.errorText, error.localizedDescription)
+            XCTAssertNil(snapshot.line(label: "Today"), "\(error)")
+            XCTAssertNil(snapshot.warning, "\(error)")
+            XCTAssertNil(snapshot.loginRequired, "\(error)")
         }
+    }
+
+    // MARK: - OpenCode 1.18
+
+    /// The shape OpenCode 1.18.21 leaves on disk: `credential` and `session_message` exist and are
+    /// empty, every message is in `message`, and the login is in auth.json. Those empty tables must
+    /// not make the user look logged out.
+    func testOpenCode118LoginInTheAuthFileDrivesTheCard() async throws {
+        let dir = try DB(self)
+        try dir.execute(DB.openCode118Tables + DB.message(id: "m1", ms: epochMs("2026-07-12T10:00:00.000Z"), data:
+            #"{"role":"assistant","providerID":"opencode-go","modelID":"glm-5.2","cost":2,"tokens":{"total":500}}"#))
+        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: usageJSON()))
+        let provider = provider(dir, auth: authJSON, http: http)
+
+        let has = await provider.hasLocalCredentials()
+        XCTAssertTrue(has)
+        let snapshot = await provider.refresh()
+        XCTAssertEqual(http.requests.first?.headers["Authorization"], "Bearer sk-test")
+        XCTAssertEqual(snapshot.plan, "Go")
+        XCTAssertNotNil(snapshot.line(label: "Session"))
+        XCTAssertNotNil(snapshot.line(label: "Today"))
+        XCTAssertNil(snapshot.warning)
+    }
+
+    func testOpenCode118LoginIsDetectedBeforeAnyUsage() async throws {
+        let dir = try DB(self)
+        try dir.execute(DB.openCode118Tables)
+        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: usageJSON()))
+
+        let loggedIn = await provider(dir, auth: authJSON, http: http).hasLocalCredentials()
+        XCTAssertTrue(loggedIn)
+        let loggedOut = await provider(dir, http: http).hasLocalCredentials()
+        XCTAssertFalse(loggedOut)
     }
 
     // MARK: - OpenCode 2

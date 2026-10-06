@@ -180,7 +180,7 @@ final class OpenCodeUsageScannerTests: XCTestCase {
     func testFreshOpenCode2DatabaseWithoutTheLegacyTableIsRead() async throws {
         let dir = try DB(self)
         let t = epochMs("2026-07-12T10:00:00.000Z")
-        try dir.execute(DB.sessionMessageTable + DB.credentialTable + DB.sessionMessage(id: "m1", seq: 1, ms: t, data:
+        try dir.execute(DB.freshOpenCode2Tables + DB.sessionMessage(id: "m1", seq: 1, ms: t, data:
             #"{"model":{"id":"deepseek-v4-pro","providerID":"opencode-go"},"cost":2,"tokens":{"input":900,"output":100}}"#))
 
         let scanner = OpenCodeUsageScanner(databasePaths: dir.databasePaths)
@@ -190,10 +190,17 @@ final class OpenCodeUsageScannerTests: XCTestCase {
         XCTAssertTrue(scanner.hasHostedUsage())
     }
 
-    func testOpenCode1DatabaseIsStillRead() async throws {
+    func testOpenCode1DatabasesAreStillRead() async throws {
+        // Without the newer tables, and with them present but empty as OpenCode 1.18 creates them.
+        for tables in [DB.messageTable, DB.openCode118Tables] {
+            try await assertOpenCode1DatabaseIsRead(tables)
+        }
+    }
+
+    private func assertOpenCode1DatabaseIsRead(_ tables: String) async throws {
         let dir = try DB(self)
         let t = epochMs("2026-07-12T10:00:00.000Z")
-        try dir.execute(DB.messageTable + DB.message(id: "m1", ms: t, data:
+        try dir.execute(tables + DB.message(id: "m1", ms: t, data:
             #"{"role":"assistant","providerID":"opencode","modelID":"gpt-5.5","cost":1.5,"tokens":{"total":700}}"#))
 
         let scanner = OpenCodeUsageScanner(databasePaths: dir.databasePaths)

@@ -98,24 +98,53 @@ final class OpenCodeAuthStoreTests: XCTestCase {
         }
     }
 
-    // MARK: - OpenCode 2 credential table
+    // MARK: - Which store is live
+    //
+    // OpenCode 1 (through 1.18.x) keeps logins in auth.json. OpenCode 2 keeps them in each database's
+    // credential table, imports auth.json once, and leaves the file behind. The table's existence
+    // does not tell them apart (1.18 already creates it, empty); the import's journal entry does.
 
-    func testGoKeyComesFromTheCredentialTableNotTheStaleAuthFile() throws {
+    private let liveGoAuth = #"{"opencode-go":{"type":"api","key":"sk-live"}}"#
+    private let liveOAuthAuth = #"{"openai":{"type":"oauth","access":"a","refresh":"r"}}"#
+
+    func testOpenCode118WithEmptyCredentialTableReadsTheAuthFile() throws {
+        // The shape OpenCode 1.18.21 leaves on disk: credential and session_message exist and are
+        // empty, every message is in `message`, and the login is in auth.json.
         let dir = try DB(self)
-        try dir.execute(DB.openCode2Tables + DB.credential(
-            id: "c1", integration: "opencode-go", value: #"{"type":"key","key":" oc_sk_live "}"#
-        ))
-        XCTAssertEqual(try dir.authStore(auth: staleGoAuth).goAPIKey(), "oc_sk_live")
-        XCTAssertEqual(try dir.authStore().goAPIKey(), "oc_sk_live")
+        try dir.execute(DB.openCode118Tables + DB.message(id: "m1", ms: 1, data:
+            #"{"role":"assistant","providerID":"opencode-go","modelID":"glm-5.2","cost":1,"tokens":{"total":10}}"#))
+        XCTAssertEqual(try dir.authStore(auth: liveGoAuth).goAPIKey(), "sk-live")
+        XCTAssertEqual(
+            try openAICredential(dir.authStore(auth: liveOAuthAuth), dir.path()),
+            OpenCodeAuthStore.OpenAICredential(isOAuth: true, createdAtMs: nil)
+        )
+        // Logged out of OpenCode 1: nothing in the file, nothing in the empty table.
+        XCTAssertNil(try dir.authStore(auth: "{}").goAPIKey())
+        XCTAssertNil(try dir.authStore().goAPIKey())
+        XCTAssertFalse(try openAICredential(dir.authStore(), dir.path()).isOAuth)
     }
 
-    func testGoKeyIsFoundInAnyChannelDatabase() throws {
+    func testOpenCode1WithoutACredentialTableReadsTheAuthFile() throws {
         let dir = try DB(self)
-        try dir.execute(DB.openCode2Tables)
-        try dir.execute(DB.openCode2Tables + DB.credential(
-            id: "c1", integration: "opencode-go", value: #"{"type":"key","key":"oc_sk_next"}"#
-        ), in: "opencode-next.db")
-        XCTAssertEqual(try dir.authStore(auth: staleGoAuth).goAPIKey(), "oc_sk_next")
+        try dir.execute(DB.messageTable)
+        XCTAssertEqual(try dir.authStore(auth: liveGoAuth).goAPIKey(), "sk-live")
+        XCTAssertTrue(try openAICredential(dir.authStore(auth: liveOAuthAuth), dir.path()).isOAuth)
+    }
+
+    func testAuthFileAnswersWhenThereIsNoDatabase() throws {
+        let dir = try DB(self)
+        XCTAssertEqual(try dir.authStore(auth: liveGoAuth).goAPIKey(), "sk-live")
+    }
+
+    func testOpenCode2GoKeyComesFromTheCredentialTableNotTheStaleAuthFile() throws {
+        for tables in [DB.openCode2Tables, DB.freshOpenCode2Tables] {
+            let dir = try DB(self)
+            try dir.execute(tables + DB.credential(
+                id: "c1", integration: "opencode-go", value: #"{"type":"key","key":" oc_sk_live "}"#
+            ))
+            XCTAssertEqual(try dir.authStore(auth: staleGoAuth).goAPIKey(), "oc_sk_live")
+            XCTAssertEqual(try dir.authStore().goAPIKey(), "oc_sk_live")
+        }
     }
 
     func testOpenCode2GoLogoutIsNotRevivedByTheAuthFile() throws {
@@ -127,30 +156,74 @@ final class OpenCodeAuthStoreTests: XCTestCase {
         XCTAssertNil(try dir.authStore(auth: staleGoAuth).goAPIKey())
     }
 
-    func testGoKeyFallsBackToTheAuthFileWhenNoDatabaseHasACredentialTable() throws {
+    func testCredentialRowWithoutTheImportIsUsedOnlyWhenTheAuthFileHasNoEntry() throws {
+        // Pre-release OpenCode 2 builds stored logins in the table before the import migration
+        // existed. Without the journal entry the file stays the first answer.
         let dir = try DB(self)
-        try dir.execute(DB.messageTable)
-        XCTAssertEqual(try dir.authStore(auth: staleGoAuth).goAPIKey(), "sk-stale")
+        try dir.execute(DB.openCode118Tables + [
+            DB.credential(id: "c1", integration: "opencode-go", value: #"{"type":"key","key":"oc_sk_table"}"#),
+            DB.credential(id: "c2", integration: "openai", value: #"{"type":"oauth","access":"a"}"#, created: "500")
+        ].joined())
+        XCTAssertEqual(try dir.authStore().goAPIKey(), "oc_sk_table")
+        XCTAssertEqual(try dir.authStore(auth: liveGoAuth).goAPIKey(), "sk-live")
+        XCTAssertEqual(
+            try openAICredential(dir.authStore(auth: liveGoAuth), dir.path()),
+            OpenCodeAuthStore.OpenAICredential(isOAuth: true, createdAtMs: 500)
+        )
+        let apiKeyAuth = #"{"openai":{"type":"api","key":"sk-x"}}"#
+        XCTAssertFalse(try openAICredential(dir.authStore(auth: apiKeyAuth), dir.path()).isOAuth)
     }
 
-    func testGoKeyTakesTheCurrentRow() throws {
-        // An inactive row never wins, however new. Among usable rows the active flag outranks an
-        // unflagged import, then the latest update.
+    func testStableChannelKeyWinsOverAnotherChannel() throws {
+        let dir = try DB(self)
+        try dir.execute(DB.openCode2Tables + DB.credential(
+            id: "c1", integration: "opencode-go", value: #"{"type":"key","key":"oc_sk_next"}"#
+        ), in: "opencode-next.db")
+        try dir.execute(DB.openCode2Tables, in: "opencode.db")
+        XCTAssertEqual(try dir.authStore(auth: staleGoAuth).goAPIKey(), "oc_sk_next")
+
+        try dir.execute(DB.credential(
+            id: "c1", integration: "opencode-go", value: #"{"type":"key","key":"oc_sk_stable"}"#
+        ), in: "opencode.db")
+        XCTAssertEqual(try dir.authStore().goAPIKey(), "oc_sk_stable")
+    }
+
+    func testDatabaseOpenCode2HasNotTakenOverKeepsTheAuthFileLive() throws {
+        // Stable is on OpenCode 2 and logged out; another channel's database was never upgraded.
+        // Each database answers from its own store, so the file still counts for that one.
+        let dir = try DB(self)
+        try dir.execute(DB.openCode2Tables, in: "opencode.db")
+        try dir.execute(DB.openCode118Tables, in: "opencode-next.db")
+        XCTAssertEqual(try dir.authStore(auth: liveGoAuth).goAPIKey(), "sk-live")
+    }
+
+    func testGoKeyTakesOpenCodesCurrentRow() throws {
+        // OpenCode picks the active row, else the newest. An inactive row never beats the active one.
         let dir = try DB(self)
         try dir.execute(DB.openCode2Tables + [
-            DB.credential(id: "c1", integration: "opencode-go", value: #"{"key":"inactive"}"#, active: "0", updated: 900),
-            DB.credential(id: "c2", integration: "opencode-go", value: #"{"key":"imported"}"#, active: "NULL", updated: 800),
-            DB.credential(id: "c3", integration: "opencode-go", value: #"{"key":"older"}"#, updated: 100),
-            DB.credential(id: "c4", integration: "opencode-go", value: #"{"key":"current"}"#, updated: 200)
+            DB.credential(id: "c1", integration: "opencode-go", value: #"{"key":"inactive"}"#, active: "0", created: "900"),
+            DB.credential(id: "c2", integration: "opencode-go", value: #"{"key":"current"}"#, created: "100")
         ].joined())
         XCTAssertEqual(try dir.authStore().goAPIKey(), "current")
+
+        // Rows imported from auth.json carry no flag: the newest is the current one.
+        let imported = try DB(self)
+        try imported.execute(DB.openCode2Tables + [
+            DB.credential(id: "c1", integration: "opencode-go", value: #"{"key":"older"}"#, active: "NULL", created: "100"),
+            DB.credential(id: "c2", integration: "opencode-go", value: #"{"key":"newer"}"#, active: "NULL", created: "200")
+        ].joined())
+        XCTAssertEqual(try imported.authStore().goAPIKey(), "newer")
     }
 
-    func testUnreadableCredentialDatabaseThrowsInsteadOfFallingBack() throws {
+    func testUnreadableDatabaseThrowsWhenNoKeyIsFound() throws {
         let dir = try DB(self)
         try dir.execute(DB.openCode2Tables)
         try dir.writeCorruptDatabase("opencode-next.db")
         assertCredentialsUnreadable(try dir.authStore(auth: staleGoAuth).goAPIKey())
+
+        // A key found in a readable database is still returned.
+        try dir.execute(DB.credential(id: "c1", integration: "opencode-go", value: #"{"key":"oc_sk_live"}"#))
+        XCTAssertEqual(try dir.authStore().goAPIKey(), "oc_sk_live")
     }
 
     func testMalformedGoCredentialRowThrows() throws {
@@ -159,7 +232,7 @@ final class OpenCodeAuthStoreTests: XCTestCase {
         assertCredentialsUnreadable(try dir.authStore(auth: staleGoAuth).goAPIKey())
     }
 
-    func testOpenAICredentialComesFromTheCredentialTableWithItsCreationTime() throws {
+    func testOpenCode2OpenAICredentialComesFromTheTableWithItsCreationTime() throws {
         let dir = try DB(self)
         try dir.execute(DB.openCode2Tables + DB.credential(
             id: "c1", integration: "openai", value: #"{"type":"oauth","access":"a","refresh":"r"}"#,
@@ -171,7 +244,7 @@ final class OpenCodeAuthStoreTests: XCTestCase {
         )
     }
 
-    func testCredentialTableOutranksTheStaleAuthFileBothWays() throws {
+    func testOpenCode2CredentialTableOutranksTheStaleAuthFileBothWays() throws {
         let apiKey = try DB(self)
         try apiKey.execute(DB.openCode2Tables + DB.credential(
             id: "c1", integration: "openai", value: #"{"type":"key","key":"sk-x"}"#
@@ -187,16 +260,28 @@ final class OpenCodeAuthStoreTests: XCTestCase {
     }
 
     func testOpenCode2OpenAILogoutIsNotRevivedByTheAuthFile() throws {
-        let loggedOut = try DB(self)
-        try loggedOut.execute(DB.openCode2Tables)
-        XCTAssertFalse(try openAICredential(loggedOut.authStore(auth: staleOAuthAuth), loggedOut.path()).isOAuth)
+        let dir = try DB(self)
+        try dir.execute(DB.openCode2Tables)
+        XCTAssertFalse(try openAICredential(dir.authStore(auth: staleOAuthAuth), dir.path()).isOAuth)
+    }
 
-        // An OpenCode 1 database has no credential table, so auth.json is still its live login.
-        let openCode1 = try DB(self)
-        try openCode1.execute(DB.messageTable)
+    func testOpenAICredentialIsTheActiveRowNotAnInactiveOne() throws {
+        // OpenCode 2 keeps earlier accounts as inactive rows. Only the active one decides.
+        let apiKeyActive = try DB(self)
+        try apiKeyActive.execute(DB.openCode2Tables + [
+            DB.credential(id: "c1", integration: "openai", value: #"{"type":"oauth","access":"a"}"#, active: "0", created: "900"),
+            DB.credential(id: "c2", integration: "openai", value: #"{"type":"key","key":"sk-x"}"#, created: "100")
+        ].joined())
+        XCTAssertFalse(try openAICredential(apiKeyActive.authStore(), apiKeyActive.path()).isOAuth)
+
+        let oauthActive = try DB(self)
+        try oauthActive.execute(DB.openCode2Tables + [
+            DB.credential(id: "c1", integration: "openai", value: #"{"type":"key","key":"sk-x"}"#, active: "0", created: "900"),
+            DB.credential(id: "c2", integration: "openai", value: #"{"type":"oauth","access":"a"}"#, created: "100")
+        ].joined())
         XCTAssertEqual(
-            try openAICredential(openCode1.authStore(auth: staleOAuthAuth), openCode1.path()),
-            OpenCodeAuthStore.OpenAICredential(isOAuth: true, createdAtMs: nil)
+            try openAICredential(oauthActive.authStore(), oauthActive.path()),
+            OpenCodeAuthStore.OpenAICredential(isOAuth: true, createdAtMs: 100)
         )
     }
 
@@ -236,6 +321,36 @@ final class OpenCodeAuthStoreTests: XCTestCase {
         let dir = try DB(self)
         try dir.execute(DB.openCode2Tables + DB.credential(id: "c1", integration: "openai", value: "not json"))
         assertCredentialsUnreadable(try openAICredential(dir.authStore(auth: staleOAuthAuth), dir.path()))
+    }
+
+    // MARK: - Database order and read-only access
+
+    func testStableDatabaseIsListedFirst() throws {
+        let dir = try DB(self)
+        for name in ["opencode-next.db", "opencode.db", "opencode-beta.db", "opencode.db-wal", "other.db"] {
+            try Data().write(to: dir.url.appendingPathComponent(name))
+        }
+        XCTAssertEqual(
+            try OpenCodePaths.databaseFiles(in: dir.url.path).map { ($0 as NSString).lastPathComponent },
+            ["opencode.db", "opencode-beta.db", "opencode-next.db"]
+        )
+    }
+
+    func testCredentialsAreReadFromAWALDatabaseWhoseSidecarsAreGone() throws {
+        // A WAL-mode database that nothing has open has no -shm/-wal files, and a plain read-only
+        // open cannot create them in a directory that is not writable.
+        let dir = try DB(self)
+        try dir.execute("PRAGMA journal_mode=WAL;" + DB.openCode2Tables + DB.credential(
+            id: "c1", integration: "opencode-go", value: #"{"key":"oc_sk_live"}"#
+        ) + "PRAGMA wal_checkpoint(TRUNCATE);")
+        for sidecar in ["opencode.db-wal", "opencode.db-shm"] {
+            try? FileManager.default.removeItem(at: dir.url.appendingPathComponent(sidecar))
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dir.url.path)
+        addTeardownBlock {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dir.url.path)
+        }
+        XCTAssertEqual(try dir.authStore().goAPIKey(), "oc_sk_live")
     }
 }
 

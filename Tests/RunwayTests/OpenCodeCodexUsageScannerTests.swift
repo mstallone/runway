@@ -247,6 +247,24 @@ final class OpenCodeCodexUsageScannerTests: XCTestCase {
         scan.map { $0.series.daily.reduce(0) { $0 + $1.totalTokens } }
     }
 
+    /// The shape OpenCode 1.18.21 leaves on disk: empty `credential` and `session_message` tables,
+    /// every message in `message`, and the ChatGPT login in auth.json. The empty table must not read
+    /// as a logout.
+    func testOpenCode118UsageIsAttributedFromTheAuthFileLogin() async throws {
+        let dir = try DB(self)
+        try dir.execute(DB.openCode118Tables + DB.message(id: "m1", ms: ms("2026-07-12T10:00:00.000Z"), data:
+            #"{"role":"assistant","providerID":"openai","modelID":"gpt-test","cost":0,"finish":"stop","tokens":{"total":150,"input":100,"output":50}}"#))
+
+        let scan = await realScanner(dir, auth: oauthAuth).scan(now: now, pricing: pricing)
+        XCTAssertEqual(totalTokens(scan), 150)
+
+        let apiKey = await realScanner(dir, auth: #"{"openai":{"type":"api","key":"sk-x"}}"#)
+            .scan(now: now, pricing: pricing)
+        XCTAssertNil(apiKey)
+        let loggedOut = await realScanner(dir).scan(now: now, pricing: pricing)
+        XCTAssertNil(loggedOut)
+    }
+
     /// The generated SQL against a real upgraded OpenCode 2 database. The ChatGPT login was created
     /// on July 11; the stale auth.json says API key and must be ignored.
     func testOpenCode2OAuthUsageIsAttributedOnce() async throws {
@@ -334,9 +352,11 @@ final class OpenCodeCodexUsageScannerTests: XCTestCase {
     }
 
     func testOAuthDatabaseThatCannotBeQueriedIsAMissNotAnEmptyHistory() async {
-        // The login reads as OAuth from auth.json, then the only usable database fails. A sibling
-        // with no message tables does not turn that into a successful empty scan.
-        let sqlite = FailingDataSQLite(base: OpenCodeFakeSQLite(tables: ["/oc/opencode-next.db": "credential"]))
+        // Both channels are on ChatGPT. The only database with messages fails, and the sibling with
+        // no message tables does not turn that into a successful empty scan.
+        let sqlite = FailingDataSQLite(base: OpenCodeFakeSQLite(
+            tables: ["/oc/opencode-next.db": "credential,migration"], openCode2: ["/oc/opencode-next.db"]
+        ))
         sqlite.base.openAICredentials["/oc/opencode-next.db"] = #"["oauth",1,0]"#
         sqlite.base.tables["/oc/opencode.db"] = "message"
         let scanner = OpenCodeCodexUsageScanner(
@@ -354,7 +374,11 @@ final class OpenCodeCodexUsageScannerTests: XCTestCase {
     }
 
     func testOAuthChannelsWithoutMessageTablesYieldAnEmptyHistory() async {
-        let sqlite = OpenCodeFakeSQLite(tables: ["/oc/opencode.db": "credential"], openAICredentials: ["/oc/opencode.db": #"["oauth",1,0]"#])
+        let sqlite = OpenCodeFakeSQLite(
+            tables: ["/oc/opencode.db": "credential,migration"],
+            openAICredentials: ["/oc/opencode.db": #"["oauth",1,0]"#],
+            openCode2: ["/oc/opencode.db"]
+        )
         let scanner = OpenCodeCodexUsageScanner(
             authStore: OpenCodeAuthStore(
                 files: FakeFiles(),

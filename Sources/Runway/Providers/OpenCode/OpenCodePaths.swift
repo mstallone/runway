@@ -1,8 +1,8 @@
 import Foundation
 
-/// Where OpenCode keeps its local data on this machine, shared by the auth store (reads `auth.json`)
-/// and the usage scanner (reads the SQLite logs). Resolution mirrors OpenCode itself: an explicit
-/// `OPENCODE_DATA_DIR` wins, then `$XDG_DATA_HOME/opencode`, then the default `~/.local/share/opencode`.
+/// Where OpenCode keeps its local data on this machine, shared by the auth store (reads `auth.json`
+/// and the databases' credentials) and the usage scanners (read the SQLite logs). Resolution mirrors
+/// OpenCode itself: an explicit `OPENCODE_DATA_DIR` wins, then `$XDG_DATA_HOME/opencode`, then the default `~/.local/share/opencode`.
 enum OpenCodePaths {
     static func dataDirectory(environment: EnvironmentReading, homeDirectory: URL) -> String {
         if let override = environment.value(for: "OPENCODE_DATA_DIR")?
@@ -24,7 +24,9 @@ enum OpenCodePaths {
     /// `opencode.db` for stable (latest/beta/prod) and `opencode-<channel>.db` for others (e.g.
     /// `opencode-next.db` for the `next`/preview line). Globbing all of them (rather than hardcoding
     /// `opencode.db`) means a user on the `next` channel is still tracked. The `.db` suffix excludes the
-    /// `-wal`/`-shm` sidecars. Path-sorted for deterministic iteration.
+    /// `-wal`/`-shm` sidecars. The stable `opencode.db` comes first and the other channels follow in
+    /// name order, so wherever the first match wins (the Go key, a message copied between channels)
+    /// the stable channel is the one that wins.
     ///
     /// A missing directory is the normal "never used OpenCode" case and returns `[]`; a directory that
     /// exists but can't be enumerated (permissions, I/O) rethrows so the caller can't mistake broken
@@ -40,7 +42,10 @@ enum OpenCodePaths {
         }
         return names
             .filter { $0.hasPrefix("opencode") && $0.hasSuffix(".db") }
-            .sorted()
+            .sorted { lhs, rhs in
+                if (lhs == "opencode.db") != (rhs == "opencode.db") { return lhs == "opencode.db" }
+                return lhs < rhs
+            }
             .map { dir.trimmingTrailingSlashes + "/" + $0 }
     }
 }

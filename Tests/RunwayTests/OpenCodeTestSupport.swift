@@ -5,14 +5,16 @@ import XCTest
 /// by the OpenCode and Codex suites.
 ///
 /// `tables` holds a database's table-probe output. By default a database has both message tables,
-/// plus `credential` when `openAICredentials` has an entry for it. `openAICredentials` holds the
-/// `[type, hasToken, time_created]` row the credential query returns, or `""` for an OpenCode 2
-/// database with no `openai` row. A database without an entry is OpenCode 1 (no `credential` table).
+/// plus `credential` when `openAICredentials` has an entry for it and `migration` when it is in
+/// `openCode2`. `openAICredentials` holds the `[type, hasToken, time_created]` row the credential
+/// query returns, or `""` for a table with no `openai` row. `openCode2` lists the databases whose
+/// migration journal says OpenCode 2 imported `auth.json`.
 final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
     var data: [String: String]
     var failing: Set<String>
     var tables: [String: String]
     var openAICredentials: [String: String]
+    var openCode2: Set<String>
     var lastDataSQL: String?
     var dataSQL: [String: String] = [:]
 
@@ -20,12 +22,14 @@ final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
         data: [String: String] = [:],
         failing: Set<String> = [],
         tables: [String: String] = [:],
-        openAICredentials: [String: String] = [:]
+        openAICredentials: [String: String] = [:],
+        openCode2: Set<String> = []
     ) {
         self.data = data
         self.failing = failing
         self.tables = tables
         self.openAICredentials = openAICredentials
+        self.openCode2 = openCode2
     }
 
     func queryValue(path: String, sql: String) throws -> String? {
@@ -33,7 +37,11 @@ final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
         if sql == OpenCodeTables.probeSQL {
             let names = tables[path]
                 ?? "message,session_message" + (openAICredentials[path] == nil ? "" : ",credential")
+                + (openCode2.contains(path) ? ",migration" : "")
             return names.isEmpty ? nil : names
+        }
+        if sql == OpenCodeAuthStore.credentialImportSQL {
+            return openCode2.contains(path) ? "1" : nil
         }
         if sql == OpenCodeAuthStore.openAICredentialSQL {
             return openAICredentials[path]?.nilIfEmpty
@@ -55,8 +63,8 @@ final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
 }
 
 /// A real OpenCode data directory on disk, read with the production `sqlite3` accessor, so the SQL the
-/// readers generate runs against real databases. Table definitions are copied from an OpenCode 2
-/// database (foreign keys dropped).
+/// readers generate runs against real databases. Table definitions are copied from the database
+/// OpenCode 1.18.21 creates (foreign keys dropped); OpenCode 2 keeps these columns.
 struct OpenCodeDataDirectory {
     static let messageTable = """
         CREATE TABLE message (id text PRIMARY KEY, session_id text NOT NULL, time_created integer NOT NULL,
@@ -71,8 +79,20 @@ struct OpenCodeDataDirectory {
           connector_id text, method_id text, active integer, time_created integer NOT NULL,
           time_updated integer NOT NULL);
         """
-    /// Every table an upgraded OpenCode 2 database holds.
-    static let openCode2Tables = messageTable + sessionMessageTable + credentialTable
+    static let migrationTable = "CREATE TABLE migration (id TEXT PRIMARY KEY, time_completed INTEGER NOT NULL);"
+    /// The journal entry OpenCode 2 writes when it imports `auth.json` into `credential`.
+    static let credentialImport =
+        "INSERT INTO migration VALUES ('20260805200742_import_legacy_credentials', 2);"
+
+    /// What OpenCode 1.18 creates: it already has (empty) `session_message` and `credential` tables,
+    /// but logs to `message` and keeps logins in `auth.json`. This is also a database that
+    /// OpenCode 2 is installed for but has not opened yet.
+    static let openCode118Tables = messageTable + sessionMessageTable + credentialTable + migrationTable
+        + "INSERT INTO migration VALUES ('20260611035744_credential', 1);"
+    /// A database upgraded by OpenCode 2: the old tables stay, and the import has run.
+    static let openCode2Tables = openCode118Tables + credentialImport
+    /// A database created by OpenCode 2: no `message` table.
+    static let freshOpenCode2Tables = sessionMessageTable + credentialTable + migrationTable + credentialImport
 
     let url: URL
 
@@ -124,8 +144,8 @@ struct OpenCodeDataDirectory {
     }
 
     static func credential(
-        id: String, integration: String, value: String, active: String = "1", created: String = "0", updated: Int = 0
+        id: String, integration: String, value: String, active: String = "1", created: String = "0"
     ) -> String {
-        "INSERT INTO credential VALUES ('\(id)','\(integration)','default','\(value)',NULL,NULL,\(active),\(created),\(updated));"
+        "INSERT INTO credential VALUES ('\(id)','\(integration)','default','\(value)',NULL,NULL,\(active),\(created),\(created));"
     }
 }
