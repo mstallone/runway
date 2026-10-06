@@ -43,6 +43,13 @@ struct ClaudeCredentialState: Hashable, Sendable {
     /// while the profile Claude Code refetches regularly says `…_20x` (`claude_max`).
     var profileSubscriptionType: String? = nil
     var profileRateLimitTier: String? = nil
+    /// The account Claude Code's state file named when this credential was loaded, as the launch
+    /// account pass keys it. Set only on the login the state file describes: the highest-priority
+    /// stored one, and only when it was read from this home's own store. A fallback, Desktop, or
+    /// environment candidate, or the default home's keychain item borrowed by a `CLAUDE_CONFIG_DIR`
+    /// home that has none, may be another account and carries none. Account-bound caches compare it
+    /// before they trust a snapshot under this login.
+    var stateFileIdentityKey: String? = nil
 
     /// The credential values the plan badge is built from: the login blob with its plan family and
     /// rate-limit tier replaced by the fresher state-file values when they are known.
@@ -270,11 +277,17 @@ struct ClaudeAuthStore: Sendable {
         // card label there is the consistent choice, and a failed keychain login falls through to the
         // file account's own freshly-written blob. Generation snapshots opt out: their candidates
         // keep only oauth + source, so the state-file read would be pure overhead there.
+        // The account identity the same read reports follows the same rule, for the same reason.
         if includeProfileTier, !stored.isEmpty,
-           let plan = ClaudeProfilePlanReader(environment: environment, files: files, scope: scope).read()
+           let profile = ClaudeProfilePlanReader(environment: environment, files: files, scope: scope).read()
         {
-            stored[0].profileSubscriptionType = plan.subscriptionType
-            stored[0].profileRateLimitTier = plan.rateLimitTier
+            if readFromOwnStore(stored[0].source) {
+                stored[0].stateFileIdentityKey = profile.identityKey
+            }
+            if let plan = profile.plan {
+                stored[0].profileSubscriptionType = plan.subscriptionType
+                stored[0].profileRateLimitTier = plan.rateLimitTier
+            }
         }
         var desktopStatus: ClaudeDesktopCredentialStatus = .notChecked
         // A working CLI login remains the source of truth and avoids a second Keychain prompt. Desktop
@@ -348,6 +361,20 @@ struct ClaudeAuthStore: Sendable {
             return keychainServiceCandidates().contains {
                 keychain.genericPasswordExists(service: $0) == true
             }
+        }
+    }
+
+    /// Whether a stored login came from the store this home's own Claude Code writes: its
+    /// credentials file, or the first keychain service candidate. With `CLAUDE_CONFIG_DIR` set, the
+    /// second candidate is the default home's item, which that home's state file does not describe.
+    private func readFromOwnStore(_ source: ClaudeCredentialState.Source) -> Bool {
+        switch source {
+        case .file:
+            true
+        case .keychainCurrentUser(let service), .keychainLegacy(let service):
+            service == keychainServiceCandidates().first
+        case .desktop, .environment:
+            false
         }
     }
 

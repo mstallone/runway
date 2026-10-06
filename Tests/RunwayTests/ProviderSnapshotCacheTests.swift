@@ -110,4 +110,120 @@ final class ProviderSnapshotCacheTests: XCTestCase {
         now = now.addingTimeInterval(101)
         XCTAssertNil(cache.snapshot(providerID: "alpha"))
     }
+
+    // MARK: - Check-time freshness
+
+    private func oldSnapshot(_ id: String, now: Date, wait: Bool) -> ProviderSnapshot {
+        ProviderSnapshot(
+            providerID: id,
+            displayName: id.capitalized,
+            lines: [.progress(label: "Session", used: 10, limit: 100, format: .percent)],
+            refreshedAt: now.addingTimeInterval(-3 * 86_400),
+            warning: wait ? "Blocked. Be patient." : nil,
+            warningAction: wait ? .wait : nil
+        )
+    }
+
+    func testCheckTimeIsClearedByALaterOrdinaryWrite() {
+        // A check time left behind after the rate limit ends would measure every later entry from
+        // that old check: stale forever, so each one-shot CLI run would refetch.
+        let defaults = makeDefaults()
+        var now = Date(timeIntervalSince1970: 1_800_000_000)
+        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "k", ttl: 300, now: { now })
+
+        cache.store(oldSnapshot("alpha", now: now, wait: true), checkedAt: now)
+        XCTAssertNotNil(cache.snapshot(providerID: "alpha"), "fresh from the check, whatever the values' age")
+
+        now = now.addingTimeInterval(600)
+        var recovered = oldSnapshot("alpha", now: now, wait: false)
+        recovered.refreshedAt = now
+        cache.store(recovered)
+        XCTAssertNotNil(cache.snapshot(providerID: "alpha"), "measured from refreshedAt again, not the old check")
+
+        // And the other direction: with no check time an old-dated snapshot is stale at once.
+        cache.store(oldSnapshot("alpha", now: now, wait: false))
+        XCTAssertNil(cache.snapshot(providerID: "alpha"))
+
+        // The cleared state is what reached disk.
+        let reread = ProviderSnapshotCache(
+            userDefaults: defaults, storageKey: "k", ttl: 300, allowsPersistedFreshness: true, now: { now }
+        )
+        XCTAssertNil(reread.snapshot(providerID: "alpha"))
+    }
+
+    func testCheckTimeExpiresOneIntervalAfterTheCheck() {
+        let defaults = makeDefaults()
+        var now = Date(timeIntervalSince1970: 1_800_000_000)
+        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "k", ttl: 300, now: { now })
+        cache.store(oldSnapshot("alpha", now: now, wait: true), checkedAt: now)
+
+        now = now.addingTimeInterval(299)
+        XCTAssertNotNil(cache.snapshot(providerID: "alpha"))
+        now = now.addingTimeInterval(2)
+        XCTAssertNil(cache.snapshot(providerID: "alpha"))
+    }
+
+    func testPayloadWrittenBeforeCheckTimesExistedKeepsItsStampAndFreshness() throws {
+        // The released app writes `snapshots` and `producedByIdentityKeys` only.
+        let defaults = makeDefaults()
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let entry = try JSONSerialization.jsonObject(with: encoder.encode(snapshot("claude", used: 40, now: now)))
+        defaults.set(
+            try JSONSerialization.data(withJSONObject: [
+                "snapshots": ["claude": entry],
+                "producedByIdentityKeys": ["claude": "acct-a|org-1"]
+            ]),
+            forKey: "k"
+        )
+
+        let cache = ProviderSnapshotCache(
+            userDefaults: defaults, storageKey: "k", ttl: 300, allowsPersistedFreshness: true,
+            now: { now.addingTimeInterval(60) }
+        )
+        XCTAssertEqual(cache.loadSnapshots(providerIDs: ["claude"])["claude"]?.refreshedAt, now)
+        XCTAssertEqual(cache.producedByIdentityKey(providerID: "claude"), "acct-a|org-1")
+        XCTAssertFalse(cache.hasStaleAccountStamp(providerID: "claude", currentIdentityKey: "acct-a|org-1"))
+        XCTAssertNotNil(cache.snapshot(providerID: "claude"), "fresh by its own refreshedAt")
+
+        let later = ProviderSnapshotCache(
+            userDefaults: defaults, storageKey: "k", ttl: 300, allowsPersistedFreshness: true,
+            now: { now.addingTimeInterval(600) }
+        )
+        XCTAssertNil(later.snapshot(providerID: "claude"))
+    }
+
+    /// The store decides which writes carry a check time: any provider's wait-style snapshot (Muse
+    /// serves an old-dated last-good under one), and nothing else.
+    @MainActor
+    func testStoreRecordsACheckTimeOnlyForWaitNoticeSnapshots() async {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        func probes(_ snapshots: [ProviderSnapshot], forceFirst: Int = 0) async -> Int {
+            let provider = Provider(id: "muse", displayName: "Muse", icon: .providerMark("muse"))
+            let runtime = SequenceProviderRuntime(provider: provider, descriptors: [], snapshots: snapshots)
+            let defaults = makeDefaults()
+            let store = WidgetDataStore(
+                registry: WidgetRegistry.from([runtime]),
+                providers: [runtime],
+                cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "k", ttl: 300, now: { now }),
+                defaults: defaults,
+                now: { now }
+            )
+            for index in 0..<3 {
+                await store.refresh(providerID: "muse", force: index < forceFirst)
+            }
+            return runtime.refreshCount
+        }
+
+        let waiting = oldSnapshot("muse", now: now, wait: true)
+        let ordinary = oldSnapshot("muse", now: now, wait: false)
+        let waitProbes = await probes([waiting])
+        XCTAssertEqual(waitProbes, 1, "an old-dated wait-notice snapshot is fresh for one interval from the check")
+        let ordinaryProbes = await probes([ordinary])
+        XCTAssertEqual(ordinaryProbes, 3, "an old-dated ordinary snapshot is measured from refreshedAt, as before")
+        // Wait notice, then recovery (forced), then a plain pass: the recovery cleared the check time.
+        let recoveredProbes = await probes([waiting, ordinary], forceFirst: 2)
+        XCTAssertEqual(recoveredProbes, 3)
+    }
 }
