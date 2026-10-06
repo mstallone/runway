@@ -82,7 +82,7 @@ final class OpenCodeProviderDatabaseTests: XCTestCase {
         let dir = try OpenCodeDataDirectory(self)
         try dir.execute(OpenCodeDataDirectory.openCode2Tables + OpenCodeDataDirectory.sessionMessage(
             id: "m1", seq: 1, ms: epochMs("2026-07-12T10:00:00.000Z"),
-            data: #"{"model":{"id":"gpt-5.5","providerID":"opencode"},"cost":1,"tokens":{"input":400,"output":100}}"#
+            data: #"{"finish":"stop","model":{"id":"gpt-5.5","providerID":"opencode"},"cost":1,"tokens":{"input":400,"output":100}}"#
         ))
         try dir.writeCorruptDatabase("opencode-next.db")
         let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: usageJSON()))
@@ -160,7 +160,7 @@ final class OpenCodeProviderDatabaseTests: XCTestCase {
         try dir.execute(DB.openCode2Tables + [
             DB.credential(id: "c1", integration: "opencode-go", value: #"{"type":"key","key":"oc_sk_live"}"#),
             DB.sessionMessage(id: "m1", seq: 1, ms: epochMs("2026-07-12T10:00:00.000Z"), data:
-                #"{"model":{"id":"glm-5.2","providerID":"opencode-go"},"cost":2,"tokens":{"input":400,"output":100}}"#)
+                #"{"finish":"stop","model":{"id":"glm-5.2","providerID":"opencode-go"},"cost":2,"tokens":{"input":400,"output":100}}"#)
         ].joined())
         let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: usageJSON()))
         let provider = provider(dir, auth: #"{"opencode-go":{"type":"api","key":"sk-stale"}}"#, http: http)

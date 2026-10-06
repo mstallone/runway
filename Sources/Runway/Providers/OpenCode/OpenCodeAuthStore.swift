@@ -21,8 +21,12 @@ struct OpenCodeAuthStore: Sendable {
     static let credentialImportSQL =
         "SELECT 1 FROM migration WHERE id = '20260805200742_import_legacy_credentials' LIMIT 1;"
 
-    /// OpenCode's own choice of an integration's current credential: the active row, else the
-    /// newest. Rows imported from `auth.json` have a NULL `active` flag.
+    /// OpenCode's own choice of an integration's current credential, reproduced exactly: it lists the
+    /// rows `ORDER BY active ASC, time_created ASC, id ASC` in SQL and takes the last one
+    /// (`packages/core/src/credential.ts` and `integration.ts`, v2.0.24). SQLite sorts NULL lowest,
+    /// so the order of preference is an active row, then explicitly inactive rows, then rows with no
+    /// flag (imports from `auth.json`), newest first within each. OpenCode's writes keep exactly one
+    /// active row whenever any row is flagged, so the last two groups never decide in practice.
     private static let currentRow = "ORDER BY active DESC, time_created DESC, id DESC LIMIT 1"
 
     /// The current `opencode-go` key of one database.

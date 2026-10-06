@@ -238,7 +238,7 @@ final class OpenCodeAuthStoreTests: XCTestCase {
     }
 
     func testGoKeyTakesOpenCodesCurrentRow() throws {
-        // OpenCode picks the active row, else the newest. An inactive row never beats the active one.
+        // An inactive row never beats the active one, however new.
         let dir = try DB(self)
         try dir.execute(DB.openCode2Tables + [
             DB.credential(id: "c1", integration: "opencode-go", value: #"{"key":"inactive"}"#, active: "0", created: "900"),
@@ -253,6 +253,24 @@ final class OpenCodeAuthStoreTests: XCTestCase {
             DB.credential(id: "c2", integration: "opencode-go", value: #"{"key":"newer"}"#, active: "NULL", created: "200")
         ].joined())
         XCTAssertEqual(try imported.authStore().goAPIKey(), "newer")
+    }
+
+    func testInactiveRowOutranksAnUnflaggedRowAsInOpenCode() throws {
+        // OpenCode lists an integration's credentials `ORDER BY active ASC, time_created ASC, id ASC`
+        // and takes the last (anomalyco/opencode v2.0.24, packages/core/src/credential.ts `list` and
+        // packages/core/src/integration.ts `resolveConnections` / `connection.active`). SQLite sorts
+        // NULL below 0, so with no active row an explicitly inactive row is current even when an
+        // unflagged import is newer. OpenCode's own writes do not produce this mix; the test pins
+        // that Runway would still agree with OpenCode if it appeared.
+        let dir = try DB(self)
+        try dir.execute(DB.openCode2Tables + [
+            DB.credential(id: "c1", integration: "opencode-go", value: #"{"key":"inactive"}"#, active: "0", created: "100"),
+            DB.credential(id: "c2", integration: "opencode-go", value: #"{"key":"unflagged"}"#, active: "NULL", created: "900"),
+            DB.credential(id: "c3", integration: "openai", value: #"{"type":"oauth","access":"a"}"#, active: "0", created: "100"),
+            DB.credential(id: "c4", integration: "openai", value: #"{"type":"key","key":"sk-x"}"#, active: "NULL", created: "900")
+        ].joined())
+        XCTAssertEqual(try dir.authStore().goAPIKey(), "inactive")
+        XCTAssertTrue(try openAICredential(dir.authStore(), dir.path()).isOAuth)
     }
 
     func testUnreadableDatabaseThrowsWhenNoKeyIsFound() throws {

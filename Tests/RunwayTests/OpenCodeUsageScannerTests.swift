@@ -157,17 +157,17 @@ final class OpenCodeUsageScannerTests: XCTestCase {
             DB.message(id: "m1", ms: t, data:
                 #"{"role":"assistant","providerID":"opencode-go","modelID":"glm-5.2","cost":2,"tokens":{"total":500}}"#),
             DB.sessionMessage(id: "m1", seq: 1, ms: t, data:
-                #"{"model":{"id":"glm-5.2","providerID":"opencode-go"},"cost":2,"tokens":{"input":400,"output":100}}"#),
+                #"{"finish":"stop","model":{"id":"glm-5.2","providerID":"opencode-go"},"cost":2,"tokens":{"input":400,"output":100}}"#),
             DB.sessionMessage(id: "m2", seq: 2, ms: t, data:
-                #"{"model":{"id":"gpt-5.5","providerID":"opencode"},"cost":1,"tokens":{"input":100,"output":50,"reasoning":25,"cache":{"read":20,"write":5}}}"#),
+                #"{"finish":"stop","model":{"id":"gpt-5.5","providerID":"opencode"},"cost":1,"tokens":{"input":100,"output":50,"reasoning":25,"cache":{"read":20,"write":5}}}"#),
             DB.sessionMessage(id: "m3", type: "compaction", seq: 3, ms: t, data:
                 #"{"status":"completed","model":{"id":"glm-5.2","providerID":"opencode-go"},"cost":0.5,"tokens":{"input":100}}"#),
             DB.sessionMessage(id: "m4", type: "compaction", seq: 4, ms: t, data:
                 #"{"status":"running","model":{"id":"glm-5.2","providerID":"opencode-go"},"cost":9,"tokens":{"input":1}}"#),
             DB.sessionMessage(id: "m5", seq: 5, ms: t, data:
-                #"{"model":{"id":"gpt-5.5","providerID":"openai"},"cost":7,"tokens":{"input":1}}"#),
+                #"{"finish":"stop","model":{"id":"gpt-5.5","providerID":"openai"},"cost":7,"tokens":{"input":1}}"#),
             DB.sessionMessage(id: "m6", type: "user", seq: 6, ms: t, data:
-                #"{"model":{"id":"glm-5.2","providerID":"opencode-go"},"cost":9,"tokens":{"input":1}}"#)
+                #"{"finish":"stop","model":{"id":"glm-5.2","providerID":"opencode-go"},"cost":9,"tokens":{"input":1}}"#)
         ].joined())
 
         let scanner = OpenCodeUsageScanner(databasePaths: dir.databasePaths)
@@ -183,13 +183,34 @@ final class OpenCodeUsageScannerTests: XCTestCase {
         let dir = try DB(self)
         let t = epochMs("2026-07-12T10:00:00.000Z")
         try dir.execute(DB.freshOpenCode2Tables + DB.sessionMessage(id: "m1", seq: 1, ms: t, data:
-            #"{"model":{"id":"deepseek-v4-pro","providerID":"opencode-go"},"cost":2,"tokens":{"input":900,"output":100}}"#))
+            #"{"finish":"stop","model":{"id":"deepseek-v4-pro","providerID":"opencode-go"},"cost":2,"tokens":{"input":900,"output":100}}"#))
 
         let scanner = OpenCodeUsageScanner(databasePaths: dir.databasePaths)
         guard let scan = try await scanner.scan(now: now) else { return XCTFail("expected a scan") }
         XCTAssertEqual(scan.series.daily.compactMap(\.costUSD).reduce(0, +), 2.0, accuracy: 0.0001)
         XCTAssertEqual(scan.series.daily.reduce(0) { $0 + $1.totalTokens }, 1000)
         XCTAssertTrue(scanner.hasHostedUsage())
+    }
+
+    func testOpenCode2ReplyStillInProgressIsNotCounted() async throws {
+        // OpenCode 2 keeps the cost of finished steps on the row while a later step is streaming,
+        // with no completion time and no finish reason. Counting it would show partial usage that
+        // changes on the next refresh.
+        let dir = try DB(self)
+        let t = epochMs("2026-07-12T10:00:00.000Z")
+        try dir.execute(DB.freshOpenCode2Tables + [
+            DB.sessionMessage(id: "streaming", seq: 1, ms: t, data:
+                #"{"model":{"id":"glm-5.2","providerID":"opencode-go"},"cost":9,"time":{"created":\#(t)},"tokens":{"input":4000,"output":4000}}"#),
+            DB.sessionMessage(id: "completed", seq: 2, ms: t, data:
+                #"{"model":{"id":"glm-5.2","providerID":"opencode-go"},"cost":2,"time":{"created":\#(t),"completed":\#(t)},"tokens":{"input":400,"output":100}}"#),
+            DB.sessionMessage(id: "failed", seq: 3, ms: t, data:
+                #"{"finish":"error","model":{"id":"glm-5.2","providerID":"opencode-go"},"cost":1,"time":{"created":\#(t)},"tokens":{"input":40,"output":10}}"#)
+        ].joined())
+
+        let scanner = OpenCodeUsageScanner(databasePaths: dir.databasePaths)
+        guard let scan = try await scanner.scan(now: now) else { return XCTFail("expected a scan") }
+        XCTAssertEqual(scan.series.daily.compactMap(\.costUSD).reduce(0, +), 3.0, accuracy: 0.0001)
+        XCTAssertEqual(scan.series.daily.reduce(0) { $0 + $1.totalTokens }, 550)
     }
 
     func testOpenCode1DatabasesAreStillRead() async throws {

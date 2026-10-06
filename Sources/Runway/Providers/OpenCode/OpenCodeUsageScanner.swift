@@ -214,8 +214,15 @@ struct OpenCodeUsageScanner: Sendable {
                           + COALESCE(json_extract(data,'$.tokens.cache.write'),0))
         """
     private static let messageKind = "json_extract(data,'$.role') = 'assistant'"
-    private static let sessionMessageKind =
-        "(type = 'assistant' OR (type = 'compaction' AND json_extract(data,'$.status') = 'completed'))"
+    /// OpenCode 2 reopens one assistant row for every step of a reply: a finished step leaves its
+    /// cost and tokens on the row, and the next step clears `$.time.completed` and `$.finish` until
+    /// it ends. A row caught mid-reply would add partial usage that changes on the next refresh, so
+    /// only a row at rest counts. `message` rows keep their original, ungated rule.
+    private static let sessionMessageKind = """
+        ((type = 'assistant'
+                  AND (json_type(data,'$.time.completed') IN ('integer','real') OR json_type(data,'$.finish') = 'text'))
+                 OR (type = 'compaction' AND json_extract(data,'$.status') = 'completed'))
+        """
 
     private static func rowsSQL(table: String, kind: String, cutoffMs: Int?) -> String {
         """
