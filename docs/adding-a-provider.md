@@ -16,6 +16,10 @@ Besides `refresh()`, every provider implements `hasLocalCredentials()`: a cheap,
 
 `adoptLaunchSnapshot(_:producedByIdentityKey:)` is optional. `WidgetDataStore` calls it once at launch with the provider's cached snapshot, and only when that entry is marked with the account the card resolved to. Implement it only if the provider keeps fallback state in memory that a relaunch loses (Claude does, for rate limits), and only reuse the snapshot for a login you can tie to that account.
 
+`snapshotAccountIdentityKey` is optional too. A provider with account cards can report which account its local files named for the values in the snapshot it just returned. `WidgetDataStore` reads it right after `refresh()` and marks the cache entry with that account instead of the card's launch account. Leave the default (`nil`) unless a login can change while the app runs and you can read the account without a network call.
+
+A snapshot whose `warningAction` is `.wait` changes cache freshness: it counts as fresh for one refresh interval from the check, even when you date `refreshedAt` earlier. Date `refreshedAt` at the time the values were really fetched. See [Refreshing](refreshing.md#caching).
+
 ## The metric contract
 
 `refresh()` returns a `ProviderSnapshot` whose `lines` are `MetricLine` values. Pick the case by the shape of the number:

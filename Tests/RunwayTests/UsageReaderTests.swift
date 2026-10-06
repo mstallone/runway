@@ -12,6 +12,7 @@ final class UsageReaderTests: XCTestCase {
         var refreshCount = 0
         var refreshError: String?
         var refreshedAt = Date()
+        var warningAction: ProviderSnapshot.WarningAction?
 
         init(id: String = "stub") {
             self.provider = Provider(id: id, displayName: id.capitalized, icon: .providerMark(id))
@@ -28,7 +29,9 @@ final class UsageReaderTests: XCTestCase {
                 providerID: provider.id,
                 displayName: provider.displayName,
                 lines: [.progress(label: "Weekly", used: 20, limit: 100, format: .percent)],
-                refreshedAt: refreshedAt
+                refreshedAt: refreshedAt,
+                warning: warningAction == .wait ? "Blocked. Be patient." : nil,
+                warningAction: warningAction
             )
         }
     }
@@ -52,6 +55,31 @@ final class UsageReaderTests: XCTestCase {
         XCTAssertNotNil((object["providers"] as? [String: Any])?["stub"])
         XCTAssertEqual(provider.refreshCount, 0)
         XCTAssertTrue(result.warnings.isEmpty)
+    }
+
+    func testRepeatedReadsUnderAWaitNoticeAskTheProviderOnce() async throws {
+        // Each `runway` run is a new process with no in-memory cooldown. Limits carried through a
+        // rate limit keep their real, old `refreshedAt`; that must not make every run ask again.
+        let defaults = defaults()
+        let provider = StubProvider()
+        provider.refreshedAt = Date().addingTimeInterval(-3 * 86_400)
+        provider.warningAction = .wait
+
+        for _ in 0..<3 {
+            let result = try await UsageReader(userDefaults: defaults, providers: [provider]).read(providerID: "stub")
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: result.data) as? [String: Any])
+            XCTAssertNotNil((object["providers"] as? [String: Any])?["stub"])
+        }
+        XCTAssertEqual(provider.refreshCount, 1)
+
+        // Without the wait notice an old-dated snapshot is stale by its own time, as before.
+        let ordinary = StubProvider(id: "plain")
+        ordinary.refreshedAt = Date().addingTimeInterval(-3 * 86_400)
+        let plainDefaults = self.defaults()
+        for _ in 0..<3 {
+            _ = try await UsageReader(userDefaults: plainDefaults, providers: [ordinary]).read(providerID: "plain")
+        }
+        XCTAssertEqual(ordinary.refreshCount, 3)
     }
 
     func testForceUsesSharedProviderAndStoresResult() async throws {
