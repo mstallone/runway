@@ -799,18 +799,19 @@ final class ClaudeProviderTests: XCTestCase {
         // guard can prove a safe rotation (here the kill switch — the same shape as an unverified
         // write path or a too-recent expiry), an expired token still means NO token-endpoint call,
         // NO credential write, and the renewal notice over the local spend tiles.
-        let keychain = WriteTrackingKeychain(
+        let keychain = ReadableClaudeKeychain(
             value: #"""
             {"claudeAiOauth":{"accessToken":"stale-token","refreshToken":"refresh-1","expiresAt":1,"subscriptionType":"pro","scopes":["user:profile"]}}
             """#
         )
         let httpClient = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data()))
+        let files = FakeFiles()
         var renewal = ClaudeTokenRenewal()
         renewal.isDisabled = { true }
         let provider = ClaudeProvider(
             authStore: ClaudeAuthStore(
                 environment: FakeEnvironment(),
-                files: FakeFiles(),
+                files: files,
                 keychain: keychain
             ),
             usageClient: ClaudeUsageClient(httpClient: httpClient),
@@ -824,7 +825,7 @@ final class ClaudeProviderTests: XCTestCase {
         // The expired stamp short-circuits before any network call: no usage call, and above all no
         // POST to any /oauth/token endpoint.
         XCTAssertTrue(httpClient.requests.isEmpty)
-        XCTAssertEqual(keychain.writeCount, 0, "a declined renewal must not write Claude's credential store")
+        XCTAssertTrue(files.files.isEmpty, "a declined renewal must not write Claude's credentials file")
         XCTAssertNil(badge(snapshot.lines, "Error"))
         XCTAssertNil(snapshot.line(label: "Session"))
         XCTAssertEqual(snapshot.warning, ClaudeAuthError.loginRenewalRequired.localizedDescription)
@@ -846,7 +847,7 @@ final class ClaudeProviderTests: XCTestCase {
         }
         let now = RunwayISO8601.date(from: "2026-02-20T16:00:00.000Z")!
         let staleBlob = #"{"claudeAiOauth":{"accessToken":"stale-token","refreshToken":"refresh-1","expiresAt":1,"subscriptionType":"pro","scopes":["user:profile"]}}"#
-        let keychain = WriteTrackingKeychain(value: staleBlob)
+        let keychain = ReadableClaudeKeychain(value: staleBlob)
         let usageHTTP = FakeHTTPClient(response: HTTPResponse(
             statusCode: 200,
             headers: [:],
@@ -1452,20 +1453,10 @@ private final class InteractionTrackingKeychain: KeychainReading, @unchecked Sen
 }
 
 
-/// Models a readable Claude Code item and counts every write-capable call. Runway is a read-only
-/// consumer of Claude's credentials, so tests assert the count stays zero.
-private final class WriteTrackingKeychain: KeychainReading, @unchecked Sendable {
-    private let lock = NSLock()
-    private let value: String
-    private var writes = 0
-
-    init(value: String) {
-        self.value = value
-    }
-
-    var writeCount: Int {
-        lock.withLock { writes }
-    }
+/// Models a readable Claude Code item. Runway is a read-only consumer of Claude's credentials:
+/// `KeychainReading` has no write method, so a keychain write is unrepresentable here.
+private struct ReadableClaudeKeychain: KeychainReading {
+    let value: String
 
     func readGenericPassword(service: String) throws -> String? {
         nil

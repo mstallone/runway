@@ -225,7 +225,4 @@ final class WidgetDataStoreAccountCacheTests: XCTestCase {
             rejectsAccountStampedCache: true
         ))
     }
-
-    /// A refresh writes the card's launch-resolved identity as the stamp, and a nil identity CLEARS
-    /// any prior stamp — leaving the old account's stamp would falsely bless the new snapshot.
 }
