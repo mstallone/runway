@@ -6,24 +6,25 @@ import SwiftUI
 /// A click-to-record shortcut field backed by the KeyboardShortcuts store.
 ///
 /// This replaces `KeyboardShortcuts.Recorder`, whose NSSearchField needs to become first
-/// responder of a key window to see key presses — focus plumbing that does not work inside the
-/// menu-bar popover on macOS 26+ (clicking the field looked focused but recorded nothing).
-/// Recording here uses a local key-event monitor instead, which only needs the app to be active,
-/// so it works wherever the popover does. Storage and the global hotkey stay with the
+/// responder of a key window to see key presses — focus plumbing that did not work inside the
+/// menu-bar popover on macOS 26+, where this field first lived (clicking it looked focused but
+/// recorded nothing). Recording here uses a local key-event monitor instead, which only needs the
+/// app to be active. The field now lives in the Settings window's General pane. Storage and the global hotkey stay with the
 /// KeyboardShortcuts library (`setShortcut` persists and re-registers automatically).
 struct ShortcutRecorderField: View {
     let name: KeyboardShortcuts.Name
 
-    /// Read by `EscapeToCloseReader`: while recording, Esc belongs to the recorder (cancel), not
-    /// to popover navigation. The recorder's own monitor consumes the press; this flag keeps the
-    /// popover's Esc handling from also acting on it.
+    /// Read by the app's other key handlers (`PopoverKeyReader`, `TooMuchTransparencyKeyReader`,
+    /// `SettingsWindowController`, `StatusItemController`): while recording, keys belong to the
+    /// recorder. The recorder's own monitor consumes the press; this flag keeps those handlers
+    /// from also acting on it.
     @MainActor static private(set) var isRecordingActive = false
 
     @State private var isRecording = false
     @State private var keyMonitor: Any?
     /// Re-renders the chip after `setShortcut` (the library's store isn't observable).
     @State private var currentShortcut: KeyboardShortcuts.Shortcut?
-    /// The hosting popover window; key events only reach the local monitor while the app is
+    /// The hosting window; key events only reach the local monitor while the app is
     /// active and some window is key, so recording starts by making this one key.
     @State private var hostWindow: NSWindow?
 
@@ -64,7 +65,7 @@ struct ShortcutRecorderField: View {
             currentShortcut = KeyboardShortcuts.getShortcut(for: name)
         }
         .background(HostWindowReader(window: $hostWindow))
-        // Covers the popover closing (or the screen switching away) mid-recording.
+        // Covers the window closing (or the pane switching away) mid-recording.
         .onDisappear {
             stopRecording()
         }

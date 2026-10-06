@@ -1,15 +1,16 @@
 import Foundation
 
-/// The authenticated-fetch sequence shared by every OAuth-style provider, written
-/// once: attempt → on 401/403 refresh the token → retry once → a second 401/403 is a hard auth
-/// failure. Anything that isn't an auth failure (success, 429, 5xx) returns untouched for the
+/// Shared auth-status triage, plus the authenticated-fetch sequence for a provider that refreshes
+/// its own token (Grok today): attempt → on 401/403 refresh the token → retry once → a second
+/// 401/403 is a hard auth failure. Anything that isn't an auth failure (success, 429, 5xx) returns untouched for the
 /// provider's mapper to interpret, so rate-limit and server-error handling stay per-provider.
 ///
 /// The `refreshAccessToken` closure owns everything provider-specific about refreshing: loading
 /// the refresh token (throw the provider's auth error when there isn't one), calling the token
 /// endpoint, interpreting its body (`invalid_grant`, `shouldLogout`, …), and persisting rotated
-/// credentials. Devin deliberately does not use this — its 401/403 path switches auth *sources*
-/// (credentials file → app state) rather than refreshing a token.
+/// credentials. Claude, Codex and Cursor credentials are read-only, so those providers use only
+/// the triage helpers; Devin's 401/403 path switches auth *sources* (credentials file → app
+/// state) rather than refreshing a token.
 @MainActor
 enum ProviderAuthRetry {
     /// The statuses that mean "the token is bad" rather than "the request failed".
@@ -19,8 +20,7 @@ enum ProviderAuthRetry {
 
     /// Triage a response that should carry a usable body: a 401/403 means the token went bad (throw
     /// `authExpired`), any other non-2xx is a request failure (throw `requestFailed(status)`), and a
-    /// 2xx returns without throwing. Centralizes the guard the Claude/Codex/Grok mappers and
-    /// `CursorProvider` each re-spelled inline, routing the auth-status check through `isAuthFailure`.
+    /// 2xx returns without throwing. Used by the Claude, Codex and Grok mappers and `CursorProvider`.
     nonisolated static func requireSuccess(
         _ response: HTTPResponse,
         authExpired: Error,

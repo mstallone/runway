@@ -3,8 +3,7 @@ import os
 
 /// Resolves the log file URL and owns a serial, lock-guarded `FileHandle` appender with single-archive
 /// rotation. `@unchecked Sendable` because all mutable state is guarded by an internal `NSLock`, so it
-/// can be written to from any isolation (the `Sendable` provider structs, the `@MainActor` UI, etc.) —
-/// the `nonisolated`-static-`Logger` precedent in `LocalUsageServer`, plus the lock for the handle.
+/// can be written to from any isolation (the `Sendable` provider structs, the `@MainActor` UI, etc.).
 ///
 /// Rotation matches the Tauri cap (`.max_file_size(10_000_000)`): when a write would exceed 10 MB the
 /// current file becomes `Runway.1.log` and a fresh `Runway.log` opens — bounding disk to ~20 MB

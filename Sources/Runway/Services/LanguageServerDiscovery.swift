@@ -5,7 +5,7 @@ import Foundation
 ///
 /// The approach: scan `ps` for the process, match it by name + marker flags, pull `--csrf_token` /
 /// `--extension_server_port` from its argv, and read its listening TCP ports via `lsof`. All work is
-/// blocking subprocess I/O, so call `discover` off the main actor (e.g. via `loadOffMainActor`).
+/// blocking subprocess I/O, so call `discoverOutcome` off the main actor (e.g. via `loadOffMainActor`).
 struct LanguageServerDiscovery: Sendable {
     struct Options: Sendable {
         /// Executable name to match (e.g. `language_server`, `agy`).

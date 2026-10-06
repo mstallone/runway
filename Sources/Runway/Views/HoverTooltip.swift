@@ -23,8 +23,8 @@ import SwiftUI
 
 extension View {
     /// Shows `text` in a hover tooltip after a short delay, anchored above the hovered item. `nil` or empty
-    /// shows nothing, so the many `someTooltip ?? ""` call sites keep their "no tooltip when blank"
-    /// behavior. The text is also exposed as an accessibility hint — the part `.help()` gave VoiceOver.
+    /// shows nothing, so call sites can pass an optional and get no tooltip when it is blank. The
+    /// text is also exposed as an accessibility hint — the part `.help()` gave VoiceOver.
     func hoverTooltip(_ text: String?) -> some View {
         modifier(HoverTooltipModifier(text: text))
     }

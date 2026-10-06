@@ -193,7 +193,7 @@ enum LocalUsageAPI {
         }
 
         /// The legacy combined string for a `.values` row: each value formatted (dollars full so cents
-        /// survive, counts compact like the mapper's old `formatTokens`) and joined with " · ".
+        /// survive, counts compact) and joined with " · ".
         private static func legacyValueString(_ values: [MetricValue]) -> String {
             values
                 .map { MetricFormatter.string(for: $0, style: $0.kind == .count ? .tray : .full) }

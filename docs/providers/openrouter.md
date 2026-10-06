@@ -42,8 +42,10 @@ A key saved through the app overrides an environment key, because the config fil
 
 Two REST calls with a `Bearer` token against `https://openrouter.ai/api/v1`:
 
-- `GET /credits`: account-wide `total_credits` and `total_usage`. The Credits meter and Balance come from these. Required for a usable snapshot.
-- `GET /key`: best-effort. The tier, daily, weekly, and monthly spend, and an optional per-key cap (`limit` minus `limit_remaining` for the current window). If this call fails, the balance still renders from `/credits`.
+- `GET /credits`: account-wide `total_credits` and `total_usage`. The Credits meter and Balance come from these.
+- `GET /key`: the tier, daily, weekly, and monthly spend, and an optional per-key cap (`limit` minus `limit_remaining` for the current window).
+
+The two calls are independent, and the card renders whatever succeeded: if one fails, the other's metrics still show. OpenRouter restricts some endpoints to certain key types, so the key is reported as invalid only when both calls return 401 or 403.
 
 A period spend of `$0.00` is shown as a measured zero (the API reports it directly) rather than "No data". Credit values can be up to about 60 seconds stale on OpenRouter's side.
 

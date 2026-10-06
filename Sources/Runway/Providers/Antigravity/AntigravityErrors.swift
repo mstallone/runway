@@ -1,6 +1,6 @@
 import Foundation
 
-/// Antigravity surfaces three user-facing failures. Every per-strategy error (LS not running, a decode
+/// The failures Antigravity surfaces to the user. Every per-strategy error (LS not running, a decode
 /// miss) is swallowed and the next strategy is tried; only when all strategies are exhausted does one of
 /// these reach the UI.
 enum AntigravityError: Error, LocalizedError, Equatable {

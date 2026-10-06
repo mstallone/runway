@@ -60,7 +60,8 @@ enum PaceBucket: Hashable, Sendable {
 }
 
 /// Deduplication state for one metric (provider + descriptor), persisted across refresh passes so a
-/// milestone fires once per reset window rather than on every tick. Lives in `WidgetDataStore`.
+/// milestone fires once per reset window rather than on every tick. Lives in
+/// `QuotaNotificationEvaluator`.
 struct NotificationState: Equatable, Sendable {
     /// The reset instant of the window the fired flags belong to. When this advances (a new window),
     /// the fired set clears so the same milestones can fire again next period.
@@ -93,8 +94,8 @@ struct PaceNotificationToggles: Sendable {
 }
 
 /// Pure milestone logic — no SwiftUI, no UserNotifications — so the firing rules stay unit-testable.
-/// `WidgetDataStore.evaluateNotifications` feeds it the current `MeterState` + `fraction` + `resetsAt`
-/// for each metric and posts a notification for every returned milestone.
+/// `QuotaNotificationEvaluator` feeds it the current `MeterState` + `fraction` + `resetsAt` for each
+/// metric and posts a notification for every returned milestone.
 enum PaceNotificationLogic {
     /// Result of one evaluation: the milestones to fire now, and the state to persist for next time.
     struct Transition: Equatable {

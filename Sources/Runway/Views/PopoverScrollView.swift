@@ -9,8 +9,8 @@ import SwiftUI
 /// scroller and kills the effect). `invisibleOverlayScroller()` instead keeps the overlay scroller
 /// (which reserves no gutter) and just makes it invisible: effect intact, no visible bar.
 ///
-/// Screen-specific modifiers — scroll position, edge-effect style, `onAppear`, reorder-frame
-/// preferences — are applied by the caller on the returned view, since those differ per screen.
+/// Screen-specific modifiers — scroll position, edge-effect style — are applied by the caller on
+/// the returned view, since those differ per screen.
 ///
 /// It also reports its inner content's ideal height straight into the shared
 /// `PanelHeightCoordinator` so the popover can auto-fit the visual panel to its content (see

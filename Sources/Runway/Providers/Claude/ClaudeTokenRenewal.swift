@@ -16,7 +16,7 @@ import Foundation
 /// - **Single chain.** The current store is re-read immediately before the network call; if it no
 ///   longer holds the refresh token about to be consumed, the OTHER writer rotated first and its
 ///   fresher credential is adopted instead of racing it.
-/// - **Write-back is a precondition, not a hope.** For keychain sources the fallback write path is
+/// - **Write-back is a precondition, not a hope.** For keychain sources the write path is
 ///   verified (the security helper's silent authorization) BEFORE the refresh token is consumed;
 ///   if no write path exists, no rotation happens and today's renewal notice stands.
 /// - **`invalid_grant` is terminal.** The chain is gone; only a real `claude` login mints a new

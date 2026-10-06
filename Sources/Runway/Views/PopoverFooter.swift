@@ -18,7 +18,7 @@ struct PopoverFooter: View {
     let dataStore: WidgetDataStore
     let horizontalPadding: CGFloat
     /// The bar's fixed height — `DashboardView.footerHeight`, the same constant the height
-    /// coordinator sums into each screen's morph target and the scroll spacer reserves.
+    /// coordinator sums into each screen's morph target.
     let height: CGFloat
 
     @Environment(\.popoverIsVisible) private var popoverIsVisible

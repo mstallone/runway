@@ -23,8 +23,8 @@ import SwiftUI
 /// height (`PopoverScrollView` → `PanelHeightCoordinator`, plus the fixed chrome heights), and the visual panel — a height-framed,
 /// corner-clipped card pinned to the top of a fixed-size transparent window (see
 /// `PanelHeightController`) — animates to that on SwiftUI's clock, with the AppKit backdrop following
-/// via `drivesPanelHeight` / `PanelHeightModifier`. The destination is the only live screen tree
-/// during a switch, and its height morph rides the same spring as its entrance. Scroll views take
+/// via `drivesPanelHeight` / `PanelHeightModifier`. The destination's height morph rides the same
+/// spring as its entrance. Scroll views take
 /// over once content exceeds the screen-height cap.
 struct DashboardView: View {
     @Environment(AppContainer.self) private var container
@@ -129,7 +129,7 @@ struct DashboardView: View {
     private static let topBarHeight: CGFloat = 44
     /// Fixed height of the footer bar (dashboard only; Customize shows none). Like the top bar, the
     /// footer is fixed-height chrome: the height coordinator sums this constant into each screen's
-    /// morph target, the scroll spacer reserves it, and the overlay bar fills it.
+    /// morph target, and the footer bar pins itself to it.
     private static let footerHeight: CGFloat = 40
     /// Fallback entrance travel for the rare switch with no outgoing page to slide out beside the
     /// destination (no established height yet): a compact directional entrance still communicates
@@ -586,14 +586,14 @@ struct DashboardView: View {
         dashboardScrollPosition.scrollTo(edge: .top)
     }
 
-    /// The transition-scoped pager. Steady state keeps exactly one live screen tree; during a push
-    /// the screen being left stays mounted (`outgoing`) and slides out while the destination (page
-    /// plus its chrome) enters from the direction implied by `slideRank`, the two tiling
-    /// edge-to-edge so the switch reads as one connected push. Two guards keep this cheaper than
-    /// the old permanently-mounted two-page pager (which doubled the expensive dashboard layouts on
-    /// every frame of the height morph): the outgoing tree is wrapped in a CONSTANT size frame —
-    /// its pre-switch panel size — so the per-frame animated height never re-proposes (and so never
-    /// re-lays-out) that subtree, and it unmounts in the push's completion.
+    /// The pager. During a push the screen being left stays mounted and slides out while the
+    /// destination (page plus its chrome) enters from the direction implied by `slideRank`, the
+    /// two tiling edge-to-edge so the switch reads as one connected push. Afterwards the outgoing
+    /// page stays parked offscreen until the popover closes (see `pages`). What keeps this cheaper
+    /// than the old two-page pager (which doubled the expensive dashboard layouts on every frame
+    /// of the height morph): the parked tree is wrapped in a CONSTANT size frame — its pre-switch
+    /// panel size — so the per-frame animated height never re-proposes (and so never re-lays-out)
+    /// that subtree.
     ///
     /// Why offsets and not a SwiftUI `.transition`: the cards' fill is translucent `.quaternary`
     /// glass. Any transition carrying `.opacity` composites a screen into a transparency layer where

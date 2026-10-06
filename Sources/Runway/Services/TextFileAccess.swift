@@ -127,9 +127,9 @@ struct LocalTextFileAccessor: TextFileAccessing {
         try FileManager.default.removeItem(atPath: expanded)
     }
 
-    /// Create the directory that will contain `path` (with intermediates). Writes land in a temp
-    /// file beside the destination, so a first-ever file in a not-yet-existing folder (Grok's
-    /// `memory/MEMORY.md`) needs this before the write.
+    /// Create the directory that will contain `path` (with intermediates). The exclusive create
+    /// lands in a temp file beside the destination, so a first-ever file in a not-yet-existing
+    /// folder (Grok's `memory/MEMORY.md`) needs its parent first.
     private func ensureParentDirectory(for path: String) throws {
         try FileManager.default.createDirectory(
             atPath: (expandHome(path) as NSString).deletingLastPathComponent,

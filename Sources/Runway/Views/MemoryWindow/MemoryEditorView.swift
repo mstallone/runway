@@ -33,7 +33,8 @@ final class MemoryEditorState {
     /// off this.
     var isDirty = false
     /// Saves the dirty buffer in place; installed while the editor is mounted. The dirty-close
-    /// prompt's "Save" calls it (an explicit save, so it overwrites even if the disk copy moved).
+    /// prompt's "Save" calls it. It keeps the conflict check: if the disk copy moved it throws and
+    /// shows the conflict banner, and only the banner's Overwrite writes over the file.
     var saveDirtyDocument: (@MainActor () async throws -> Void)?
     /// Re-stats the loaded file against the buffer; the controller calls it from
     /// `windowDidBecomeKey` so edits made in another app surface as soon as the window returns.

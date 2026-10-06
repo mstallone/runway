@@ -3,9 +3,6 @@ import Foundation
 /// The single place a number becomes display text. Every surface — popover rows, the menu-bar strip,
 /// and hover details — formats through here, so a value can never read one way in the tray and another
 /// in the popover, and there is exactly one definition of "compact" (12.9K / 3.4M / 1.2B).
-///
-/// This replaces the scattered number→string logic that used to live in `WidgetData.format`, the
-/// menu bar's `compactValue`, and the providers' own `formatTokens` / credit-label builders.
 enum MetricFormatter {
     /// Three surfaces, three needs:
     /// - `.tray` — the menu-bar strip: shortest. Whole dollars under $1,000, abbreviated above; counts abbreviated.

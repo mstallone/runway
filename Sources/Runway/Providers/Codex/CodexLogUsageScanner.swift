@@ -248,7 +248,7 @@ actor CodexLogUsageScanner {
         return (events, encoded)
     })
 
-    /// Parse one whole rollout file (tests and the whole-file path).
+    /// Parse one whole rollout file from a fresh state. The scan itself goes through `tailParser`.
     static func parseFile(_ data: Data) -> [Event] {
         var state = ParseState()
         return parseChunk(data, state: &state)
