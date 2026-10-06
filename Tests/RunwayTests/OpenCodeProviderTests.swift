@@ -120,6 +120,88 @@ final class OpenCodeProviderTests: XCTestCase {
         XCTAssertNil(snapshot.applicableMetricIDs)
     }
 
+    /// The Session row as the dashboard reads it, after a real provider refresh through
+    /// `WidgetDataStore`, for a usage response whose rolling window reads `percent` with `rollingReset`.
+    private func sessionRow(percent: Int, rollingReset: Date, dateHeader: String?) async throws -> WidgetData {
+        let body: [String: Any] = [
+            "usage": [
+                "rolling": ["status": "ok", "percent": percent,
+                            "resetsAt": RunwayISO8601.string(from: rollingReset)],
+                "weekly": ["status": "ok", "percent": 1, "resetsAt": "2026-07-13T00:00:00.000Z"],
+                "monthly": ["status": "ok", "percent": 0, "resetsAt": "2026-08-04T11:18:32.000Z"]
+            ]
+        ]
+        let response = HTTPResponse(
+            statusCode: 200,
+            headers: dateHeader.map { ["date": $0] } ?? [:],
+            body: try JSONSerialization.data(withJSONObject: body)
+        )
+        let runtime = provider(
+            files: FakeFiles(["/oc/auth.json": authJSON]),
+            scanner: OpenCodeUsageScanner(sqlite: StubSQLite(), databasePaths: { [] }),
+            client: OpenCodeUsageClient(http: FakeHTTPClient(response: response))
+        )
+        let descriptors = runtime.widgetDescriptors
+        let suiteName = "OpenCodeProviderTests.session.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(testSuiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let fixedNow = now
+        let store = WidgetDataStore(
+            registry: WidgetRegistry(providers: [runtime.provider], descriptors: descriptors),
+            providers: [runtime],
+            cache: ProviderSnapshotCache(userDefaults: defaults),
+            defaults: defaults,
+            now: { fixedNow }
+        )
+        await store.refreshAll(force: true)
+        return store.data(for: try XCTUnwrap(descriptors.first { $0.id == "opencode.session" }))
+    }
+
+    func testSubOnePercentSessionShowsResetCountdown() async throws {
+        // A session that has started still reads 0% (whole-percent API), but its rolling reset is
+        // anchored inside the five-hour window. The row must show the countdown, not "Not started".
+        let anchoredReset = now.addingTimeInterval(5 * 3600 - 30)
+        for dateHeader in ["Sun, 12 Jul 2026 12:00:00 GMT", nil] {
+            let data = try await sessionRow(percent: 0, rollingReset: anchoredReset, dateHeader: dateHeader)
+            XCTAssertTrue(data.hasData)
+            XCTAssertEqual(data.used, 0)
+            XCTAssertEqual(data.resetsAt, anchoredReset)
+            XCTAssertFalse(data.isFreshSessionWindow(now: now))
+            XCTAssertEqual(data.boundedTrailingText(now: now)?.hasPrefix("Resets in "), true)
+            XCTAssertTrue(data.hasResetLabel(now: now))
+            XCTAssertNotEqual(data.resetTooltip(now: now), WidgetData.freshSessionTooltip)
+        }
+    }
+
+    func testUntouchedSessionStillShowsNotStarted() async throws {
+        // An untouched session reports a placeholder reset of about now + 5h. The row drops it and
+        // reads "Not started", with no reset label to toggle and a calm bar.
+        let placeholderReset = now.addingTimeInterval(5 * 3600 + 0.5)
+        for dateHeader in ["Sun, 12 Jul 2026 12:00:00 GMT", nil] {
+            let data = try await sessionRow(percent: 0, rollingReset: placeholderReset, dateHeader: dateHeader)
+            XCTAssertTrue(data.hasData)
+            XCTAssertEqual(data.used, 0)
+            XCTAssertNil(data.resetsAt)
+            XCTAssertTrue(data.isFreshSessionWindow(now: now))
+            XCTAssertEqual(data.boundedTrailingText(now: now), "Not started")
+            XCTAssertFalse(data.hasResetLabel(now: now))
+            XCTAssertEqual(data.resetTooltip(now: now), WidgetData.freshSessionTooltip)
+            XCTAssertEqual(data.meterState(now: now), .level(.normal))
+            // The stored snapshot does not go stale into a countdown as the clock moves on.
+            let later = now.addingTimeInterval(20 * 60)
+            XCTAssertEqual(data.boundedTrailingText(now: later), "Not started")
+        }
+    }
+
+    func testStartedSessionKeepsCountdownAtFullPeriod() async throws {
+        // Usage above zero is never a placeholder, even with the reset exactly one period out.
+        let data = try await sessionRow(
+            percent: 3, rollingReset: now.addingTimeInterval(5 * 3600), dateHeader: "Sun, 12 Jul 2026 12:00:00 GMT"
+        )
+        XCTAssertEqual(data.used, 3)
+        XCTAssertEqual(data.boundedTrailingText(now: now)?.hasPrefix("Resets in "), true)
+    }
+
     func testRefreshNotLoggedInWhenNoKeyAndNoDatabase() async {
         let snapshot = await provider(
             files: FakeFiles(),

@@ -82,7 +82,7 @@ final class OpenCodeProvider: ProviderRuntime {
         // Go plan windows from `/zen/go/v1/usage` (Session/Weekly/Monthly + trend above the fold);
         // the spend tiles below sum combined OpenCode-hosted (Go + Zen) spend from local logs.
         [
-            .percent(id: "opencode.session", provider: provider, title: "Session", isSessionWindow: true)
+            .percent(id: "opencode.session", provider: provider, title: "Session", sessionStartSignal: .missingResetDate)
                 .exportingLimit("session", unit: "percent"),
             .percent(id: "opencode.weekly", provider: provider, title: "Weekly")
                 .exportingLimit("weekly", unit: "percent"),
@@ -231,7 +231,7 @@ final class OpenCodeProvider: ProviderRuntime {
             return .failed(.requestFailed(response.statusCode))
         }
         do {
-            return .meters(try OpenCodeUsageMapper.meterLines(response))
+            return .meters(try OpenCodeUsageMapper.meterLines(response, capturedAt: now()))
         } catch let error as OpenCodeUsageError {
             return .failed(error)
         } catch {
