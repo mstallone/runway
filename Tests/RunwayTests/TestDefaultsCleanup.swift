@@ -15,31 +15,50 @@ extension UserDefaults {
 ///
 /// `removePersistentDomain` does not delete a suite's file: the preferences daemon writes an empty one
 /// a few seconds later, and rewrites it even if it is unlinked in the meantime. So cleanup is two-step.
-/// Each suite name is appended to a ledger the moment it is opened (so a crashed or interrupted run is
-/// still on record). When the bundle finishes, every suite is flushed and its file unlinked, which
-/// sticks for most. The next run's first suite then sweeps the ledger, removing whatever the daemon
-/// rewrote after the earlier process exited.
+/// Each suite name is appended to a ledger, with the owning process, the moment it is opened (so a
+/// crashed or interrupted run is still on record). When the bundle finishes, every suite is flushed
+/// and its file unlinked, which sticks for most. A later run's first suite then sweeps the ledger,
+/// removing whatever the daemon rewrote after the earlier process exited.
 final class TestDefaultsCleanup: NSObject, XCTestObservation, @unchecked Sendable {
-    static let shared = TestDefaultsCleanup()
+    static let shared = TestDefaultsCleanup(
+        preferences: FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Preferences", isDirectory: true),
+        // Outside the temp directory on purpose: macOS purges that, and a lost ledger strands its files.
+        ledgerDirectory: FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Caches/RunwayTests", isDirectory: true)
+    )
 
-    /// Ledger entries newer than this may belong to a run that is still going, or one whose files the
-    /// daemon has yet to rewrite; they are kept for a later sweep.
-    private static let settleInterval: TimeInterval = 5 * 60
+    /// How long a finished process's entries stay on the ledger. The daemon may still rewrite a file
+    /// shortly after its process exits, so each sweep inside this window removes the file again.
+    static let settleInterval: TimeInterval = 5 * 60
 
     private let lock = NSLock()
     private var suiteNames: Set<String> = []
     private var started = false
-    private let preferences = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Preferences", isDirectory: true)
-    /// Outside the temp directory on purpose: macOS purges that, and a lost ledger strands its files.
-    private let ledger = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Caches/RunwayTests/defaults-ledger.txt")
+    private let preferences: URL
+    private let ledger: URL
+    private let processID: Int32
+    private let now: () -> Date
+    private let isProcessAlive: (Int32) -> Bool
+
+    init(
+        preferences: URL,
+        ledgerDirectory: URL,
+        processID: Int32 = ProcessInfo.processInfo.processIdentifier,
+        now: @escaping () -> Date = Date.init,
+        isProcessAlive: @escaping (Int32) -> Bool = { kill($0, 0) == 0 || errno == EPERM }
+    ) {
+        self.preferences = preferences
+        self.ledger = ledgerDirectory.appendingPathComponent("defaults-ledger.txt")
+        self.processID = processID
+        self.now = now
+        self.isProcessAlive = isProcessAlive
+    }
 
     func register(_ suiteName: String) {
-        let (isNew, isFirst) = lock.withLock {
-            let inserted = suiteNames.insert(suiteName).inserted
+        let isFirst = lock.withLock {
             defer { started = true }
-            return (inserted, !started)
+            return !started
         }
         if isFirst {
             sweepPreviousRuns()
@@ -50,44 +69,57 @@ final class TestDefaultsCleanup: NSObject, XCTestObservation, @unchecked Sendabl
                 DispatchQueue.main.async { XCTestObservationCenter.shared.addTestObserver(self) }
             }
         }
-        if isNew {
-            appendToLedger(["\(Date().timeIntervalSince1970)\t\(suiteName)"])
-        }
+        record(suiteName)
     }
 
     func testBundleDidFinish(_ testBundle: Bundle) {
         for name in lock.withLock({ suiteNames }) {
             CFPreferencesAppSynchronize(name as CFString)
-            removeFile(for: name)
         }
+        removeRecordedFiles()
     }
 
-    /// Removes every settled suite's file and rewrites the ledger with the entries still settling.
-    private func sweepPreviousRuns() {
-        withLedgerLock {
-            guard FileManager.default.fileExists(atPath: ledger.path) else { return }
-            let text = try String(contentsOf: ledger, encoding: .utf8)
-            let cutoff = Date().timeIntervalSince1970 - Self.settleInterval
-            var kept: [String] = []
-            for line in text.split(separator: "\n") {
-                let fields = line.split(separator: "\t", maxSplits: 1)
-                guard fields.count == 2, let stamp = TimeInterval(fields[0]) else { continue }
-                if stamp > cutoff {
-                    kept.append(String(line))
-                } else {
-                    removeFile(for: String(fields[1]))
-                }
-            }
-            try kept.map { $0 + "\n" }.joined().write(to: ledger, atomically: true, encoding: .utf8)
-        }
-    }
-
-    private func appendToLedger(_ lines: [String]) {
+    /// Adds the suite to this process's set and to the ledger.
+    func record(_ suiteName: String) {
+        guard lock.withLock({ suiteNames.insert(suiteName).inserted }) else { return }
         withLedgerLock {
             let descriptor = open(ledger.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
             guard descriptor >= 0 else { throw CocoaError(.fileWriteUnknown) }
             let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
-            try handle.write(contentsOf: Data(lines.map { $0 + "\n" }.joined().utf8))
+            let line = "\(now().timeIntervalSince1970)\t\(processID)\t\(suiteName)\n"
+            try handle.write(contentsOf: Data(line.utf8))
+        }
+    }
+
+    /// Unlinks the file of every suite this process recorded.
+    func removeRecordedFiles() {
+        for name in lock.withLock({ suiteNames }) {
+            removeFile(for: name)
+        }
+    }
+
+    /// Removes the files of suites whose process has exited. A live process's entries are left alone
+    /// (its suites are in use), and an exited one's stay on the ledger until `settleInterval` has
+    /// passed, so a file the daemon rewrites after this sweep is removed by the next.
+    func sweepPreviousRuns() {
+        withLedgerLock {
+            guard FileManager.default.fileExists(atPath: ledger.path) else { return }
+            let text = try String(contentsOf: ledger, encoding: .utf8)
+            let cutoff = now().timeIntervalSince1970 - Self.settleInterval
+            var kept: [String] = []
+            for line in text.split(separator: "\n") {
+                let fields = line.split(separator: "\t", maxSplits: 2)
+                guard fields.count == 3, let stamp = TimeInterval(fields[0]), let owner = Int32(fields[1]) else {
+                    continue
+                }
+                if owner == processID || isProcessAlive(owner) {
+                    kept.append(String(line))
+                    continue
+                }
+                removeFile(for: String(fields[2]))
+                if stamp > cutoff { kept.append(String(line)) }
+            }
+            try kept.map { $0 + "\n" }.joined().write(to: ledger, atomically: true, encoding: .utf8)
         }
     }
 
