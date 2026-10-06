@@ -63,11 +63,22 @@ struct ProxyConfig: Equatable, Sendable {
               let url = URL(string: urlString),
               let schemeRaw = url.scheme?.lowercased(),
               let scheme = Scheme(rawValue: schemeRaw),
-              let host = url.host(), !host.isEmpty,
-              let port = url.port.map({ UInt16(exactly: $0) }) ?? scheme.defaultPort
+              let host = url.host(), !host.isEmpty
         else {
-            AppLog.warn(.config, "proxy off: proxy.enabled is true but proxy.url is missing, has a port out of range, or is not a socks5, http or https URL")
+            AppLog.warn(.config, "proxy off: proxy.enabled is true but proxy.url is missing or not a socks5, http or https URL")
             return nil
+        }
+        // An absent port takes the scheme's default; an explicit one that doesn't fit rejects the
+        // proxy, because guessing a port would send traffic somewhere the user didn't name.
+        let port: UInt16
+        if let explicit = url.port {
+            guard let valid = UInt16(exactly: explicit) else {
+                AppLog.warn(.config, "proxy off: proxy.enabled is true but proxy.url has a port out of range")
+                return nil
+            }
+            port = valid
+        } else {
+            port = scheme.defaultPort
         }
 
         return ProxyConfig(
