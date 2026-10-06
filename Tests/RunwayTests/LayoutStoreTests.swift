@@ -3,16 +3,14 @@ import XCTest
 
 @MainActor
 final class LayoutStoreTests: XCTestCase {
-    func testRemoveClearsDragStateAndAllowsRepeatedRemoval() {
+    func testRemoveAllowsRepeatedRemoval() {
         let store = makeStore("RepeatedRemoval")
         let first = PlacedWidget(id: UUID(), descriptorID: DefaultLayout.metricIDs[0])
         let second = PlacedWidget(id: UUID(), descriptorID: DefaultLayout.metricIDs[1])
         store.placed = [first, second]
-        store.draggingID = first.id
 
         store.remove(first.id)
 
-        XCTAssertNil(store.draggingID)
         XCTAssertEqual(store.placed, [second])
 
         store.remove(second.id)
@@ -569,8 +567,8 @@ final class LayoutStoreTests: XCTestCase {
         )
         let divider = "cursor::expanded-divider"
 
-        // Customize passes the full metric list (metricOrderWithDivider includes the disabled
-        // cursor.requests before the divider) even when only reordering primary rows. The dragged
+        // Customize passes the full metric list (it includes the disabled cursor.requests before
+        // the divider) even when only reordering primary rows. The dragged
         // metric is cursor.today, not cursor.requests — so cursor.requests' below-caret default must
         // survive the reorder and still place it below the caret when later enabled.
         XCTAssertTrue(store.applyMetricDividerOrder([
@@ -582,23 +580,6 @@ final class LayoutStoreTests: XCTestCase {
         store.setMetricEnabled("cursor.requests", true)
 
         XCTAssertTrue(store.expandedMetricIDs.contains("cursor.requests"))
-    }
-
-    func testAddAndResetCancelDragState() {
-        let store = makeStore("CancelDrag")
-        let first = store.placed[0]
-
-        store.draggingID = first.id
-        store.remove(first.id)
-        XCTAssertNil(store.draggingID)
-
-        store.draggingID = UUID()
-        store.add(first.descriptorID)
-        XCTAssertNil(store.draggingID)
-
-        store.draggingID = UUID()
-        store.resetToDefault()
-        XCTAssertNil(store.draggingID)
     }
 
     func testAddAndRemoveTogglePlacement() {
@@ -1475,14 +1456,18 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertFalse(store.shareConfirmation, "clear hides the pill immediately")
     }
 
-    /// Move a metric through the same divider-reorder route used by both dashboard and Customize
-    /// drags. Tests use this only when they need to perform that real user action as setup.
+    /// Move a metric across the caret through `applyMetricDividerOrder`, the entry point both the
+    /// dashboard and Customize drags end in. The views build the dragged list from what they
+    /// render; this builds it from the stored On Demand set (Always Visible, divider, On Demand).
     private func moveMetric(_ descriptorID: String, expanded: Bool, in store: LayoutStore) -> Bool {
         guard store.expandedMetricIDs.contains(descriptorID) != expanded,
               let providerID = descriptorID.split(separator: ".", maxSplits: 1).first.map(String.init)
         else { return false }
         let dividerID = "\(providerID)::test-expanded-divider"
-        let current = store.metricOrderWithDivider(for: providerID, dividerID: dividerID)
+        let ordered = store.orderedSupportedMetrics(for: providerID).map(\.id)
+        let current = ordered.filter { !store.expandedMetricIDs.contains($0) }
+            + [dividerID]
+            + ordered.filter { store.expandedMetricIDs.contains($0) }
         guard let reordered = LayoutStore.reordered(current, dragged: descriptorID, target: dividerID) else {
             return false
         }

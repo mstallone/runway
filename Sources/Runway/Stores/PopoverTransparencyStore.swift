@@ -110,15 +110,6 @@ final class PopoverTransparencyStore {
     /// SwiftUI surface treatment derived from the resolved style.
     var surfaceTreatment: PopoverSurfaceTreatment { effectiveStyle.surfaceTreatment }
 
-    /// True exactly when an egg animation loop should be mounted and ticking: the popover is on-screen
-    /// AND the resolved style is one of the animated egg states. The headless test seam for "no animation
-    /// work while the popover is hidden" — the SwiftUI loops gate on the same two inputs
-    /// (`\.popoverIsVisible` plus the party/drunk style). Reads `effectiveStyle`, so the accessibility
-    /// clamp (which resolves the egg to `.opaque`) correctly reports no animation even with the code on.
-    var eggAnimationsActive: Bool {
-        popoverShown && (effectiveStyle == .party || effectiveStyle == .drunk)
-    }
-
     /// True when the user turned the proper toggle on but a system accessibility setting is overriding it
     /// — so Settings can show a friendly "paused" note instead of silently doing nothing.
     var isPaused: Bool {

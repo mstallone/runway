@@ -425,11 +425,8 @@ extension TextFileAccessing {
         try writeText(path, text)
     }
 
-    func ensureParentDirectory(for path: String) throws {}
-
     func createTextFileExclusively(_ path: String, _ text: String) throws -> Bool {
         guard !exists(path) else { return false }
-        try ensureParentDirectory(for: path)
         try writeTextPreservingMode(path, text)
         return true
     }
