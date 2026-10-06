@@ -187,28 +187,49 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         XCTAssertEqual(monthly, monthlyReset)
     }
 
-    /// A window without a usable `resetsAt` fails loudly. Accepting it would make a malformed session
-    /// reset indistinguishable from an untouched window.
-    func testMissingOrMalformedResetIsInvalid() {
-        let missingWeekly: [String: Any] = [
-            "usage": [
-                "rolling": ["percent": 0, "resetsAt": "2027-01-15T13:00:00.000Z"],
-                "weekly": ["percent": 0],
-                "monthly": ["percent": 0, "resetsAt": "2027-02-10T08:00:00.000Z"]
-            ]
+    /// The rolling session without a usable `resetsAt` fails loudly, at any usage. Accepting it would
+    /// make a malformed session reset indistinguishable from an untouched window.
+    func testMissingOrMalformedRollingResetIsInvalid() {
+        let rollingWindows: [[String: Any]] = [
+            ["percent": 0], ["percent": 0, "resetsAt": "not-a-date"], ["percent": 12, "resetsAt": 5]
         ]
-        let malformedRolling: [String: Any] = [
-            "usage": [
-                "rolling": ["percent": 0, "resetsAt": "not-a-date"],
-                "weekly": ["percent": 0, "resetsAt": "2027-01-18T00:00:00.000Z"],
-                "monthly": ["percent": 0, "resetsAt": "2027-02-10T08:00:00.000Z"]
+        for rolling in rollingWindows {
+            let body: [String: Any] = [
+                "usage": [
+                    "rolling": rolling,
+                    "weekly": ["percent": 0, "resetsAt": "2027-01-18T00:00:00.000Z"],
+                    "monthly": ["percent": 0, "resetsAt": "2027-02-10T08:00:00.000Z"]
+                ]
             ]
-        ]
-        for body in [missingWeekly, malformedRolling] {
             XCTAssertThrowsError(try OpenCodeUsageMapper.meterLines(body: body, capturedAt: capturedAt)) { error in
                 XCTAssertEqual(error as? OpenCodeUsageError, .invalidResponse)
             }
         }
+    }
+
+    /// Weekly and monthly have no "Not started" state to confuse, so a missing or malformed reset
+    /// keeps the meter and only loses the countdown. The other windows are unaffected.
+    func testWeeklyAndMonthlyWithoutAResetStillMap() throws {
+        let rollingReset = capturedAt.addingTimeInterval(2 * 3600)
+        let body: [String: Any] = [
+            "usage": [
+                "rolling": ["percent": 7, "resetsAt": RunwayISO8601.string(from: rollingReset)],
+                "weekly": ["percent": 8],
+                "monthly": ["percent": 35, "resetsAt": "not-a-date"]
+            ]
+        ]
+        let lines = try OpenCodeUsageMapper.meterLines(body: body, capturedAt: capturedAt)
+        guard case let .progress(_, weeklyUsed, _, _, weeklyReset, weeklyPeriod, _) = lines[1],
+              case let .progress(_, monthlyUsed, _, _, monthlyReset, monthlyPeriod, _) = lines[2] else {
+            return XCTFail("expected progress lines")
+        }
+        XCTAssertEqual(sessionReset(lines), rollingReset)
+        XCTAssertEqual(weeklyUsed, 8)
+        XCTAssertNil(weeklyReset)
+        XCTAssertEqual(weeklyPeriod, MetricPeriod.weekMs)
+        XCTAssertEqual(monthlyUsed, 35)
+        XCTAssertNil(monthlyReset)
+        XCTAssertEqual(monthlyPeriod, MetricPeriod.monthMs)
     }
 
     func testPercentIsClamped() throws {

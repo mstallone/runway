@@ -31,7 +31,7 @@ enum OpenCodeUsageMapper {
         }
         return [
             try window(usage["rolling"], label: "Session", periodMs: MetricPeriod.sessionMs,
-                       capturedAt: capturedAt, dropsPlaceholderReset: true),
+                       capturedAt: capturedAt, isRollingSession: true),
             try window(usage["weekly"], label: "Weekly", periodMs: MetricPeriod.weekMs, capturedAt: capturedAt),
             try window(usage["monthly"], label: "Monthly", periodMs: MetricPeriod.monthMs, capturedAt: capturedAt)
         ]
@@ -48,7 +48,7 @@ enum OpenCodeUsageMapper {
         return type
     }
 
-    /// One window. `dropsPlaceholderReset` is for the rolling session only: with no calls inside the
+    /// One window. `isRollingSession` turns on the placeholder handling: with no calls inside the
     /// window there is nothing to roll off, so the API answers `resetsAt = now + 5h` and re-derives it
     /// on every request. That placeholder means "if you started now", so it is dropped to `nil` here
     /// and the Session row reads "Not started" off the missing reset (`SessionStartSignal`). This runs
@@ -60,30 +60,35 @@ enum OpenCodeUsageMapper {
     /// `percent` field reads 0. Weekly and monthly opt out: their resets are calendar and billing
     /// instants that exist regardless of usage, and early in a cycle one sits nearly a full period out.
     ///
-    /// A window without a parseable `resetsAt` is an invalid response. Accepting it would make a
-    /// malformed session reset look like an untouched window.
+    /// The rolling session without a parseable `resetsAt` is an invalid response: accepting it would
+    /// make a malformed reset look like an untouched window. Weekly and monthly have no such state, so
+    /// they keep their meter without a countdown and log a warning.
     private static func window(
         _ raw: Any?,
         label: String,
         periodMs: Int,
         capturedAt: Date,
-        dropsPlaceholderReset: Bool = false
+        isRollingSession: Bool = false
     ) throws -> MetricLine {
         guard let object = raw as? [String: Any],
-              let percent = ProviderParse.number(object["percent"]),
-              let resetString = object["resetsAt"] as? String,
-              let reportedReset = RunwayISO8601.date(from: resetString)
+              let percent = ProviderParse.number(object["percent"])
         else {
             throw OpenCodeUsageError.invalidResponse
         }
         let used = ProviderParse.clampPercent(percent)
-        var resetsAt: Date? = reportedReset
-        if dropsPlaceholderReset, used == 0 {
+        var resetsAt = (object["resetsAt"] as? String).flatMap(RunwayISO8601.date(from:))
+        if isRollingSession {
+            guard let reportedReset = resetsAt else { throw OpenCodeUsageError.invalidResponse }
             let period = TimeInterval(periodMs) / 1000
             let distanceFromFullPeriod = abs(reportedReset.timeIntervalSince(capturedAt) - period)
-            if distanceFromFullPeriod <= placeholderResetTolerance {
+            if used == 0, distanceFromFullPeriod <= placeholderResetTolerance {
                 resetsAt = nil
             }
+        } else if resetsAt == nil {
+            AppLog.warn(
+                LogTag.plugin("opencode"),
+                "Go usage: \(label) window has no usable resetsAt; showing the meter without a countdown"
+            )
         }
         return .progress(
             label: label,
