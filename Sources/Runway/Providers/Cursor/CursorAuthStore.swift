@@ -269,10 +269,13 @@ struct CursorAuthStore: Sendable {
             return [:]
         }
         guard let raw else { return [:] }
-        guard let object = try? JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: String] else {
+        // Decoded loosely and filtered to strings, so one NULL or numeric row can't discard the
+        // token read alongside it.
+        guard let decoded = try? JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any] else {
             AppLog.warn(LogTag.auth("cursor"), "Cursor's state database returned an unexpected shape")
             return [:]
         }
+        let object = decoded.compactMapValues { $0 as? String }
         var values: [String: String] = [:]
         for (key, value) in object {
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)

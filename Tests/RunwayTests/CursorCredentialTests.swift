@@ -4,6 +4,23 @@ import XCTest
 /// Cursor credential handling: which local source wins, what stays prompt-free, and how a lapsed or
 /// rejected token is reported now that Runway never refreshes or writes Cursor's credentials.
 final class CursorAuthStoreTests: XCTestCase {
+    func testNonStringStateValueDoesNotDiscardTheTokenReadWithIt() {
+        // The state query folds every requested key into one JSON object. A NULL or numeric value
+        // on another row must not make the whole object, and so the token, unreadable.
+        struct MixedValueSQLite: SQLiteAccessing {
+            let token: String
+            func queryValue(path: String, sql: String) throws -> String? {
+                #"{"\#(CursorAuthStore.accessTokenKey)":"\#(token)","\#(CursorAuthStore.membershipTypeKey)":null}"#
+            }
+            func queryJSONRows(path: String, sql: String) throws -> String? { nil }
+        }
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let token = makeSharedCursorJWT(sub: "auth0|user", exp: now.timeIntervalSince1970 + 3_600)
+        let store = CursorAuthStore(sqlite: MixedValueSQLite(token: token), keychain: ServiceKeychain(), now: { now })
+
+        XCTAssertEqual(store.loadCredentials().state?.accessToken, token)
+    }
+
     func testExpiredSQLiteTokenYieldsToAUsableSameAccountKeychainToken() {
         // Read-only means a lapsed selected token ends the refresh, so a usable token for the SAME
         // account must win instead of reporting renewal while a working credential sits unread.

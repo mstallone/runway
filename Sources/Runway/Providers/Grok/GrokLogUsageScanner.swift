@@ -316,12 +316,12 @@ struct GrokLogUsageScanner: Sendable {
             }
 
             guard msg == "shell.turn.inference_done",
-                  ProviderParse.number(ctx["prompt_tokens"]) != nil,
+                  let promptRaw = ProviderParse.number(ctx["prompt_tokens"]), promptRaw >= 0,
                   let timestamp = (object["ts"] as? String).flatMap(RunwayISO8601.date(from:)),
                   timestamp >= since
             else { return }
 
-            let promptTokens = ProviderParse.clampedTokenCount(ctx["prompt_tokens"])
+            let promptTokens = ProviderParse.clampedTokenCount(promptRaw)
             let completion = ProviderParse.clampedTokenCount(ctx["completion_tokens"])
             let reasoning = ProviderParse.clampedTokenCount(ctx["reasoning_tokens"])
             // `cached_prompt_tokens` is a subset of `prompt_tokens`, so total counts prompt once.

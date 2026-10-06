@@ -96,8 +96,9 @@ enum ProviderParse {
     /// A whole, non-negative count that fits an `Int`, or nil. `Int(Double)` traps above `Int.max`,
     /// so every count read from a log or an API goes through here or `clampedTokenCount`.
     static func nonnegativeInt(_ value: Any?) -> Int? {
+        // `Double(Int.max)` rounds up to 2^63, which itself traps, so the bound is strict.
         guard let number = number(value),
-              number >= 0, number <= Double(Int.max), number.rounded(.towardZero) == number
+              number >= 0, number < 0x1p63, number.rounded(.towardZero) == number
         else { return nil }
         return Int(number)
     }
