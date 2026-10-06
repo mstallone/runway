@@ -793,9 +793,7 @@ struct SecurityKeychainAccessor: KeychainReading {
             "\(key)=\(Self.stableKeychainAttribute(value))"
         }.sorted().joined(separator: "\n")
         guard !normalized.isEmpty else { return nil }
-        return SHA256.hash(data: Data(normalized.precomposedStringWithCanonicalMapping.utf8))
-            .map { String(format: "%02x", $0) }
-            .joined()
+        return SHA256.hash(data: Data(normalized.precomposedStringWithCanonicalMapping.utf8)).hexString
     }
 
     private static func stableKeychainAttribute(_ value: Any) -> String {

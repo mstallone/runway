@@ -54,9 +54,9 @@ final class DevinUsageMapperTests: XCTestCase {
 
         XCTAssertEqual(mapped.plan, "Max")
         XCTAssertEqual(progress(mapped.lines, "Daily quota")?.used, 0)
-        XCTAssertEqual(progress(mapped.lines, "Daily quota")?.periodDurationMs, DevinUsageMapper.dayPeriodMs)
+        XCTAssertEqual(progress(mapped.lines, "Daily quota")?.periodDurationMs, MetricPeriod.dayMs)
         XCTAssertEqual(progress(mapped.lines, "Weekly quota")?.used, 60)
-        XCTAssertEqual(progress(mapped.lines, "Weekly quota")?.periodDurationMs, DevinUsageMapper.weekPeriodMs)
+        XCTAssertEqual(progress(mapped.lines, "Weekly quota")?.periodDurationMs, MetricPeriod.weekMs)
         XCTAssertEqual(try XCTUnwrap(dollars(mapped.lines, "Extra usage balance")), 964.22, accuracy: 0.0001)
         XCTAssertNotNil(progress(mapped.lines, "Weekly quota")?.resetsAt)
     }
@@ -112,7 +112,7 @@ final class DevinUsageMapperTests: XCTestCase {
             XCTAssertEqual(weekly.used, 100)
             XCTAssertEqual(weekly.limit, 100)
             XCTAssertEqual(weekly.resetsAt, Date(timeIntervalSince1970: 1_789_286_400))
-            XCTAssertEqual(weekly.periodDurationMs, DevinUsageMapper.weekPeriodMs)
+            XCTAssertEqual(weekly.periodDurationMs, MetricPeriod.weekMs)
         }
     }
 

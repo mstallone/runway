@@ -19,7 +19,7 @@ enum ProviderAccountID {
     /// ids (the iCloud remote-only pseudo providers).
     static func hash8(_ identityKey: String) -> String {
         let digest = SHA256.hash(data: Data(identityKey.lowercased().utf8))
-        return digest.prefix(4).map { String(format: "%02x", $0) }.joined()
+        return digest.prefix(4).hexString
     }
 
     /// The family a card id belongs to: `claude@ab12cd34` → `claude`, bare ids map to themselves.

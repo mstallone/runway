@@ -291,7 +291,7 @@ enum CodexUsageMapper {
             .sorted()
     }
 
-    private static func parseExpiry(_ value: Any?) -> Date? {
+    static func parseExpiry(_ value: Any?) -> Date? {
         if let string = value as? String, let date = RunwayISO8601.date(from: string) {
             return date
         }

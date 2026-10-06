@@ -75,7 +75,7 @@ struct KimiUsageClient: Sendable {
                 throw KimiUsageError.connectionFailed
             }
 
-            if response.statusCode == 401 || response.statusCode == 403 {
+            if ProviderAuthRetry.isAuthFailure(response) {
                 throw KimiAuthError.sessionExpired
             }
             if let root = ProviderParse.jsonObject(response.body),

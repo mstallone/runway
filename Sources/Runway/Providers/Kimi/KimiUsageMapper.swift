@@ -10,10 +10,6 @@ struct KimiMappedUsage: Equatable, Sendable {
 /// and numeric strings the CLI accepts while emitting a small, stable set of Runway labels.
 /// Plan comes from the same payload (`user.membership`), not a second request.
 enum KimiUsageMapper {
-    static let sessionPeriodMs = 5 * 60 * 60 * 1000
-    static let weeklyPeriodMs = 7 * 24 * 60 * 60 * 1000
-    static let monthlyPeriodMs = 30 * 24 * 60 * 60 * 1000
-
     static func map(_ body: Data, now: Date = Date()) throws -> KimiMappedUsage {
         guard let root = ProviderParse.jsonObject(body) else {
             throw KimiUsageError.invalidResponse
@@ -53,14 +49,14 @@ enum KimiUsageMapper {
             lines.append(progressLine(
                 label: "Five-Hour Usage",
                 row: session,
-                defaultPeriodMs: sessionPeriodMs
+                defaultPeriodMs: MetricPeriod.sessionMs
             ))
         }
         if let weekly {
             lines.append(progressLine(
                 label: "Weekly Usage",
                 row: weekly,
-                defaultPeriodMs: weeklyPeriodMs
+                defaultPeriodMs: MetricPeriod.weekMs
             ))
         }
         lines += extraUsageLines(root["boosterWallet"])
@@ -207,7 +203,7 @@ enum KimiUsageMapper {
                 used: usedAmount,
                 limit: Double(limitCents) / 100,
                 format: currency == "USD" ? .dollars : .count(suffix: currency),
-                periodDurationMs: monthlyPeriodMs
+                periodDurationMs: MetricPeriod.monthMs
             ))
         } else {
             lines.append(.values(

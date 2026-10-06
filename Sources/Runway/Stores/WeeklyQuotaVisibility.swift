@@ -1,5 +1,14 @@
 /// Temporary dashboard filtering; saved layout and On Demand rows are never mutated.
 enum WeeklyQuotaVisibility {
+    private static let weeklyKeys: Set<String> = ["weekly", "geminiWeekly", "nonGeminiWeekly", "sparkWeekly"]
+
+    /// A bounded metric with real data whose usage has reached its limit.
+    private static func isExhausted(_ value: WidgetData) -> Bool {
+        guard value.hasData, let limit = value.limit, limit > 0,
+              value.used.isFinite, limit.isFinite else { return false }
+        return value.used >= limit
+    }
+
     /// A shared weekly limit blocks the account. Separate pools only dim the icon when every
     /// pinned metric belongs to an exhausted pool, leaving other usable pools visible.
     static func menuBarIsExhausted(
@@ -8,9 +17,7 @@ enum WeeklyQuotaVisibility {
         data: (WidgetDescriptor) -> WidgetData
     ) -> Bool {
         let exhausted = Set(descriptors.flatMap { descriptor -> [String] in
-            let value = data(descriptor)
-            guard value.hasData, let limit = value.limit, limit > 0,
-                  value.used.isFinite, limit.isFinite, value.used >= limit else { return [] }
+            guard isExhausted(data(descriptor)) else { return [] }
             return descriptor.limitResources.map(\.key)
         })
         if exhausted.contains("weekly") { return true }
@@ -26,11 +33,9 @@ enum WeeklyQuotaVisibility {
 
     /// Presentation copy only: preserve raw quota values for filtering, pins, and the local API.
     static func presentation(_ data: WidgetData, descriptor: WidgetDescriptor) -> WidgetData {
-        guard data.hasData, let limit = data.limit, limit > 0,
-              data.used.isFinite, limit.isFinite, data.used >= limit,
-              let key = descriptor.limitResources.first(where: {
-                  ["weekly", "geminiWeekly", "nonGeminiWeekly", "sparkWeekly"].contains($0.key)
-              })?.key else { return data }
+        guard isExhausted(data),
+              let key = descriptor.limitResources.first(where: { weeklyKeys.contains($0.key) })?.key
+        else { return data }
         var result = data
         switch key {
         case "geminiWeekly": result.exhaustedWeeklyTitle = "Gemini Usage Exhausted"
@@ -49,12 +54,9 @@ enum WeeklyQuotaVisibility {
         // Require the blocking weekly row above the caret so the reason and reset stay visible.
         let exhaustedKeys = Set(group.alwaysShownWidgets.compactMap { widget -> String? in
             guard let metric = descriptor(widget),
-                  let key = metric.limitResources.first(where: {
-                      ["weekly", "geminiWeekly", "nonGeminiWeekly", "sparkWeekly"].contains($0.key)
-                  })?.key else { return nil }
-            let value = data(metric)
-            guard value.hasData, let limit = value.limit, limit > 0,
-                  value.used.isFinite, limit.isFinite, value.used >= limit else { return nil }
+                  let key = metric.limitResources.first(where: { weeklyKeys.contains($0.key) })?.key,
+                  isExhausted(data(metric))
+            else { return nil }
             return key
         })
         guard !exhaustedKeys.isEmpty else { return group }

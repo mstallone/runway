@@ -167,9 +167,7 @@ struct CodexAuthStore: Sendable {
     /// shared service or borrowing another home's credential.
     static func keychainAccountName(forHome path: String) -> String {
         let canonical = canonicalHome(path)
-        let digest = SHA256.hash(data: Data(canonical.utf8))
-            .map { String(format: "%02x", $0) }
-            .joined()
+        let digest = SHA256.hash(data: Data(canonical.utf8)).hexString
         return "cli|\(digest.prefix(16))"
     }
 

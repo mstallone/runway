@@ -88,7 +88,7 @@ struct AntigravityUsageClient: Sendable {
                 timeout: 15
             )
             guard let response = try? await http.send(request) else { continue }
-            if response.statusCode == 401 || response.statusCode == 403 { return .authFailed }
+            if ProviderAuthRetry.isAuthFailure(response) { return .authFailed }
             if (200..<300).contains(response.statusCode) { return .ok(response.body) }
         }
         return .unavailable

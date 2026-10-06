@@ -466,7 +466,7 @@ enum CursorUsageMapper {
         )
     }
 
-    private static func planLabel(_ value: String?) -> String? {
+    static func planLabel(_ value: String?) -> String? {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }

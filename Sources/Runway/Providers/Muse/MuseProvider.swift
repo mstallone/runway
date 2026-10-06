@@ -113,7 +113,7 @@ final class MuseProvider: ProviderRuntime {
             // Failed reads also obey the floor; menu clicks cannot create a request storm.
             nextFetchAt = now.addingTimeInterval(Self.minimumRefreshInterval)
             let response = try await usageClient.fetchUsage(sessionToken: session.token)
-            if response.statusCode == 401 || response.statusCode == 403
+            if ProviderAuthRetry.isAuthFailure(response)
                 || (300..<400).contains(response.statusCode) {
                 rejectedTokens.insert(session.token)
                 clearSubscription()

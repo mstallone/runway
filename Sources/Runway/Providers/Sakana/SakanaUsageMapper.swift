@@ -8,16 +8,12 @@ struct SakanaMappedUsage: Equatable, Sendable {
 /// Decodes the authenticated Next.js React Flight payload embedded in Sakana Console's billing page.
 /// This is intentionally isolated at the system boundary because the console page is not a public API.
 enum SakanaUsageMapper {
-    static let sessionPeriodMs = 5 * 60 * 60 * 1000
-    static let weeklyPeriodMs = 7 * 24 * 60 * 60 * 1000
-
     static func validateSession(_ response: HTTPResponse, now: Date = Date()) throws {
-        if response.statusCode == 401 || response.statusCode == 403 {
-            throw SakanaAuthError.sessionExpired
-        }
-        guard (200..<300).contains(response.statusCode) else {
-            throw SakanaUsageError.requestFailed(response.statusCode)
-        }
+        try ProviderAuthRetry.requireSuccess(
+            response,
+            authExpired: SakanaAuthError.sessionExpired,
+            requestFailed: { SakanaUsageError.requestFailed($0) }
+        )
         guard let root = ProviderParse.jsonObject(response.body),
               root["user"] is [String: Any],
               let expires = (root["expires"] as? String).flatMap(RunwayISO8601.date(from:)),
@@ -28,12 +24,11 @@ enum SakanaUsageMapper {
     }
 
     static func mapBilling(_ response: HTTPResponse) throws -> SakanaMappedUsage {
-        if response.statusCode == 401 || response.statusCode == 403 {
-            throw SakanaAuthError.sessionExpired
-        }
-        guard (200..<300).contains(response.statusCode) else {
-            throw SakanaUsageError.requestFailed(response.statusCode)
-        }
+        try ProviderAuthRetry.requireSuccess(
+            response,
+            authExpired: SakanaAuthError.sessionExpired,
+            requestFailed: { SakanaUsageError.requestFailed($0) }
+        )
         guard let html = String(data: response.body, encoding: .utf8) else {
             throw SakanaUsageError.invalidResponse
         }
@@ -60,7 +55,7 @@ enum SakanaUsageMapper {
                 limit: 100,
                 format: .percent,
                 resetsAt: window.resetsAt,
-                periodDurationMs: sessionPeriodMs
+                periodDurationMs: MetricPeriod.sessionMs
             ),
             .progress(
                 label: "Weekly Usage",
@@ -68,7 +63,7 @@ enum SakanaUsageMapper {
                 limit: 100,
                 format: .percent,
                 resetsAt: weekly.resetsAt,
-                periodDurationMs: weeklyPeriodMs
+                periodDurationMs: MetricPeriod.weekMs
             )
         ]
         let rawPlan = window.plan ?? weekly.plan

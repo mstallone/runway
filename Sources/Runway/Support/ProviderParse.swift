@@ -203,3 +203,10 @@ extension String {
             .joined(separator: " ")
     }
 }
+
+extension Sequence where Element == UInt8 {
+    /// Lowercase hex, two characters per byte — how digests become ids and cache keys.
+    var hexString: String {
+        map { String(format: "%02x", $0) }.joined()
+    }
+}
