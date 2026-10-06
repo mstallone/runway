@@ -307,15 +307,6 @@ actor IncrementalJSONLScanner<Item: Codable & Sendable> {
         }
     }
 
-    func cacheRecordURLForTesting(identity: String, filePath: String) -> URL? {
-        guard let persistence else { return nil }
-        return JSONLScanCachePaths.recordURL(
-            persistence: persistence,
-            identity: identity,
-            fileName: JSONLScanCachePaths.recordFileName(path: filePath)
-        )
-    }
-
     func queuedScanCountForTesting(identity: String) -> Int {
         identityWaiters[identity]?.count ?? 0
     }

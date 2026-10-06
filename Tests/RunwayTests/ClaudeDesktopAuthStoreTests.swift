@@ -676,8 +676,6 @@ private final class DenyingClaudeCodeKeychain: KeychainReading, @unchecked Senda
     func genericPasswordExists(service: String) -> Bool? {
         true
     }
-
-    func writeGenericPassword(service: String, value: String) throws {}
 }
 
 private final class FakeClaudeDesktopKeyReader: ClaudeDesktopSafeStorageKeyReading, @unchecked Sendable {

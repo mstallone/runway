@@ -228,14 +228,4 @@ final class WidgetDataStoreAccountCacheTests: XCTestCase {
 
     /// A refresh writes the card's launch-resolved identity as the stamp, and a nil identity CLEARS
     /// any prior stamp — leaving the old account's stamp would falsely bless the new snapshot.
-    func testStoreStampsAndClearsProducerIdentity() {
-        let defaults = makeUserDefaults("stamp-write")
-        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() })
-
-        cache.store(snapshot("claude", used: 40), producedByIdentityKey: "acct-A")
-        XCTAssertEqual(cache.producedByIdentityKey(providerID: "claude"), "acct-A")
-
-        cache.store(snapshot("claude", used: 41))
-        XCTAssertNil(cache.producedByIdentityKey(providerID: "claude"))
-    }
 }

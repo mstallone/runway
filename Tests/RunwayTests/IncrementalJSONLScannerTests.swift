@@ -169,10 +169,15 @@ final class IncrementalJSONLScannerTests: XCTestCase {
         )
         await scanner.waitForPendingWritesForTesting()
 
-        let firstRecordValue = await scanner.cacheRecordURLForTesting(identity: "home", filePath: firstFile.path)
-        let secondRecordValue = await scanner.cacheRecordURLForTesting(identity: "home", filePath: secondFile.path)
-        let firstRecord = try XCTUnwrap(firstRecordValue)
-        let secondRecord = try XCTUnwrap(secondRecordValue)
+        func recordURL(for file: JSONLScanning.DiscoveredFile) -> URL {
+            JSONLScanCachePaths.recordURL(
+                persistence: persistence,
+                identity: "home",
+                fileName: JSONLScanCachePaths.recordFileName(path: file.path)
+            )
+        }
+        let firstRecord = recordURL(for: firstFile)
+        let secondRecord = recordURL(for: secondFile)
         let sentinel = Date(timeIntervalSince1970: 1_000_000)
         try FileManager.default.setAttributes([.modificationDate: sentinel], ofItemAtPath: firstRecord.path)
         try FileManager.default.setAttributes([.modificationDate: sentinel], ofItemAtPath: secondRecord.path)

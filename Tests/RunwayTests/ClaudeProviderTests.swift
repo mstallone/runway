@@ -1449,10 +1449,6 @@ private final class InteractionTrackingKeychain: KeychainReading, @unchecked Sen
     func genericPasswordExists(service: String) -> Bool? {
         existence
     }
-
-    func writeGenericPassword(service: String, value: String) throws {}
-
-    func writeGenericPasswordForCurrentUser(service: String, value: String) throws {}
 }
 
 
@@ -1489,18 +1485,6 @@ private final class WriteTrackingKeychain: KeychainReading, @unchecked Sendable 
 
     func genericPasswordExists(service: String) -> Bool? {
         true
-    }
-
-    func writeGenericPassword(service: String, value: String) throws {
-        lock.withLock { writes += 1 }
-    }
-
-    func writeGenericPasswordForCurrentUser(service: String, value: String) throws {
-        lock.withLock { writes += 1 }
-    }
-
-    func writeGenericPassword(service: String, account: String, value: String) throws {
-        lock.withLock { writes += 1 }
     }
 }
 
