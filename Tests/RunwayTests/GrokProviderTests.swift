@@ -251,6 +251,77 @@ final class GrokProviderTests: XCTestCase {
         XCTAssertTrue(snapshot.lines.contains { $0.isError })
     }
 
+    func testTeamBilling412KeepsPlanAndLocalSpend() async {
+        // Team principals 412 the credits endpoint with "No personal team." Auth and settings still
+        // work; failing the whole card also hid the local spend tiles.
+        let now = RunwayISO8601.date(from: "2026-06-18T12:00:00.000Z")!
+        let log = """
+        {"ts":"2026-06-18T09:00:00.000Z","pid":1,"msg":"model changed","ctx":{"model":"grok-build"}}
+        {"ts":"2026-06-18T10:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"cached_prompt_tokens":0,"completion_tokens":0,"reasoning_tokens":0}}
+        """
+        let scanner = GrokLogUsageScanner(
+            files: FakeFiles(["/home/test/.grok/logs/unified.jsonl": log]),
+            environment: FakeEnvironment(),
+            homeDirectory: { URL(fileURLWithPath: "/home/test") }
+        )
+        let httpClient = RecordingHTTPClient { request in
+            if request.url == GrokUsageClient.creditsConfigURL {
+                return HTTPResponse(
+                    statusCode: 412,
+                    headers: [:],
+                    body: Data(#"{"code":"The system is not in a state required for the operation's execution","error":"No personal team."}"#.utf8)
+                )
+            }
+            return Self.defaultRoutes(request)
+        }
+        let provider = makeProvider(httpClient: httpClient, scanner: scanner, now: now)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertFalse(snapshot.lines.contains { $0.isError })
+        XCTAssertNil(snapshot.warning)
+        XCTAssertEqual(snapshot.plan, "SuperGrok Heavy")
+        XCTAssertNil(progress(snapshot.lines, "Weekly limit"))
+        XCTAssertNil(badge(snapshot.lines, "Pay as you go"))
+        XCTAssertEqual(values(snapshot.lines, "Today"),
+                       [MetricValue(number: 2.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count, label: "tokens")])
+        // The quota rows don't apply to a team login, so they are hidden rather than left as "No data".
+        XCTAssertEqual(snapshot.applicableMetricIDs, ["grok.trend", "grok.today", "grok.yesterday", "grok.last30"])
+        // No personal quota means no reset grants to ask for either.
+        XCTAssertFalse(httpClient.requests.contains { $0.url == GrokUsageClient.remainingResetsURL })
+    }
+
+    func testUnrelated412StillFailsTheProvider() async {
+        let httpClient = RecordingHTTPClient { request in
+            if request.url == GrokUsageClient.creditsConfigURL {
+                return HTTPResponse(statusCode: 412, headers: [:], body: Data(#"{"error":"precondition failed"}"#.utf8))
+            }
+            return Self.defaultRoutes(request)
+        }
+
+        let snapshot = await makeProvider(httpClient: httpClient).refresh()
+
+        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertNil(snapshot.applicableMetricIDs)
+    }
+
+    func testIsTeamBillingUnavailableMatchesLive412BodyOnly() {
+        func response(_ status: Int, _ body: String) -> HTTPResponse {
+            HTTPResponse(statusCode: status, headers: [:], body: Data(body.utf8))
+        }
+        XCTAssertTrue(GrokUsageMapper.isTeamBillingUnavailable(response(
+            412,
+            #"{"code":"The system is not in a state required for the operation's execution","error":"resolve_personal_team_id(), No personal team."}"#
+        )))
+        XCTAssertFalse(GrokUsageMapper.isTeamBillingUnavailable(response(412, #"{"error":"precondition failed"}"#)))
+        XCTAssertFalse(GrokUsageMapper.isTeamBillingUnavailable(response(200, #"{"error":"No personal team."}"#)))
+        // Phrase only in `code`, not `error`: not the team-principal signal.
+        XCTAssertFalse(GrokUsageMapper.isTeamBillingUnavailable(response(
+            412, #"{"code":"No personal team.","error":"precondition failed"}"#
+        )))
+        XCTAssertFalse(GrokUsageMapper.isTeamBillingUnavailable(response(412, "No personal team.")))
+    }
+
     func testNonWeeklyPeriodShowsNoWeeklyLineAndNoWarning() async {
         // A not-yet-migrated (monthly-period) account is a valid state, not a failure: the Weekly
         // tile reads "No data" without the amber triangle, and the badge still renders.

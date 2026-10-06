@@ -53,6 +53,18 @@ enum GrokUsageMapper {
         return GrokMappedUsage(lines: lines)
     }
 
+    /// HTTP 412 whose JSON `error` names "no personal team" is Grok's "this principal is a team,
+    /// not a personal team" signal from `GET /v1/billing?format=credits`. Auth is fine; the weekly
+    /// pool and pay-as-you-go cap simply aren't on this surface. Other 412s, and a 412 whose body
+    /// isn't that JSON shape, stay hard failures.
+    static func isTeamBillingUnavailable(_ response: HTTPResponse) -> Bool {
+        guard response.statusCode == 412,
+              let body = ProviderParse.jsonObject(response.body),
+              let error = body["error"] as? String
+        else { return false }
+        return error.localizedCaseInsensitiveContains("no personal team")
+    }
+
     static func planName(from response: HTTPResponse) -> String? {
         guard (200..<300).contains(response.statusCode),
               let body = ProviderParse.jsonObject(response.body),

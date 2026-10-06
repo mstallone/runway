@@ -29,6 +29,7 @@ Each period is one tile showing cost and tokens together (`$4.08 · 1.2M tokens`
 
 - **"Session expired" / auth errors**: run `grok login` again, then refresh.
 - **Weekly shows "No data"**: your account still reports a monthly period, which means it has not been migrated to unified weekly billing yet.
+- **Weekly, Extra Usage, and Rate Limit Resets are missing on a team or business login**: Grok's billing endpoint only reports a personal quota, and answers a team login with `HTTP 412` ("No personal team"). That is an account type, not a failed login. Runway hides those rows, keeps the plan name, and still fills Usage Trend, Today, Yesterday, and Last 30 Days from local session logs.
 - **Spend tiles show "No data"**: complete a Grok CLI turn so its usage is saved under `~/.grok/sessions/`, then refresh. On older Grok CLI versions, Runway needs token-bearing rows in `~/.grok/logs/unified.jsonl`.
 
 ## Under the hood
