@@ -38,11 +38,6 @@ struct LanguageServerDiscovery: Sendable {
         case indeterminate
     }
 
-    func discover(_ options: Options) -> Result? {
-        if case .found(let result) = discoverOutcome(options) { return result }
-        return nil
-    }
-
     func discoverOutcome(_ options: Options) -> Outcome {
         guard let psOutput = try? processRunner.run(
             executable: "/bin/ps",

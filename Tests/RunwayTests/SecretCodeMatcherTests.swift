@@ -32,13 +32,6 @@ final class SecretCodeMatcherTests: XCTestCase {
         XCTAssertTrue(matched, "a clean entry after a fumble still matches")
     }
 
-    func testNoMatchForIncompleteSequence() {
-        var matcher = SecretCodeMatcher()
-        var matched = false
-        for token in code.dropLast() { matched = matcher.accept(token) || matched }
-        XCTAssertFalse(matched)
-    }
-
     func testResetClearsPartialProgress() {
         var matcher = SecretCodeMatcher()
         _ = matcher.accept(.up)

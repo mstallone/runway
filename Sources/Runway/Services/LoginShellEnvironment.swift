@@ -136,10 +136,11 @@ final class LoginShellEnvironment: @unchecked Sendable {
     }
 
     /// Parse the NUL-separated `env -0` output, keeping only the `KEY=VALUE` tokens between the begin
-    /// and end markers and ignoring any shell banner printed outside them.
+    /// and end markers and ignoring any shell banner printed outside them. A banner printed by an rc
+    /// file carries no NUL, so it lands in the same token as the begin marker; match it as a suffix.
     static func parse(_ output: String) -> [String: String] {
         let tokens = output.components(separatedBy: "\0")
-        guard let begin = tokens.firstIndex(of: beginMarker) else { return [:] }
+        guard let begin = tokens.firstIndex(where: { $0.hasSuffix(beginMarker) }) else { return [:] }
         let end = tokens.firstIndex(of: endMarker) ?? tokens.count
         guard begin < end else { return [:] }
 

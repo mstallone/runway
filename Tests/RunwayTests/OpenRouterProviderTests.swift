@@ -191,7 +191,7 @@ final class OpenRouterProviderTests: XCTestCase {
 
         let snapshot = await provider.refresh()
 
-        XCTAssertEqual(snapshot.lines.first?.label, "Error")
+        XCTAssertEqual(snapshot.errorText, OpenRouterAuthError.missingKey.localizedDescription)
     }
 
     func testRefreshOnAuthFailureReportsInvalidKey() async {
@@ -205,7 +205,7 @@ final class OpenRouterProviderTests: XCTestCase {
 
         let snapshot = await provider.refresh()
 
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, OpenRouterAuthError.invalidKey.localizedDescription)
     }
 
     func testRefreshDoesNotReportInvalidKeyWhenOnlyCreditsForbidden() async {

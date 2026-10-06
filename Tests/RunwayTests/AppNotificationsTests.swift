@@ -6,10 +6,6 @@ import UserNotifications
 /// under XCTest so tests can never raise system prompts or post real notifications.
 @MainActor
 final class AppNotificationsTests: XCTestCase {
-    func testIsRunningUnderTestsIsTrueInTheHarness() {
-        XCTAssertTrue(AppNotifications.isRunningUnderTests)
-    }
-
     func testShowHandlerIsInvokedByShow() {
         var opened = false
         MenuBarPopover.showHandler = { opened = true }

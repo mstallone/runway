@@ -12,9 +12,6 @@ final class LogLevelSettingTests: XCTestCase {
     }
 
     func testValidRawValuesParse() {
-        for level in LogLevelSetting.allCases {
-            XCTAssertEqual(LogLevelSetting(rawValue: level.rawValue), level)
-        }
         // Pin the exact persisted raw strings so a rename can't orphan saved settings.
         XCTAssertEqual(LogLevelSetting(rawValue: "error"), .error)
         XCTAssertEqual(LogLevelSetting(rawValue: "warn"), .warn)

@@ -12,7 +12,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         return defaults
     }
 
-    func testResolvedFamiliesFeedIdentityKeysAndTheRegistry() throws {
+    func testResolvedFamiliesFeedIdentityKeysAndTheRegistry() async throws {
         let defaults = makeScratchDefaults()
         let store = ProviderAccountsStore(defaults: defaults)
         let observer = DefaultAccountObserver(
@@ -26,7 +26,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             homeDirectory: { URL(fileURLWithPath: "/Users/dev") }
         )
 
-        let assembly = ProviderAccountAssembly.make(observer: observer, accountsStore: store)
+        let assembly = await ProviderAccountAssembly.make(observer: observer, accountsStore: store)
 
         XCTAssertEqual(assembly.identityKeysByCard, ["claude": "acct-1"])
         // The registry recorded the resolved account under the bare id, holding the default badge.
@@ -41,7 +41,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
     /// A family whose home facts aren't readable this launch (first Finder/Dock launch racing a
     /// slow shell) is left out of the pass entirely: not observed, not reconciled — while a family
     /// whose home override is already in the process environment still resolves.
-    func testFamiliesOutsideThePassAreNeitherObservedNorReconciled() {
+    func testFamiliesOutsideThePassAreNeitherObservedNorReconciled() async {
         let defaults = makeScratchDefaults()
         let store = ProviderAccountsStore(defaults: defaults)
         let observer = DefaultAccountObserver(
@@ -54,7 +54,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             homeDirectory: { URL(fileURLWithPath: "/Users/dev") }
         )
 
-        let assembly = ProviderAccountAssembly.make(observer: observer, accountsStore: store, families: ["codex"])
+        let assembly = await ProviderAccountAssembly.make(observer: observer, accountsStore: store, families: ["codex"])
 
         XCTAssertEqual(assembly.identityKeysByCard, ["codex": "codex-1"])
         XCTAssertNil(store.defaultBadgeHolder(family: "claude"), "an out-of-pass family must not be reconciled")
@@ -98,7 +98,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         )
     }
 
-    func testADistinctConfigDirAccountMintsAHashedRecordAndAnExtraCard() throws {
+    func testADistinctConfigDirAccountMintsAHashedRecordAndAnExtraCard() async throws {
         let defaults = makeScratchDefaults()
         let store = ProviderAccountsStore(defaults: defaults)
         let observer = DefaultAccountObserver(
@@ -117,7 +117,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             subdirectories: ["/Users/dev/.claude-work"]
         )
 
-        let assembly = ProviderAccountAssembly.make(
+        let assembly = await ProviderAccountAssembly.make(
             observer: observer, accountsStore: store, claudeDiscovery: discovery
         )
 
@@ -137,7 +137,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         XCTAssertTrue(assembly.defaultClaudeExtraLogRoots.isEmpty)
     }
 
-    func testClaudeDefaultSwapResolvesAndRenamesTheAccountBackingTheBareRuntime() throws {
+    func testClaudeDefaultSwapResolvesAndRenamesTheAccountBackingTheBareRuntime() async throws {
         let store = ProviderAccountsStore(defaults: makeScratchDefaults())
         let firstObserver = DefaultAccountObserver(
             environment: FakeEnvironment([:]),
@@ -147,7 +147,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             keychain: FakeKeychain(nil),
             homeDirectory: { URL(fileURLWithPath: "/Users/dev") }
         )
-        _ = ProviderAccountAssembly.make(
+        _ = await ProviderAccountAssembly.make(
             observer: firstObserver,
             accountsStore: store,
             claudeDiscovery: makeDiscovery(files: [:], subdirectories: [])
@@ -169,7 +169,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             subdirectories: ["/Users/dev/.claude-first"]
         )
 
-        let assembly = ProviderAccountAssembly.make(
+        let assembly = await ProviderAccountAssembly.make(
             observer: secondObserver,
             accountsStore: store,
             claudeDiscovery: movedFirstAccount
@@ -193,7 +193,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         XCTAssertNil(store.records.first { $0.identityKey == "acct-1" }?.customLabel)
     }
 
-    func testASameAccountConfigDirFoldsOntoTheDefaultCardAsALogRoot() throws {
+    func testASameAccountConfigDirFoldsOntoTheDefaultCardAsALogRoot() async throws {
         let defaults = makeScratchDefaults()
         let store = ProviderAccountsStore(defaults: defaults)
         let observer = DefaultAccountObserver(
@@ -212,7 +212,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             subdirectories: ["/Users/dev/.claude-side"]
         )
 
-        let assembly = ProviderAccountAssembly.make(
+        let assembly = await ProviderAccountAssembly.make(
             observer: observer, accountsStore: store, claudeDiscovery: discovery
         )
 
@@ -223,7 +223,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         XCTAssertEqual(Set(record.sources.map(\.kind)), [.defaultHome, .configDir])
     }
 
-    func testAnUnresolvedDefaultLoginSkipsCandidatesThisLaunch() {
+    func testAnUnresolvedDefaultLoginSkipsCandidatesThisLaunch() async {
         let defaults = makeScratchDefaults()
         let store = ProviderAccountsStore(defaults: defaults)
         let observer = DefaultAccountObserver(
@@ -241,7 +241,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             subdirectories: ["/Users/dev/.claude-work"]
         )
 
-        let assembly = ProviderAccountAssembly.make(
+        let assembly = await ProviderAccountAssembly.make(
             observer: observer, accountsStore: store, claudeDiscovery: discovery
         )
 
@@ -259,7 +259,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         XCTAssertEqual(providers.map(\.provider.displayName), ["Claude"])
     }
 
-    func testNoDefaultLoginStillAcceptsAConfigDirOnlyAccount() throws {
+    func testNoDefaultLoginStillAcceptsAConfigDirOnlyAccount() async throws {
         let defaults = makeScratchDefaults()
         let store = ProviderAccountsStore(defaults: defaults)
         let observer = DefaultAccountObserver(
@@ -276,7 +276,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             subdirectories: ["/Users/dev/.claude-work"]
         )
 
-        let assembly = ProviderAccountAssembly.make(
+        let assembly = await ProviderAccountAssembly.make(
             observer: observer, accountsStore: store, claudeDiscovery: discovery
         )
 
@@ -293,7 +293,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         XCTAssertEqual(providers.map(\.provider.displayName), ["Claude"])
     }
 
-    func testAmbientClaudeTokenKeepsItsSpendRuntimeBesideAConfigDirAccount() throws {
+    func testAmbientClaudeTokenKeepsItsSpendRuntimeBesideAConfigDirAccount() async throws {
         let defaults = makeScratchDefaults()
         let store = ProviderAccountsStore(defaults: defaults)
         store.reconcile(with: [ProviderAccountsStore.AccountObservation(
@@ -328,7 +328,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             subdirectories: ["/Users/dev/.claude-work"]
         )
 
-        let assembly = ProviderAccountAssembly.make(
+        let assembly = await ProviderAccountAssembly.make(
             observer: observer, accountsStore: store, claudeDiscovery: discovery
         )
         let card = try XCTUnwrap(assembly.claudeCards.first)
@@ -362,7 +362,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         )])
     }
 
-    func testAmbientClaudeTokenKeepsANeutralTitleWhenDesktopCouldSupplyUsage() {
+    func testAmbientClaudeTokenKeepsANeutralTitleWhenDesktopCouldSupplyUsage() async {
         let store = ProviderAccountsStore(defaults: makeScratchDefaults())
         let observer = DefaultAccountObserver(
             environment: FakeEnvironment(["CLAUDE_CODE_OAUTH_TOKEN": "ambient-token"]),
@@ -371,7 +371,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             homeDirectory: { URL(fileURLWithPath: "/Users/dev") }
         )
 
-        let assembly = ProviderAccountAssembly.make(
+        let assembly = await ProviderAccountAssembly.make(
             observer: observer,
             accountsStore: store
         )
@@ -386,7 +386,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         XCTAssertTrue(providers.first?.authStore.allowsDesktopFallback == true)
     }
 
-    func testARenameNeverBakesIntoTheCardOnlyTheResolverCarriesIt() throws {
+    func testARenameNeverBakesIntoTheCardOnlyTheResolverCarriesIt() async throws {
         let defaults = makeScratchDefaults()
         let store = ProviderAccountsStore(defaults: defaults)
         let observer = DefaultAccountObserver(
@@ -404,7 +404,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         )
 
         // First pass creates the record; the user then renames it.
-        let first = ProviderAccountAssembly.make(
+        let first = await ProviderAccountAssembly.make(
             observer: observer, accountsStore: store, claudeDiscovery: discovery
         )
         let cardID = try XCTUnwrap(first.claudeCards.first?.id)
@@ -412,7 +412,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         store.rename(cardID: cardID, to: "Work Max")
 
         let reloadedStore = ProviderAccountsStore(defaults: defaults)
-        let second = ProviderAccountAssembly.make(
+        let second = await ProviderAccountAssembly.make(
             observer: observer,
             accountsStore: reloadedStore,
             claudeDiscovery: discovery
@@ -423,7 +423,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         XCTAssertEqual(reloadedStore.resolvedDisplayName(cardID: cardID), "Work Max")
     }
 
-    func testDistinctCodexHomesBuildScopedCardsAndIdentityStamps() throws {
+    func testDistinctCodexHomesBuildScopedCardsAndIdentityStamps() async throws {
         let store = ProviderAccountsStore(defaults: makeScratchDefaults())
         let defaultAuth = codexAuth(accountID: "PERSONAL", email: "personal@example.com")
         let workAuth = codexAuth(accountID: "WORK", email: "work@example.com")
@@ -441,7 +441,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             subdirectories: ["/Users/dev/.codex", "/Users/dev/.codex-work"]
         )
 
-        let assembly = ProviderAccountAssembly.make(
+        let assembly = await ProviderAccountAssembly.make(
             observer: observer,
             accountsStore: store,
             families: ["codex"],
@@ -466,7 +466,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         )
     }
 
-    func testSameCodexAccountAcrossHomesFoldsLogsOntoOneCard() throws {
+    func testSameCodexAccountAcrossHomesFoldsLogsOntoOneCard() async throws {
         let store = ProviderAccountsStore(defaults: makeScratchDefaults())
         let auth = codexAuth(accountID: "SAME")
         let observer = DefaultAccountObserver(
@@ -483,7 +483,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             subdirectories: ["/Users/dev/.codex", "/Users/dev/.codex-side"]
         )
 
-        let assembly = ProviderAccountAssembly.make(
+        let assembly = await ProviderAccountAssembly.make(
             observer: observer,
             accountsStore: store,
             families: ["codex"],
@@ -505,7 +505,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         )
     }
 
-    func testUnresolvedCodexDefaultSuppressesExtraHomes() {
+    func testUnresolvedCodexDefaultSuppressesExtraHomes() async {
         let store = ProviderAccountsStore(defaults: makeScratchDefaults())
         let observer = DefaultAccountObserver(
             environment: FakeEnvironment([:]),
@@ -522,7 +522,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             subdirectories: ["/Users/dev/.codex-work"]
         )
 
-        let assembly = ProviderAccountAssembly.make(
+        let assembly = await ProviderAccountAssembly.make(
             observer: observer,
             accountsStore: store,
             families: ["codex"],
@@ -533,7 +533,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         XCTAssertTrue(store.records.isEmpty)
     }
 
-    func testCodexDefaultSwapKeepsBothStableRecordIDsAndRepointsSources() throws {
+    func testCodexDefaultSwapKeepsBothStableRecordIDsAndRepointsSources() async throws {
         let defaults = makeScratchDefaults()
         let store = ProviderAccountsStore(defaults: defaults)
         let firstAuth = codexAuth(accountID: "FIRST")
@@ -545,7 +545,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         )
         let emptyDiscovery = makeCodexDiscovery(files: [:], subdirectories: [])
 
-        let first = ProviderAccountAssembly.make(
+        let first = await ProviderAccountAssembly.make(
             observer: firstObserver,
             accountsStore: store,
             families: ["codex"],
@@ -568,7 +568,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             subdirectories: ["/Users/dev/.codex", "/Users/dev/.codex-first"]
         )
 
-        let second = ProviderAccountAssembly.make(
+        let second = await ProviderAccountAssembly.make(
             observer: secondObserver,
             accountsStore: store,
             families: ["codex"],
@@ -586,7 +586,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         XCTAssertEqual(second.identityKeysByCard[replacement.id], "second")
     }
 
-    func testNothingObservedLeavesRegistryAndKeysEmpty() {
+    func testNothingObservedLeavesRegistryAndKeysEmpty() async {
         let defaults = makeScratchDefaults()
         let store = ProviderAccountsStore(defaults: defaults)
         let observer = DefaultAccountObserver(
@@ -596,7 +596,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             homeDirectory: { URL(fileURLWithPath: "/Users/dev") }
         )
 
-        let assembly = ProviderAccountAssembly.make(observer: observer, accountsStore: store)
+        let assembly = await ProviderAccountAssembly.make(observer: observer, accountsStore: store)
 
         XCTAssertTrue(assembly.identityKeysByCard.isEmpty)
         XCTAssertTrue(store.records.isEmpty)

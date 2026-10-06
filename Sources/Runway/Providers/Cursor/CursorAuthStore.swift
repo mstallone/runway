@@ -216,16 +216,6 @@ struct CursorAuthStore: Sendable {
         return .state(CursorAuthState(accessToken: candidate, source: source))
     }
 
-    /// `nil` from the probe means "cannot check" (locked keychain, stuck flight), not "absent" —
-    /// treating it as logged-out would silently swallow an access problem. Only a confirmed-absent
-    /// item reads as no footprint.
-    private func protectedItemExists(_ read: NonInteractiveKeychainRead, service: String) -> Bool {
-        switch unreadableItemLoad(read, service: service) {
-        case .connectRequired, .keychainPermissionRequired: return true
-        default: return false
-        }
-    }
-
     /// Which failure an `.unavailable` read was, or nil when the item is provably absent. The
     /// read's own status is the evidence; the probe is the fallback for when none was recorded,
     /// where nil still means "cannot check" rather than "absent".
