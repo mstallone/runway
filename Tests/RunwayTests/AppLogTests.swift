@@ -87,6 +87,7 @@ final class AppLogTests: XCTestCase {
         AppLog.reloadLevel(.info)
         AppLog.info(.auth, "refreshing with token=sk-1234567890abcdefghij")
         let contents = try fileContents()
+        XCTAssertTrue(contents.contains("[INFO] [auth] refreshing with"), contents)
         XCTAssertFalse(contents.contains("sk-1234567890abcdefghij"), contents)
     }
 

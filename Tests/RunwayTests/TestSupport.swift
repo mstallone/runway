@@ -99,13 +99,11 @@ enum ClaudeLogFixture {
         messageID: String? = "msg_1",
         requestID: String? = "req_1",
         isSidechain: Bool? = nil,
-        speed: String? = nil,
         version: String? = "1.0.24"
     ) -> String {
         var usage: [String: Any] = ["input_tokens": input, "output_tokens": output]
         if let cacheWrite { usage["cache_creation_input_tokens"] = cacheWrite }
         if let cacheRead { usage["cache_read_input_tokens"] = cacheRead }
-        if let speed { usage["speed"] = speed }
         var message: [String: Any] = ["usage": usage]
         if let model { message["model"] = model }
         if let messageID { message["id"] = messageID }

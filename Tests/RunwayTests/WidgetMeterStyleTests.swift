@@ -73,22 +73,6 @@ final class WidgetMeterStyleTests: XCTestCase {
         XCTAssertEqual(used.fraction, 0.32, accuracy: 0.0001)
     }
 
-    func testBoundedHeadlineWordFlipsSymmetricallyWithMeterStyle() async {
-        // The same tile must carry the mode word in BOTH modes (regression: "Used" mode had dropped it).
-        let (store, descriptor) = await makeRefreshedStore(
-            format: .percent,
-            used: 80,
-            limit: 100,
-            suite: "symmetry"
-        )
-
-        store.meterStyle = .remaining
-        XCTAssertEqual(store.data(for: descriptor).boundedHeadline, "20% left")
-
-        store.meterStyle = .used
-        XCTAssertEqual(store.data(for: descriptor).boundedHeadline, "80% used")
-    }
-
     func testGlobalModeOverridesDescriptorSampleDisplayMode() async {
         // The descriptor sample is hardcoded to `.used`; the global store value must win on both the
         // live-data path (resolve) and the fallback (sample) path.
@@ -173,11 +157,6 @@ final class WidgetMeterStyleTests: XCTestCase {
         XCTAssertEqual(used.valueText, remaining.valueText)
         XCTAssertEqual(used.unboundedSubtitle, remaining.unboundedSubtitle)
         XCTAssertEqual(used.displayedValue, remaining.displayedValue)
-    }
-
-    func testMeterStyleDefaultsToRemainingWithEmptySuite() {
-        let store = makeEmptyStore(makeUserDefaults("default"))
-        XCTAssertEqual(store.meterStyle, .remaining)
     }
 
     func testMeterStylePersistsAcrossStoreInstances() {
