@@ -62,51 +62,53 @@ final class TestDefaultsCleanup: NSObject, XCTestObservation, @unchecked Sendabl
         }
     }
 
-    /// Claims the ledger with an atomic rename so concurrent test processes (other worktrees) never
-    /// rewrite each other's entries, removes every settled suite's file, and re-appends the rest.
+    /// Removes every settled suite's file and rewrites the ledger with the entries still settling.
     private func sweepPreviousRuns() {
-        let claimed = ledger.deletingLastPathComponent()
-            .appendingPathComponent("defaults-ledger.\(UUID().uuidString).sweeping")
-        do {
-            try FileManager.default.moveItem(at: ledger, to: claimed)
-        } catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile {
-            return
-        } catch {
-            warn("could not claim \(ledger.path): \(error.localizedDescription)")
-            return
-        }
-        defer { try? FileManager.default.removeItem(at: claimed) }
-        guard let text = try? String(contentsOf: claimed, encoding: .utf8) else {
-            warn("could not read the claimed ledger; its suites' files stay behind")
-            return
-        }
-        let cutoff = Date().timeIntervalSince1970 - Self.settleInterval
-        var kept: [String] = []
-        for line in text.split(separator: "\n") {
-            let fields = line.split(separator: "\t", maxSplits: 1)
-            guard fields.count == 2, let stamp = TimeInterval(fields[0]) else { continue }
-            if stamp > cutoff {
-                kept.append(String(line))
-            } else {
-                removeFile(for: String(fields[1]))
+        withLedgerLock {
+            guard FileManager.default.fileExists(atPath: ledger.path) else { return }
+            let text = try String(contentsOf: ledger, encoding: .utf8)
+            let cutoff = Date().timeIntervalSince1970 - Self.settleInterval
+            var kept: [String] = []
+            for line in text.split(separator: "\n") {
+                let fields = line.split(separator: "\t", maxSplits: 1)
+                guard fields.count == 2, let stamp = TimeInterval(fields[0]) else { continue }
+                if stamp > cutoff {
+                    kept.append(String(line))
+                } else {
+                    removeFile(for: String(fields[1]))
+                }
             }
+            try kept.map { $0 + "\n" }.joined().write(to: ledger, atomically: true, encoding: .utf8)
         }
-        appendToLedger(kept)
     }
 
-    /// Appends with `O_APPEND`, so writers in different processes interleave whole lines.
     private func appendToLedger(_ lines: [String]) {
-        guard !lines.isEmpty else { return }
-        do {
-            try FileManager.default.createDirectory(
-                at: ledger.deletingLastPathComponent(), withIntermediateDirectories: true
-            )
+        withLedgerLock {
             let descriptor = open(ledger.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
             guard descriptor >= 0 else { throw CocoaError(.fileWriteUnknown) }
             let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
-            try handle.write(contentsOf: Data((lines.joined(separator: "\n") + "\n").utf8))
+            try handle.write(contentsOf: Data(lines.map { $0 + "\n" }.joined().utf8))
+        }
+    }
+
+    /// Runs `body` holding an exclusive `flock` on a sibling lock file, so test processes in other
+    /// worktrees never read, rewrite, or append to the ledger at the same time.
+    private func withLedgerLock(_ body: () throws -> Void) {
+        do {
+            let directory = ledger.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let descriptor = open(directory.appendingPathComponent("defaults-ledger.lock").path, O_RDWR | O_CREAT, 0o644)
+            guard descriptor >= 0, flock(descriptor, LOCK_EX) == 0 else {
+                if descriptor >= 0 { close(descriptor) }
+                throw CocoaError(.fileLocking)
+            }
+            defer {
+                flock(descriptor, LOCK_UN)
+                close(descriptor)
+            }
+            try body()
         } catch {
-            warn("could not record test suites in \(ledger.path): \(error.localizedDescription)")
+            warn("could not update \(ledger.path): \(error.localizedDescription)")
         }
     }
 
