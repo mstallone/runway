@@ -10,11 +10,7 @@ final class WidgetDataStoreResetExpiryTests: XCTestCase {
 
     override func setUp() async throws {
         suite = "WidgetDataStoreResetExpiryTests.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suite)!
-    }
-
-    override func tearDown() async throws {
-        defaults.removePersistentDomain(forName: suite)
+        defaults = UserDefaults(testSuiteName: suite)!
     }
 
     private final class Runtime: ProviderRuntime {

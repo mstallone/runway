@@ -58,6 +58,7 @@ Every PR description uses this structure:
 ## Code
 
 - Add a regression test when you fix a bug.
+- In tests, open scratch defaults with `UserDefaults(testSuiteName:)`, not `UserDefaults(suiteName:)`. It registers the suite so its file is removed from `~/Library/Preferences` (see `Tests/RunwayTests/TestDefaultsCleanup.swift`).
 - Keep files under about 500 lines.
 - No new dependencies without a reason.
 - Fail loudly into the local log file and show a friendly error to the user. No silent fallbacks. Validate only at system boundaries (user input, external APIs). Trust internal code.

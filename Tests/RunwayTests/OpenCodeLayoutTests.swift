@@ -7,9 +7,8 @@ import XCTest
 final class OpenCodeLayoutTests: XCTestCase {
     func testFreshDefaultsSeedApprovedOpenCodeLayout() {
         let suiteName = "RunwayTests.OpenCodeLayout.FreshDefaults.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = UserDefaults(testSuiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let store = LayoutStore(
             registry: .from([OpenCodeProvider()]),

@@ -20,7 +20,7 @@ final class UsageUnavailableTests: XCTestCase {
     }
 
     private func store(first: ProviderSnapshot, second: ProviderSnapshot? = nil) -> WidgetDataStore {
-        let defaults = UserDefaults(suiteName: "UsageUnavailableTests.\(UUID().uuidString)")!
+        let defaults = UserDefaults(testSuiteName: "UsageUnavailableTests.\(UUID().uuidString)")!
         let descriptors = [session, weekly, spend]
         let runtime = TogglingProviderRuntime(provider: provider, descriptors: descriptors,
                                              first: first, second: second ?? first)
@@ -118,7 +118,7 @@ final class UsageUnavailableTests: XCTestCase {
                 applicableMetricIDs: applicable
             )
             let dataStore = store(first: first, second: second)
-            let defaults = UserDefaults(suiteName: "UsageUnavailableLayout.\(UUID().uuidString)")!
+            let defaults = UserDefaults(testSuiteName: "UsageUnavailableLayout.\(UUID().uuidString)")!
             let layout = LayoutStore(
                 registry: WidgetRegistry(providers: [provider], descriptors: [session, weekly, spend]),
                 defaults: defaults,

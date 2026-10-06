@@ -35,7 +35,7 @@ final class UsageReaderTests: XCTestCase {
 
     private func defaults() -> UserDefaults {
         let suite = "UsageReaderTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = UserDefaults(testSuiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
         return defaults
     }

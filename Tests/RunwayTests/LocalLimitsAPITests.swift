@@ -249,7 +249,7 @@ final class LocalLimitsAPITests: XCTestCase {
 
     @MainActor
     func testEveryProviderDeclaresTheApprovedPublicResourceKeys() {
-        let defaults = UserDefaults(suiteName: "LocalLimitsAPITests.\(UUID().uuidString)")!
+        let defaults = UserDefaults(testSuiteName: "LocalLimitsAPITests.\(UUID().uuidString)")!
         let registry = WidgetRegistry.from(ProviderCatalog.make(defaults: defaults))
         let actual = registry.limitDescriptorsByProvider.mapValues { descriptors in
             Set(descriptors.flatMap(\.limitResources).map(\.key))

@@ -9,11 +9,7 @@ final class ResetExpiryNotificationTests: XCTestCase {
 
     override func setUp() async throws {
         suite = "ResetExpiryNotificationTests.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suite)!
-    }
-
-    override func tearDown() async throws {
-        defaults.removePersistentDomain(forName: suite)
+        defaults = UserDefaults(testSuiteName: suite)!
     }
 
     private func metric(key: String = "codex:account-a") -> ResetExpiryNotificationEvaluator.Metric {

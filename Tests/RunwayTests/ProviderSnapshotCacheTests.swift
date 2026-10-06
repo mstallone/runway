@@ -6,7 +6,7 @@ import XCTest
 final class ProviderSnapshotCacheTests: XCTestCase {
     private func makeDefaults() -> (UserDefaults, String) {
         let suite = "providerSnapshotCache.test.\(UUID().uuidString)"
-        return (UserDefaults(suiteName: suite)!, suite)
+        return (UserDefaults(testSuiteName: suite)!, suite)
     }
 
     private func snapshot(_ id: String, used: Double, now: Date) -> ProviderSnapshot {
@@ -20,7 +20,6 @@ final class ProviderSnapshotCacheTests: XCTestCase {
 
     func testStoreAccumulatesAcrossProvidersAndReadsReflectWrites() {
         let (defaults, suite) = makeDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
         let now = Date()
         let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "k", ttl: 9_999, now: { now })
 
@@ -37,7 +36,6 @@ final class ProviderSnapshotCacheTests: XCTestCase {
 
     func testDeferredStorePersistsOnlyOnPersistPending() {
         let (defaults, suite) = makeDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
         let now = Date()
         let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "k", ttl: 9_999, now: { now })
 
@@ -56,7 +54,6 @@ final class ProviderSnapshotCacheTests: XCTestCase {
 
     func testWritesPersistForAFreshInstance() {
         let (defaults, suite) = makeDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
         let now = Date()
         ProviderSnapshotCache(userDefaults: defaults, storageKey: "k", ttl: 9_999, now: { now })
             .store(snapshot("alpha", used: 42, now: now))
@@ -76,7 +73,6 @@ final class ProviderSnapshotCacheTests: XCTestCase {
     /// (instant paint), so `loadSnapshots` returns it.
     func testRelaunchLoadedSnapshotIsStaleEvenWithinTTL() {
         let (defaults, suite) = makeDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
         let now = Date()
         // Session 1 writes a snapshot 1s ago — comfortably inside the 9_999s TTL.
         ProviderSnapshotCache(userDefaults: defaults, storageKey: "k", ttl: 9_999, now: { now })
@@ -95,7 +91,6 @@ final class ProviderSnapshotCacheTests: XCTestCase {
     /// "written this session" alone.
     func testSnapshotWrittenThisSessionStaysFreshWithinTTL() {
         let (defaults, suite) = makeDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
         let now = Date()
         let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "k", ttl: 9_999, now: { now })
 
@@ -109,7 +104,6 @@ final class ProviderSnapshotCacheTests: XCTestCase {
     /// pin a snapshot fresh forever).
     func testSnapshotWrittenThisSessionExpiresAfterTTL() {
         let (defaults, suite) = makeDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
         var now = Date()
         let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "k", ttl: 100, now: { now })
 

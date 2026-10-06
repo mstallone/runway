@@ -6,7 +6,7 @@ import XCTest
 @MainActor
 final class ProviderCatalogOrderTests: XCTestCase {
     func testCatalogOrderIsHeadlineProvidersThenAlphabetical() {
-        let defaults = UserDefaults(suiteName: "ProviderCatalogOrderTests.\(UUID().uuidString)")!
+        let defaults = UserDefaults(testSuiteName: "ProviderCatalogOrderTests.\(UUID().uuidString)")!
         let ids = ProviderCatalog.make(defaults: defaults).map(\.provider.id)
 
         XCTAssertEqual(ids, [
@@ -19,7 +19,7 @@ final class ProviderCatalogOrderTests: XCTestCase {
     func testEveryDefaultLayoutIDNamesAShippingMetric() {
         // `LayoutStore` silently drops default IDs the registry doesn't know, so a typo here would
         // otherwise just make a metric quietly miss its default.
-        let defaults = UserDefaults(suiteName: "ProviderCatalogOrderTests.\(UUID().uuidString)")!
+        let defaults = UserDefaults(testSuiteName: "ProviderCatalogOrderTests.\(UUID().uuidString)")!
         let shipping = Set(ProviderCatalog.make(defaults: defaults).flatMap { $0.widgetDescriptors.map(\.id) })
 
         XCTAssertEqual(DefaultLayout.metricIDs.filter { !shipping.contains($0) }, [])
