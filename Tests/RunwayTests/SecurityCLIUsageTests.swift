@@ -15,7 +15,7 @@ final class SecurityCLIUsageTests: XCTestCase {
             .deletingLastPathComponent()
         let sources = repository.appendingPathComponent("Sources")
         let confinedSymbol = "SecKeychainSetUser" + "InteractionAllowed"
-        let allowedFileSuffix = "Services/SystemClients.swift"
+        let allowedFileSuffix = "Services/InteractiveKeychainReadGate.swift"
         var violations: [String] = []
         var allowedOccurrences = 0
 
