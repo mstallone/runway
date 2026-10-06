@@ -18,17 +18,30 @@ struct CursorPlanUsageFacts {
     let limit: Double?
     /// `planUsage.totalPercentUsed`, when numeric.
     let totalPercentUsed: Double?
+    /// Both model-pool percentages are numeric and at least one is above zero. Two zeros carry no
+    /// information: legacy accounts send them as placeholders.
+    let hasModelPools: Bool
     /// `spendLimitUsage.limitType`, lowercased.
     let spendLimitType: String?
     /// `spendLimitUsage.pooledLimit` (0 when absent).
     let pooledLimit: Double
+    /// The plan lookup named this account "Team".
+    let isTeamByName: Bool
 
-    init(usage: [String: Any]) {
+    init(usage: [String: Any], planName: String?) {
+        isTeamByName = planName?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "team"
         isEnabled = usage["enabled"] as? Bool != false
         let planUsage = usage["planUsage"] as? [String: Any]
         hasPlanUsage = planUsage != nil
         limit = planUsage.flatMap { ProviderParse.number($0["limit"]) }
         totalPercentUsed = planUsage.flatMap { ProviderParse.number($0["totalPercentUsed"]) }
+        let auto = planUsage.flatMap { ProviderParse.number($0["autoPercentUsed"]) }
+        let api = planUsage.flatMap { ProviderParse.number($0["apiPercentUsed"]) }
+        if let auto, let api, auto >= 0, api >= 0 {
+            hasModelPools = auto > 0 || api > 0
+        } else {
+            hasModelPools = false
+        }
         let spendLimitUsage = usage["spendLimitUsage"] as? [String: Any]
         spendLimitType = (spendLimitUsage?["limitType"] as? String)?.lowercased()
         pooledLimit = ProviderParse.number(spendLimitUsage?["pooledLimit"]) ?? 0
@@ -38,13 +51,18 @@ struct CursorPlanUsageFacts {
     var hasTotalUsagePercent: Bool { totalPercentUsed != nil }
     /// `planUsage` exists but carries no usable limit — the "present but unusable" state the fallbacks key on.
     var planUsageLimitMissing: Bool { hasPlanUsage && !hasLimit }
-    var planUsageUnusable: Bool { !hasPlanUsage || planUsageLimitMissing }
+    var planUsageUnusable: Bool { !hasPlanUsage || (planUsageLimitMissing && !hasTeamModelPools) }
     /// Team account inferred from the spend-limit shape alone (independent of the plan name).
     var isTeamByShape: Bool { spendLimitType == "team" || pooledLimit > 0 }
+    /// Team by plan name or by spend-limit shape.
+    var isTeam: Bool { isTeamByName || isTeamByShape }
+    /// Model pools on a team account: the one case where a missing dollar limit is still usable
+    /// plan data. Other account types need a limit or a total percentage as before.
+    var hasTeamModelPools: Bool { isTeam && hasModelPools }
     /// The generic request-based fallback trigger: an enabled account with a `planUsage` that carries
     /// neither a limit nor a total-percent figure.
     var shouldTryGenericRequestFallback: Bool {
-        isEnabled && hasPlanUsage && !hasLimit && !hasTotalUsagePercent
+        isEnabled && hasPlanUsage && !hasLimit && !hasTotalUsagePercent && !hasTeamModelPools
     }
 }
 
@@ -117,16 +135,14 @@ enum CursorUsageMapper {
         creditGrants: [String: Any]?,
         stripeBalanceCents: Double
     ) throws -> CursorMappedUsage {
-        let facts = CursorPlanUsageFacts(usage: usage)
+        let facts = CursorPlanUsageFacts(usage: usage, planName: planName)
         guard facts.isEnabled,
               let planUsage = usage["planUsage"] as? [String: Any]
         else {
             throw CursorUsageError.noActiveSubscription
         }
 
-        let normalizedPlan = planName?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
-
-        guard facts.hasLimit || facts.hasTotalUsagePercent else {
+        guard facts.hasLimit || facts.hasTotalUsagePercent || facts.hasTeamModelPools else {
             throw CursorUsageError.totalUsageLimitMissing
         }
 
@@ -143,9 +159,22 @@ enum CursorUsageMapper {
 
         let cycle = billingCycle(from: usage)
         let spendLimitUsage = usage["spendLimitUsage"] as? [String: Any]
-        let isTeamAccount = normalizedPlan == "team" || facts.isTeamByShape
+        let isTeamAccount = facts.isTeam
 
-        if isTeamAccount {
+        if isTeamAccount && facts.hasModelPools {
+            // Modern Teams seats still report the old $20 allowance. Structured pool data wins;
+            // never synthesize a total from stale dollars when Cursor omits totalPercentUsed.
+            if let percent = facts.totalPercentUsed {
+                lines.append(.progress(
+                    label: "Total usage",
+                    used: percent,
+                    limit: 100,
+                    format: .percent,
+                    resetsAt: cycle.resetsAt,
+                    periodDurationMs: cycle.periodDurationMs
+                ))
+            }
+        } else if isTeamAccount {
             guard let limitCents = facts.limit else {
                 throw CursorUsageError.requestBasedUnavailable("Cursor request-based usage data unavailable. Try again later.")
             }
@@ -258,7 +287,7 @@ enum CursorUsageMapper {
         planName: String?,
         planInfoUnavailable: Bool
     ) -> (shouldFallback: Bool, message: String) {
-        let facts = CursorPlanUsageFacts(usage: usage)
+        let facts = CursorPlanUsageFacts(usage: usage, planName: planName)
         guard facts.isEnabled else {
             return (false, "")
         }
@@ -275,7 +304,7 @@ enum CursorUsageMapper {
             return (true, "Cursor request-based usage data unavailable. Try again later.")
         }
 
-        if facts.isTeamByShape && facts.planUsageLimitMissing {
+        if facts.isTeamByShape && facts.planUsageLimitMissing && !facts.hasTeamModelPools {
             return (true, "Cursor request-based usage data unavailable. Try again later.")
         }
 
