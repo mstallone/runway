@@ -89,8 +89,8 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "claude-4.6-opus-max-thinking")?.inputPerMillion, 5)
         XCTAssertEqual(pricing.resolve(model: "claude-4.6-opus-max-thinking-fast")?.inputPerMillion, 30)
         XCTAssertEqual(pricing.resolve(model: "gpt-5.5-xhigh-fast")?.inputPerMillion, 12.5)
-        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-sol-ultra")?.inputPerMillion, 5)
-        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-sol-ultra-fast")?.inputPerMillion, 10)
+        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-sol-ultra")?.inputPerMillion, 4)
+        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-sol-ultra-fast")?.inputPerMillion, 8)
         XCTAssertEqual(pricing.resolve(model: "gpt-5.6-terra-high")?.inputPerMillion, 2)
         XCTAssertEqual(pricing.resolve(model: "gpt-5.6-terra-high-fast")?.inputPerMillion, 4)
         XCTAssertEqual(pricing.resolve(model: "gpt-5.6-luna")?.inputPerMillion, 0.2)
@@ -109,7 +109,12 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "gpt-6-astra-fast")?.inputPerMillion, 20)
         XCTAssertEqual(pricing.resolve(model: "claude-fable-5.1")?.cacheReadPerMillion, 0.25)
         XCTAssertEqual(pricing.resolve(model: "glm-5.3")?.inputPerMillion, 1.4)
-        XCTAssertEqual(pricing.resolve(model: "grok-bot-default"), pricing.resolve(model: "grok-4.6"))
+        XCTAssertEqual(pricing.resolve(model: "glm-5.3-flash")?.cacheReadPerMillion, 0.029)
+        XCTAssertEqual(pricing.resolve(model: "grok-bot-default"), pricing.resolve(model: "grok-4.6-fast"))
+        XCTAssertEqual(pricing.resolve(model: "grok-bot-automation"), pricing.resolve(model: "grok-4.6"))
+        XCTAssertEqual(pricing.resolve(model: "grok-bot-cua"), pricing.resolve(model: "grok-4.6"))
+        // Codex's Luna Reserve fallback keeps its slug and prices as GPT-5.6 Luna.
+        XCTAssertEqual(pricing.resolve(model: "gpt-reserve"), pricing.resolve(model: "gpt-5.6-luna"))
         XCTAssertEqual(pricing.resolve(model: "kimi-k3")?.inputPerMillion, 3)
         // Current first-party rates from https://docs.x.ai/developers/models.
         XCTAssertEqual(pricing.resolve(model: "grok-4-20-thinking")?.inputPerMillion, 1.25)
@@ -222,15 +227,16 @@ final class PricingBundledResourceTests: XCTestCase {
     func testGPT56PricingAndAliases() throws {
         let pricing = Self.pricing
         let sol = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-sol-ultra"))
-        XCTAssertEqual(sol.inputPerMillion, 5.0)
-        XCTAssertEqual(sol.cacheWritePerMillion, 6.25)
-        XCTAssertEqual(sol.cacheReadPerMillion, 0.5)
-        XCTAssertEqual(sol.outputPerMillion, 30.0)
+        // Catalog rates; OpenAI and Cursor list this promotion through November 21, 2026.
+        XCTAssertEqual(sol.inputPerMillion, 4.0)
+        XCTAssertEqual(sol.cacheWritePerMillion, 5.0)
+        XCTAssertEqual(sol.cacheReadPerMillion, 0.4, accuracy: 0.000_001)
+        XCTAssertEqual(sol.outputPerMillion, 20.0)
         let solFast = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-sol-ultra-fast"))
-        XCTAssertEqual(solFast.inputPerMillion, 10.0)
-        XCTAssertEqual(solFast.cacheWritePerMillion, 12.5)
-        XCTAssertEqual(solFast.cacheReadPerMillion, 1.0)
-        XCTAssertEqual(solFast.outputPerMillion, 60.0)
+        XCTAssertEqual(solFast.inputPerMillion, 8.0)
+        XCTAssertEqual(solFast.cacheWritePerMillion, 10.0)
+        XCTAssertEqual(solFast.cacheReadPerMillion, 0.8, accuracy: 0.000_001)
+        XCTAssertEqual(solFast.outputPerMillion, 40.0)
 
         let terra = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-terra-high"))
         XCTAssertEqual(terra.inputPerMillion, 2.0)
@@ -326,7 +332,7 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(fast.inputPerMillion, 4.0)
         XCTAssertEqual(fast.cacheWritePerMillion, 4.0)
         XCTAssertEqual(fast.cacheReadPerMillion, 1.0)
-        XCTAssertEqual(fast.outputPerMillion, 12.0)
+        XCTAssertEqual(fast.outputPerMillion, 18.0)
         // Cursor CSV uses fast-before-effort (`grok-4.5-fast-high`); also accept effort-before-fast.
         XCTAssertEqual(pricing.resolve(model: "grok-4.5-fast-high"), fast)
         XCTAssertEqual(pricing.resolve(model: "grok-4.5-fast-medium"), fast)
@@ -426,6 +432,18 @@ final class PricingBundledResourceTests: XCTestCase {
             "Grok 4.5 (Auto Intelligence)": "grok-4.5",
             "Cursor Grok 4.5 Fast (Auto)": "grok-4.5-fast",
             "Grok 4.6 (Auto Intelligence)": "grok-4.6",
+            "Grok 4.7 (Auto Balanced)": "grok-4.7",
+            "Cursor Grok 4.7 Fast (Auto)": "grok-4.7-fast",
+            "Grok 4.7 500k (Auto Intelligence)": "grok-4.7-500k",
+            "Grok 4.7 500k Fast (Auto)": "grok-4.7-500k-fast",
+            "Opus 5.5 (Auto Balanced)": "claude-opus-5-5",
+            "Claude Opus 5.5 Fast (Auto)": "claude-opus-5-5-fast",
+            "Sonnet 5.5 (Auto Balanced)": "claude-sonnet-5-5",
+            "GPT-6 Sol (Auto)": "gpt-6-sol",
+            "GPT-6.1 Sol (Auto Balanced)": "gpt-6.1-sol",
+            "GPT-6 Luna (Auto Cost)": "gpt-6-luna",
+            "Gemini 3.5 Flash (Auto)": "gemini-3.5-flash",
+            "GLM 5.3 Flash (Auto Cost)": "glm-5.3-flash",
             "Cursor Grok 4.6 Fast (Auto)": "grok-4.6-fast",
             "GPT-5.5 (Auto)": "gpt-5.5",
             "GPT-5.6 Sol (Auto Balanced)": "gpt-5.6-sol",

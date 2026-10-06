@@ -1,6 +1,6 @@
 {
-  "$comment": "Runway pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Muse Spark rates come from Meta's Model API pricing page. Published to update-feed by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries; https://developers.openai.com/api/docs/models/daybreak-blue-latest and https://developers.openai.com/api/docs/pricing for Daybreak aliases and rates; https://dev.meta.ai/docs/pricing-rate-limits for Muse Spark.",
-  "updated_at": "2026-09-23T04:54:13Z",
+  "$comment": "Runway pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Muse Spark rates come from Meta's Model API pricing page. Published to update-feed by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries; https://developers.openai.com/api/docs/models/daybreak-blue-latest and https://developers.openai.com/api/docs/pricing for Daybreak aliases and rates; https://dev.meta.ai/docs/pricing-rate-limits for Muse Spark; https://developers.openai.com/api/docs/pricing for GPT-6 fast multipliers.",
+  "updated_at": "2026-10-06T06:54:15Z",
   "pricing": {
     "auto": {
       "input_per_million": 1.25,
@@ -50,6 +50,33 @@
       "cache_read_per_million": 0.5,
       "output_per_million": 30.0
     },
+    "grok-4.7": {
+      "$comment": "Cursor + SpaceXAI first-party model. Cache write not published separately; defaults to input. Cursor bills long context (>256k input) and Fast mode as the separate rows below.",
+      "input_per_million": 2.0,
+      "cache_write_per_million": 2.0,
+      "cache_read_per_million": 0.5,
+      "output_per_million": 6.0
+    },
+    "grok-4.7-fast": {
+      "input_per_million": 4.0,
+      "cache_write_per_million": 4.0,
+      "cache_read_per_million": 1.0,
+      "output_per_million": 12.0
+    },
+    "grok-4.7-500k": {
+      "$comment": "Cursor's Grok 4.7 long-context tier (>256k input, up to 500k): 2x standard rates.",
+      "input_per_million": 4.0,
+      "cache_write_per_million": 4.0,
+      "cache_read_per_million": 1.0,
+      "output_per_million": 12.0
+    },
+    "grok-4.7-500k-fast": {
+      "$comment": "Cursor's Grok 4.7 Fast long-context tier: 3x standard rates.",
+      "input_per_million": 6.0,
+      "cache_write_per_million": 6.0,
+      "cache_read_per_million": 1.5,
+      "output_per_million": 18.0
+    },
     "grok-4.5": {
       "$comment": "Cursor + SpaceXAI first-party model. Cache write not published separately; defaults to input.",
       "input_per_million": 2.0,
@@ -58,10 +85,11 @@
       "output_per_million": 6.0
     },
     "grok-4.5-fast": {
+      "$comment": "Cursor's table lists Grok 4.5 (Fast) output at $18 as of 2026-10-05 (previously $12; Grok 4.6 and 4.7 Fast remain $12).",
       "input_per_million": 4.0,
       "cache_write_per_million": 4.0,
       "cache_read_per_million": 1.0,
-      "output_per_million": 12.0
+      "output_per_million": 18.0
     },
     "grok-4.6": {
       "$comment": "Cursor + SpaceXAI first-party model. Cache write not published separately; defaults to input. Cursor lists a 50% launch discount for one week starting 2026-08-12; rates below are the numbers on the pricing table as of 2026-08-13.",
@@ -111,14 +139,8 @@
       "cache_read_per_million": 0.6,
       "output_per_million": 22.5
     },
-    "gpt-5.6-sol": {
-      "$comment": "OpenAI's GPT-5.6 family per Cursor's published rates. Terra and Luna were repriced downward 2026-07-30; public catalogs lag repricings, so these overrides win.",
-      "input_per_million": 5.0,
-      "cache_write_per_million": 6.25,
-      "cache_read_per_million": 0.5,
-      "output_per_million": 30.0
-    },
     "gpt-5.6-terra": {
+      "$comment": "OpenAI's GPT-5.6 Terra and Luna per Cursor's published rates; both were repriced downward 2026-07-30. GPT-5.6 Sol has no entry here: the public catalogs carry its rate, including the promotion OpenAI and Cursor list through 2026-11-21, so it follows them when the promotion ends.",
       "input_per_million": 2.0,
       "cache_write_per_million": 2.5,
       "cache_read_per_million": 0.2,
@@ -158,8 +180,15 @@
       "cache_read_per_million": 0.26,
       "output_per_million": 4.4
     },
+    "glm-5.3-flash": {
+      "$comment": "GLM 5.3 Flash per Cursor's published table. Cache write is unpublished, so it defaults to input.",
+      "input_per_million": 0.15,
+      "cache_write_per_million": 0.15,
+      "cache_read_per_million": 0.029,
+      "output_per_million": 0.5
+    },
     "gpt-6-astra": {
-      "$comment": "OpenAI GPT-6 Astra official rates (developers.openai.com/api/docs/models/gpt-6-astra). Cache write is 1.25x input; cache read is 0.1x. Fast mode is 2x. Public catalogs and Cursor's table have not added it yet.",
+      "$comment": "OpenAI GPT-6 Astra official rates (developers.openai.com/api/docs/models/gpt-6-astra). Cache write is 1.25x input; cache read is 0.1x. Fast mode is 2x. Cursor's table does not list it.",
       "input_per_million": 10.0,
       "cache_write_per_million": 12.5,
       "cache_read_per_million": 1.0,
@@ -194,7 +223,10 @@
     "gpt-5.6-sol": 2.0,
     "gpt-5.6-terra": 2.0,
     "gpt-5.6-luna": 2.0,
-    "gpt-6-astra": 2.0
+    "gpt-6-astra": 2.0,
+    "gpt-6.1-sol": 2.0,
+    "gpt-6-sol": 2.0,
+    "gpt-6-luna": 2.0
   },
   "alias_rules": [
     { "pattern": "^agent_review$", "canonical": "gpt-5.4" },
@@ -208,7 +240,14 @@
     { "pattern": "^composer-2\\.5$", "canonical": "composer-2.5" },
     { "pattern": "^composer-2\\.5-fast$", "canonical": "composer-2.5-fast" },
     { "pattern": "^github_bugbot$", "canonical": "github_bugbot" },
-    { "pattern": "^grok-bot-(?:automation|cua|default)$", "canonical": "grok-4.6" },
+    { "$comment": "Cursor's table does not list the Grok Bot slugs. Per-event list prices reported in robinebers/openusage#1229 track Grok 4.6 Fast for default mode and Grok 4.6 base for automation; cua stays on the base rate.", "pattern": "^grok-bot-default$", "canonical": "grok-4.6-fast" },
+    { "pattern": "^grok-bot-(?:automation|cua)$", "canonical": "grok-4.6" },
+    { "pattern": "^(?:cursor-)?grok-4[.-]7(?:-500k|\\[500k\\])-fast(?:-(?:low|medium|high|xhigh))?$", "canonical": "grok-4.7-500k-fast" },
+    { "pattern": "^(?:cursor-)?grok-4[.-]7(?:-500k|\\[500k\\])(?:-(?:low|medium|high|xhigh))?-fast$", "canonical": "grok-4.7-500k-fast" },
+    { "pattern": "^(?:cursor-)?grok-4[.-]7(?:-500k|\\[500k\\])(?:-(?:build|low|medium|high|xhigh))?$", "canonical": "grok-4.7-500k" },
+    { "pattern": "^(?:cursor-)?grok-4[.-]7-fast(?:-(?:low|medium|high|xhigh))?$", "canonical": "grok-4.7-fast" },
+    { "pattern": "^(?:cursor-)?grok-4[.-]7(?:-(?:low|medium|high|xhigh))?-fast$", "canonical": "grok-4.7-fast" },
+    { "pattern": "^(?:cursor-)?grok-4[.-]7(?:-(?:build|low|medium|high|xhigh))?$", "canonical": "grok-4.7" },
     { "pattern": "^grok-4\\.6-build$", "canonical": "grok-4.6" },
     { "pattern": "^grok-4\\.5-build$", "canonical": "grok-4.5" },
     { "pattern": "^(?:cursor-)?grok-4[.-]6-fast(?:-(?:low|medium|high|xhigh))?$", "canonical": "grok-4.6-fast" },
@@ -235,17 +274,23 @@
     { "pattern": "^claude-opus-4-8(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-opus-4-8" },
     { "pattern": "^claude-opus-5(?:\\[1m\\])?(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?-fast$", "canonical": "claude-opus-5-fast", "$comment": "No supplement pricing entries for Opus 5: LiteLLM already carries the launch rates and the 2x fast multiplier, and a supplement entry would shadow them on released decoders that drop fast_multipliers. claude-opus-5-fast prices off the LiteLLM base entry via the fast-variant path." },
     { "pattern": "^claude-opus-5(?:\\[1m\\])?(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-opus-5" },
+    { "pattern": "^claude-opus-5[.-]5(?:\\[1m\\])?(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?-fast$", "canonical": "claude-opus-5-5-fast" },
+    { "pattern": "^claude-opus-5[.-]5(?:\\[1m\\])?(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-opus-5-5" },
+    { "pattern": "^claude-5[.-]5-opus(?:-(?:low|medium|high|xhigh|max))?(?:-thinking)?-fast$", "canonical": "claude-opus-5-5-fast" },
+    { "pattern": "^claude-5[.-]5-opus(?:-(?:low|medium|high|xhigh|max))?(?:-thinking)?$", "canonical": "claude-opus-5-5" },
     { "pattern": "^claude-fable-5[.-]1(?:\\[1m\\])?(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-fable-5.1" },
     { "pattern": "^claude-fable-5(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-fable-5" },
     { "pattern": "^claude-sonnet-5(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-sonnet-5" },
-    { "pattern": "^gemini-2\\.5-flash(?:-(?:low|medium|high|xhigh))?$", "canonical": "gemini-2.5-flash" },
-    { "pattern": "^gemini-3-flash(?:-preview)?(?:-(?:low|medium|high|xhigh))?$", "canonical": "gemini-3-flash-preview" },
-    { "pattern": "^gemini-3\\.5-flash(?:-preview)?(?:-(?:low|medium|high|xhigh))?$", "canonical": "gemini-3.5-flash" },
-    { "pattern": "^gemini-3\\.6-flash(?:-preview)?(?:-(?:low|medium|high|xhigh))?$", "canonical": "gemini-3.6-flash" },
-    { "pattern": "^gemini-3\\.7-flash(?:-preview)?(?:-(?:low|medium|high|xhigh))?$", "canonical": "gemini-3.7-flash" },
-    { "pattern": "^gemini-3\\.8-flash(?:-preview)?(?:-(?:none|low|medium|high|xhigh))?(?:-preview)?$", "canonical": "gemini-3.8-flash" },
-    { "pattern": "^gemini-3-pro-preview(?:-(?:low|medium|high|xhigh))?$", "canonical": "gemini-3-pro-preview" },
-    { "pattern": "^gemini-3\\.1-pro(?:-preview)?(?:-(?:low|medium|high|xhigh))?$", "canonical": "gemini-3.1-pro-preview" },
+    { "pattern": "^claude-sonnet-5[.-]5(?:\\[1m\\])?(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-sonnet-5-5" },
+    { "pattern": "^claude-5[.-]5-sonnet(?:-(?:low|medium|high|xhigh|max))?(?:-thinking)?$", "canonical": "claude-sonnet-5-5" },
+    { "pattern": "^gemini-2\\.5-flash(?:-(?:none|low|medium|high|xhigh))?$", "canonical": "gemini-2.5-flash" },
+    { "pattern": "^gemini-3-flash(?:-(?:a|b|c))?(?:-preview)?(?:-(?:none|low|medium|high|xhigh))?(?:-preview)?$", "canonical": "gemini-3-flash-preview" },
+    { "pattern": "^gemini-3\\.5-flash(?:-exp-[a-z])?(?:-preview)?(?:-(?:none|low|medium|high|xhigh))?(?:-preview)?$", "canonical": "gemini-3.5-flash" },
+    { "pattern": "^gemini-3\\.6-flash(?:-exp-[a-z])?(?:-preview)?(?:-(?:none|low|medium|high|xhigh))?(?:-preview)?$", "canonical": "gemini-3.6-flash" },
+    { "pattern": "^gemini-3\\.7-flash(?:-exp-[a-z])?(?:-preview)?(?:-(?:none|low|medium|high|xhigh))?(?:-preview)?$", "canonical": "gemini-3.7-flash" },
+    { "pattern": "^gemini-3\\.8-flash(?:-exp-[a-z])?(?:-preview)?(?:-(?:none|low|medium|high|xhigh))?(?:-preview)?$", "canonical": "gemini-3.8-flash" },
+    { "pattern": "^gemini-3-pro(?=-)(?:-preview)?(?:-(?:none|low|medium|high|xhigh))?(?:-preview)?$", "canonical": "gemini-3-pro-preview" },
+    { "pattern": "^gemini-3\\.1-pro(?:-preview)?(?:-(?:none|low|medium|high|xhigh))?(?:-preview)?$", "canonical": "gemini-3.1-pro-preview" },
     { "pattern": "^gpt-5(?:-(?:low|high))?-fast$", "canonical": "gpt-5-fast" },
     { "pattern": "^gpt-5(?:-(?:low|high))?$", "canonical": "gpt-5" },
     { "pattern": "^gpt-5\\.1(?:-(?:low|high))?-fast$", "canonical": "gpt-5-fast" },
@@ -285,17 +330,29 @@
     { "pattern": "^gpt-5\\.6-luna(?:-(?:none|low|medium|high|xhigh|max))?$", "canonical": "gpt-5.6-luna" },
     { "pattern": "^gpt-6-astra(?:-(?:none|low|medium|high|xhigh|max|ultra))?-fast$", "canonical": "gpt-6-astra-fast" },
     { "pattern": "^gpt-6-astra(?:-(?:none|low|medium|high|xhigh|max|ultra))?$", "canonical": "gpt-6-astra" },
+    { "pattern": "^gpt-6\\.1-sol(?:-(?:none|low|medium|high|xhigh|max|ultra))?-fast$", "canonical": "gpt-6.1-sol-fast" },
+    { "pattern": "^gpt-6\\.1-sol(?:-(?:none|low|medium|high|xhigh|max|ultra))?$", "canonical": "gpt-6.1-sol" },
+    { "pattern": "^gpt-6-sol(?:-(?:none|low|medium|high|xhigh|max|ultra))?-fast$", "canonical": "gpt-6-sol-fast" },
+    { "pattern": "^gpt-6-sol(?:-(?:none|low|medium|high|xhigh|max|ultra))?$", "canonical": "gpt-6-sol" },
+    { "pattern": "^gpt-6-luna(?:-(?:none|low|medium|high|xhigh|max|ultra))?-fast$", "canonical": "gpt-6-luna-fast" },
+    { "pattern": "^gpt-6-luna(?:-(?:none|low|medium|high|xhigh|max|ultra))?$", "canonical": "gpt-6-luna" },
+    { "$comment": "Codex's Luna Reserve fallback, used after regular usage is exhausted. It keeps its own slug in breakdowns and prices at GPT-5.6 Luna rates.", "pattern": "^gpt-reserve$", "canonical": "gpt-5.6-luna" },
     { "pattern": "^(?:gpt-)?daybreak-blue-latest$", "canonical": "gpt-5.6-sol" },
     { "pattern": "^kimi-k2\\.5$", "canonical": "moonshot/kimi-k2.5" },
     { "pattern": "^kimi-k2p5$", "canonical": "moonshot/kimi-k2.5" },
     { "pattern": "^kimi-k3(?:-code)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "moonshot/kimi-k3" },
     { "pattern": "^glm-5\\.2(?:-(?:high|max))?$", "canonical": "glm-5.2" },
+    { "pattern": "(?i)^(?:(?:z-ai|zai|zhipu)/)?glm-5\\.3-flash(?:-(?:low|high|max))?$", "canonical": "glm-5.3-flash" },
     { "pattern": "(?i)^(?:(?:z-ai|zai|zhipu)/)?glm-5\\.3(?:-(?:low|high|max))?$", "canonical": "glm-5.3" },
     { "pattern": "^[Pp]remium \\((?:[Gg][Pp][Tt]-5\\.3-[Cc]odex|[Cc]odex 5\\.3)\\)$", "canonical": "gpt-5.3-codex" },
     { "pattern": "(?i)^Composer 2\\.5 Fast \\(Auto[^)]*\\)$", "canonical": "composer-2.5-fast" },
     { "pattern": "(?i)^Composer 2\\.5 \\(Auto[^)]*\\)$", "canonical": "composer-2.5" },
     { "pattern": "(?i)^Composer 2 Fast \\(Auto[^)]*\\)$", "canonical": "composer-2-fast" },
     { "pattern": "(?i)^Composer 2 \\(Auto[^)]*\\)$", "canonical": "composer-2" },
+    { "pattern": "(?i)^(?:Cursor )?Grok 4\\.7 500k Fast \\(Auto[^)]*\\)$", "canonical": "grok-4.7-500k-fast" },
+    { "pattern": "(?i)^(?:Cursor )?Grok 4\\.7 500k \\(Auto[^)]*\\)$", "canonical": "grok-4.7-500k" },
+    { "pattern": "(?i)^(?:Cursor )?Grok 4\\.7 Fast \\(Auto[^)]*\\)$", "canonical": "grok-4.7-fast" },
+    { "pattern": "(?i)^(?:Cursor )?Grok 4\\.7 \\(Auto[^)]*\\)$", "canonical": "grok-4.7" },
     { "pattern": "(?i)^(?:Cursor )?Grok 4\\.6 Fast \\(Auto[^)]*\\)$", "canonical": "grok-4.6-fast" },
     { "pattern": "(?i)^(?:Cursor )?Grok 4\\.6 \\(Auto[^)]*\\)$", "canonical": "grok-4.6" },
     { "pattern": "(?i)^(?:Cursor )?Grok 4\\.5 Fast \\(Auto[^)]*\\)$", "canonical": "grok-4.5-fast" },
@@ -303,6 +360,9 @@
     { "pattern": "(?i)^(?:Claude )?Haiku 4\\.5 \\(Auto[^)]*\\)$", "canonical": "claude-haiku-4-5" },
     { "pattern": "(?i)^(?:Claude )?Opus 4\\.8 \\(Auto[^)]*\\)$", "canonical": "claude-opus-4-8" },
     { "pattern": "(?i)^(?:Claude )?Opus 5 \\(Auto[^)]*\\)$", "canonical": "claude-opus-5" },
+    { "pattern": "(?i)^(?:Claude )?Opus 5\\.5 Fast \\(Auto[^)]*\\)$", "canonical": "claude-opus-5-5-fast" },
+    { "pattern": "(?i)^(?:Claude )?Opus 5\\.5 \\(Auto[^)]*\\)$", "canonical": "claude-opus-5-5" },
+    { "pattern": "(?i)^(?:Claude )?Sonnet 5\\.5 \\(Auto[^)]*\\)$", "canonical": "claude-sonnet-5-5" },
     { "pattern": "(?i)^(?:Claude )?Sonnet 5 \\(Auto[^)]*\\)$", "canonical": "claude-sonnet-5" },
     { "pattern": "(?i)^(?:Claude )?Fable 5 \\(Auto[^)]*\\)$", "canonical": "claude-fable-5" },
     { "pattern": "(?i)^(?:Claude )?Fable 5\\.1 \\(Auto[^)]*\\)$", "canonical": "claude-fable-5.1" },
@@ -311,17 +371,22 @@
     { "pattern": "(?i)^GPT-5\\.6 Terra \\(Auto[^)]*\\)$", "canonical": "gpt-5.6-terra" },
     { "pattern": "(?i)^GPT-5\\.6 Luna \\(Auto[^)]*\\)$", "canonical": "gpt-5.6-luna" },
     { "pattern": "(?i)^GPT-6 Astra \\(Auto[^)]*\\)$", "canonical": "gpt-6-astra" },
+    { "pattern": "(?i)^GPT-6\\.1 Sol \\(Auto[^)]*\\)$", "canonical": "gpt-6.1-sol" },
+    { "pattern": "(?i)^GPT-6 Sol \\(Auto[^)]*\\)$", "canonical": "gpt-6-sol" },
+    { "pattern": "(?i)^GPT-6 Luna \\(Auto[^)]*\\)$", "canonical": "gpt-6-luna" },
     { "pattern": "(?i)^Gemini 3\\.1 Pro \\(Auto[^)]*\\)$", "canonical": "gemini-3.1-pro-preview" },
+    { "pattern": "(?i)^Gemini 3\\.5 Flash \\(Auto[^)]*\\)$", "canonical": "gemini-3.5-flash" },
     { "pattern": "(?i)^Gemini 3\\.6 Flash \\(Auto[^)]*\\)$", "canonical": "gemini-3.6-flash" },
     { "pattern": "(?i)^Gemini 3\\.7 Flash \\(Auto[^)]*\\)$", "canonical": "gemini-3.7-flash" },
     { "pattern": "(?i)^Gemini 3\\.8 Flash \\(Auto[^)]*\\)$", "canonical": "gemini-3.8-flash" },
     { "pattern": "(?i)^GLM 5\\.2 \\(Auto[^)]*\\)$", "canonical": "glm-5.2" },
+    { "pattern": "(?i)^GLM 5\\.3 Flash \\(Auto[^)]*\\)$", "canonical": "glm-5.3-flash" },
     { "pattern": "(?i)^GLM 5\\.3 \\(Auto[^)]*\\)$", "canonical": "glm-5.3" },
     { "pattern": "(?i)^Kimi K3 \\(Auto[^)]*\\)$", "canonical": "moonshot/kimi-k3" },
-    { "pattern": "^(?:meta/)?muse-spark-1\\.3-contributor(?:-(?:none|minimal|low|medium|high|xhigh|max|ultra))?$", "canonical": "muse-spark-1.3-contributor" },
-    { "pattern": "^(?:meta/)?muse-spark-1\\.2-contributor(?:-(?:none|minimal|low|medium|high|xhigh|max|ultra))?$", "canonical": "muse-spark-1.3-contributor" },
-    { "pattern": "^(?:meta/)?muse-spark-1\\.3(?:-(?:none|minimal|low|medium|high|xhigh|max|ultra))?$", "canonical": "muse-spark-1.3" },
-    { "pattern": "^(?:meta/)?muse-spark-1\\.2(?:-(?:none|minimal|low|medium|high|xhigh|max|ultra))?$", "canonical": "muse-spark-1.3" },
-    { "pattern": "^(?:meta/)?muse-spark-1\\.1(?:-(?:none|minimal|low|medium|high|xhigh|max|ultra))?$", "canonical": "muse-spark-1.3" }
+    { "pattern": "^(?:meta/)?muse-spark-1\\.3-contributor(?:-(?:none|minimal|low|medium|high|xhigh|extra-high|max|ultra))?$", "canonical": "muse-spark-1.3-contributor" },
+    { "pattern": "^(?:meta/)?muse-spark-1\\.2-contributor(?:-(?:none|minimal|low|medium|high|xhigh|extra-high|max|ultra))?$", "canonical": "muse-spark-1.3-contributor" },
+    { "pattern": "^(?:meta/)?muse-spark-1\\.3(?:-(?:none|minimal|low|medium|high|xhigh|extra-high|max|ultra))?$", "canonical": "muse-spark-1.3" },
+    { "pattern": "^(?:meta/)?muse-spark-1\\.2(?:-(?:none|minimal|low|medium|high|xhigh|extra-high|max|ultra))?$", "canonical": "muse-spark-1.3" },
+    { "pattern": "^(?:meta/)?muse-spark-1\\.1(?:-(?:none|minimal|low|medium|high|xhigh|extra-high|max|ultra))?$", "canonical": "muse-spark-1.3" }
   ]
 }

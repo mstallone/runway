@@ -192,6 +192,27 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).map(\.isFast), [true])
     }
 
+    func testUltrafastServiceTierMarksEventsUltrafastUntilTheTierChanges() {
+        let lines = [
+            CodexLogFixture.turnContext(timestamp: "2026-09-12T08:00:00.000Z", model: "gpt-6-astra"),
+            CodexLogFixture.threadSettingsApplied(timestamp: "2026-09-12T08:01:00.000Z", serviceTier: "ultrafast"),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-09-12T08:02:00.000Z",
+                last: CodexLogFixture.usage(input: 10, output: 5)
+            ),
+            CodexLogFixture.threadSettingsApplied(timestamp: "2026-09-12T08:03:00.000Z", serviceTier: "fast"),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-09-12T08:04:00.000Z",
+                last: CodexLogFixture.usage(input: 20, output: 10)
+            )
+        ].joined(separator: "\n")
+
+        let events = CodexLogUsageScanner.parseFile(Data(lines.utf8))
+
+        XCTAssertEqual(events.map(\.isUltrafast), [true, false])
+        XCTAssertEqual(events.map(\.isFast), [false, true])
+    }
+
     func testCachedTokensCapAtInputTokens() {
         let line = CodexLogFixture.tokenCount(
             timestamp: "2026-05-12T08:01:00.000Z",
@@ -540,12 +561,13 @@ final class CodexLogUsageScannerTests: XCTestCase {
 
     private func makeEvent(
         _ timestamp: String, model: String = "gpt-5.2", input: Int = 100, cached: Int = 0,
-        output: Int = 50, reasoning: Int = 0, isFast: Bool = false, pricingModel: String? = nil
+        output: Int = 50, reasoning: Int = 0, isFast: Bool = false, isUltrafast: Bool = false,
+        pricingModel: String? = nil
     ) -> CodexLogUsageScanner.Event {
         CodexLogUsageScanner.Event(
             timestamp: RunwayISO8601.date(from: timestamp)!,
             model: model, pricingModel: pricingModel, input: input, cached: cached, output: output, reasoning: reasoning,
-            total: input + output, isFast: isFast
+            total: input + output, isFast: isFast, isUltrafast: isUltrafast
         )
     }
 
@@ -703,28 +725,36 @@ final class CodexLogUsageScannerTests: XCTestCase {
         )
     }
 
+    /// Above 272k the whole request bills at 2x input and cache read and 1.5x output, derived from
+    /// each model's own base rates so a repricing carries through without a code change.
     func testCodexLongContextRatesCoverSupportedModels() {
-        let rates = ModelRates(
-            inputPerMillion: 1,
-            outputPerMillion: 1,
-            cacheWritePerMillion: 1,
-            cacheReadPerMillion: 0.1
-        )
         let event = makeEvent(
             "2026-05-12T08:00:00.000Z", input: 300_000, cached: 100_000, output: 10_000
         )
-        let expectedCosts: [(String, Double)] = [
-            ("gpt-5.4", 1.275),
-            ("gpt-5.4-pro-2026-03-05", 20.7),
-            ("gpt-5.5", 2.55),
-            ("gpt-5.5-pro-20260423", 20.7),
-            ("gpt-5.6-sol", 2.55),
-            ("gpt-5.6-terra", 1.02),
-            ("gpt-5.6-luna", 0.102),
-            ("gpt-6-astra", 4.95)
+        // (model, input, cache read, output, expected). Pro models publish no cache discount.
+        let cases: [(String, Double, Double, Double, Double)] = [
+            ("gpt-5.4", 2.5, 0.25, 15, 1.275),
+            ("gpt-5.4-pro-2026-03-05", 30, 3, 180, 20.7),
+            ("gpt-5.5", 5, 0.5, 30, 2.55),
+            ("gpt-5.5-pro-20260423", 30, 3, 180, 20.7),
+            ("gpt-5.6-sol", 5, 0.5, 30, 2.55),
+            // The same model on its promotional base rate.
+            ("gpt-5.6-sol", 4, 0.4, 20, 1.98),
+            ("gpt-5.6-terra", 2, 0.2, 12, 1.02),
+            ("gpt-5.6-luna", 0.2, 0.02, 1.2, 0.102),
+            ("gpt-6-astra", 10, 1, 50, 4.95),
+            ("gpt-6.1-sol", 2, 0.1, 10, 0.97),
+            ("gpt-6-sol", 2, 0.2, 10, 0.99),
+            ("gpt-6-luna", 0.1, 0.01, 0.5, 0.0495)
         ]
 
-        for (model, expected) in expectedCosts {
+        for (model, input, cacheRead, output, expected) in cases {
+            let rates = ModelRates(
+                inputPerMillion: input,
+                outputPerMillion: output,
+                cacheWritePerMillion: input,
+                cacheReadPerMillion: cacheRead
+            )
             XCTAssertEqual(
                 CodexLogUsageScanner.cost(
                     rates: rates, event: event, model: model,
@@ -735,6 +765,13 @@ final class CodexLogUsageScannerTests: XCTestCase {
                 model
             )
         }
+        // A model outside the list keeps its base rates at any prompt size.
+        let other = ModelRates(inputPerMillion: 1, outputPerMillion: 1, cacheWritePerMillion: 1, cacheReadPerMillion: 0.1)
+        XCTAssertEqual(
+            CodexLogUsageScanner.cost(rates: other, event: event, model: "gpt-5.2", fastTier: false),
+            0.22,
+            accuracy: 0.000_001
+        )
     }
 
     func testCodexExactly272kInputKeepsBaseRates() {
@@ -818,6 +855,47 @@ final class CodexLogUsageScannerTests: XCTestCase {
                 entry.model
             )
         }
+    }
+
+    /// OpenAI publishes Ultrafast rates for GPT-6 Astra only (6x standard, both context tiers).
+    /// Every other model bills an Ultrafast turn at its fast rate.
+    func testAggregateUltrafastTierIsSixTimesAstraAndFastRateElsewhere() {
+        let rates = ModelRates(
+            inputPerMillion: 10,
+            outputPerMillion: 50,
+            cacheWritePerMillion: 12.5,
+            cacheReadPerMillion: 1
+        )
+        func cost(_ model: String, input: Int, cached: Int, isFast: Bool = false, isUltrafast: Bool = false) -> Double {
+            CodexLogUsageScanner.aggregate(
+                events: [makeEvent(
+                    "2026-09-12T08:00:00.000Z", model: model, input: input, cached: cached,
+                    output: 10_000, isFast: isFast, isUltrafast: isUltrafast
+                )],
+                since: .distantPast, pricing: modelPricing(model: model, rates: rates)
+            ).series.daily.first?.costUSD ?? 0
+        }
+
+        // Short request: $10 input, $1 cached, $50 output per million, x6 = $60 / $6 / $300.
+        XCTAssertEqual(cost("gpt-6-astra", input: 100_000, cached: 20_000), 1.32, accuracy: 0.000_001)
+        XCTAssertEqual(
+            cost("gpt-6-astra", input: 100_000, cached: 20_000, isUltrafast: true), 7.92, accuracy: 0.000_001
+        )
+        // Above 272k the long-context rates ($20 / $2 / $75) scale by the same 6x.
+        XCTAssertEqual(cost("gpt-6-astra", input: 300_000, cached: 100_000), 4.95, accuracy: 0.000_001)
+        XCTAssertEqual(
+            cost("gpt-6-astra", input: 300_000, cached: 100_000, isUltrafast: true), 29.7, accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            cost("gpt-6-sol", input: 100_000, cached: 20_000, isUltrafast: true),
+            cost("gpt-6-sol", input: 100_000, cached: 20_000, isFast: true),
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            cost("gpt-6-sol", input: 100_000, cached: 20_000, isUltrafast: true),
+            cost("gpt-6-sol", input: 100_000, cached: 20_000) * 2,
+            accuracy: 0.000_001
+        )
     }
 
     func testAggregateFastAliasUsesUnscaledCodexRatesAndProviderMultiplier() throws {
