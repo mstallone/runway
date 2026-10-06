@@ -264,13 +264,14 @@ final class SettingsMigratorTests: XCTestCase {
         let result = SettingsMigrator.migrate(defaults: defaults, domainName: domain)
 
         XCTAssertEqual(result, SettingsSchema.current)
-        XCTAssertNil(defaults.persistentDomain(forName: telemetryDomain))
+        // No key may survive. macOS 27 reports a removed domain as empty rather than absent.
+        XCTAssertTrue((defaults.persistentDomain(forName: telemetryDomain) ?? [:]).isEmpty)
         XCTAssertEqual(defaults.string(forKey: "openusage.layout.v1"), "custom")
 
         // The cleanup is safe to retry after an interrupted launch.
         defaults.set(3, forKey: SettingsMigrator.schemaVersionKey)
         XCTAssertEqual(SettingsMigrator.migrate(defaults: defaults, domainName: domain), SettingsSchema.current)
-        XCTAssertNil(defaults.persistentDomain(forName: telemetryDomain))
+        XCTAssertTrue((defaults.persistentDomain(forName: telemetryDomain) ?? [:]).isEmpty)
     }
 
     func testV5MovesGrokBotAboveExtraUsageAndGrokResetsAboveUsageStats() throws {

@@ -1,8 +1,8 @@
 import XCTest
 @testable import Runway
 
-/// Covers the persistence contract of `ProviderEnablementStore`: only *disabled* IDs are stored, so an
-/// empty suite means everything is on and the choice survives relaunch.
+/// Covers the persistence contract of `ProviderEnablementStore`: the enabled-list mode every install
+/// runs in, plus the dormant legacy disabled-list mode an unseeded suite still reads.
 @MainActor
 final class ProviderEnablementStoreTests: XCTestCase {
     func testEmptySuiteEnablesEverything() {
@@ -45,8 +45,11 @@ final class ProviderEnablementStoreTests: XCTestCase {
 
     // MARK: - Early-refresh signal
 
+    // These seed first: every install runs in enabled-list mode, and seeding itself notifies.
+
     func testRealChangePostsDidChangeNotification() {
         let store = ProviderEnablementStore(defaults: makeDefaults("notify-change"))
+        store.seedEnabledProviders(["claude", "codex"])
         let posted = XCTNSNotificationExpectation(name: ProviderEnablementStore.didChangeNotification)
 
         store.setEnabled(false, for: "codex")   // enabled -> disabled: a real change
@@ -57,10 +60,12 @@ final class ProviderEnablementStoreTests: XCTestCase {
     func testNoOpToggleDoesNotPostDidChangeNotification() {
         // The refresh loop wakes on this notification; a redundant toggle must not wake it (and re-probe).
         let store = ProviderEnablementStore(defaults: makeDefaults("notify-noop"))
+        store.seedEnabledProviders(["claude", "codex"])
         let notPosted = XCTNSNotificationExpectation(name: ProviderEnablementStore.didChangeNotification)
         notPosted.isInverted = true
 
-        store.setEnabled(true, for: "codex")    // already enabled (empty suite): a no-op
+        store.setEnabled(true, for: "codex")    // already enabled: a no-op
+        store.setEnabled(false, for: "grok")    // already disabled: a no-op
 
         wait(for: [notPosted], timeout: 0.2)
     }
@@ -68,6 +73,7 @@ final class ProviderEnablementStoreTests: XCTestCase {
     func testOnProviderEnabledFiresOnEnableOnly() {
         // Wired to clear the failure backoff; must fire on a real enable, never on disable or a no-op.
         let store = ProviderEnablementStore(defaults: makeDefaults("on-enable"))
+        store.seedEnabledProviders(["claude", "codex"])
         var enabledIDs: [String] = []
         store.onProviderEnabled = { enabledIDs.append($0) }
 

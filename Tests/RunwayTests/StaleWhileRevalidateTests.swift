@@ -372,18 +372,23 @@ final class StaleWhileRevalidateTests: XCTestCase {
         )
     }
 
-    func testCorruptCacheBlobRecoversToEmptyInsteadOfDroppingSilently() {
+    func testCorruptCacheBlobRecoversToAnEmptyUsableCache() {
         // A non-decodable blob under the cache key (post-upgrade schema drift, a half-written
-        // write, a manual `defaults` edit) must recover to an empty cache rather than crash — and,
-        // per the loud-fail rule, leave a warn. Previously `try?` dropped ALL providers' snapshots
-        // silently, which is the load-side feeder of the refresh storm.
+        // write, a manual `defaults` edit) must recover to an empty cache that still accepts new
+        // snapshots. (The warning it logs is covered by `AppLogTests`.)
         let defaults = makeUserDefaults("corrupt-cache")
         defaults.set(Data("not a valid snapshot payload".utf8), forKey: "snapshots")
         let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() })
 
-        let loaded = cache.loadSnapshots(providerIDs: ["test.alpha"])
+        XCTAssertTrue(cache.loadSnapshots(providerIDs: ["test"]).isEmpty)
 
-        XCTAssertTrue(loaded.isEmpty)
+        cache.store(ProviderSnapshot(
+            providerID: "test",
+            displayName: "Test",
+            lines: [.progress(label: "Session", used: 40, limit: 100, format: .percent)]
+        ))
+        let reloaded = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() })
+        XCTAssertEqual(Array(reloaded.loadSnapshots(providerIDs: ["test"]).keys), ["test"])
     }
 
     private func makeUserDefaults(_ name: String) -> UserDefaults {

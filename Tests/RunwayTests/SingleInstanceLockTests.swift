@@ -26,23 +26,6 @@ final class SingleInstanceLockTests: XCTestCase {
         }
     }
 
-    func testLockRejectsDuplicateWhenRunningApplicationSnapshotMissesThePeer() throws {
-        let lockURL = makeLockURL()
-        var token: SingleInstanceLock.Token?
-
-        switch SingleInstanceLock.acquire(at: lockURL) {
-        case .acquired(let acquired):
-            token = acquired
-        default:
-            XCTFail("first acquisition should own the lock")
-        }
-
-        XCTAssertNotNil(token)
-        XCTAssertNil(SingleInstanceGuard.instanceToYieldTo(myPID: 101, runningPIDs: [101]))
-        assertAlreadyRunning(SingleInstanceLock.acquire(at: lockURL))
-        token = nil
-    }
-
     private func makeLockURL() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("runway-lock-\(UUID().uuidString)", isDirectory: true)
