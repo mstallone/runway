@@ -142,13 +142,15 @@ final class MenuBarPinTests: XCTestCase {
         XCTAssertEqual(reloaded.menuBarStyle, .bars)
     }
 
-    func testInvalidPinnedIDsDroppedOnLoad() {
+    func testUnknownPinnedIDStaysInvisibleButRetained() {
         let defaults = makeDefaults("invalid")
         defaults.set(["a.m1", "ghost.metric"], forKey: "layout.menuBarPins")
         let store = LayoutStore(registry: makeRegistry(), defaults: defaults, storageKey: "layout")
 
         XCTAssertTrue(store.isPinned("a.m1"))
         XCTAssertFalse(store.isPinned("ghost.metric"))
+        // The saved pin is kept, so a metric that comes back later is still pinned.
+        XCTAssertTrue(store.pinnedMetricIDs.contains("ghost.metric"))
     }
 
     // MARK: - Fixtures

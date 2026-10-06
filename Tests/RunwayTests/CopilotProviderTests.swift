@@ -749,7 +749,7 @@ final class CopilotProviderTests: XCTestCase {
 
         let snapshot = await provider.refresh()
 
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, CopilotAuthError.notLoggedIn.localizedDescription)
     }
 
     func testTokenInvalidOn401() async {
@@ -760,7 +760,7 @@ final class CopilotProviderTests: XCTestCase {
 
         let snapshot = await provider.refresh()
 
-        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorText, CopilotAuthError.tokenInvalid.localizedDescription)
     }
 
     func testMapsLinesAndSendsTokenHeaderOnSuccess() async throws {

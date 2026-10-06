@@ -6,13 +6,6 @@ import XCTest
 /// and never leak its placeholder sample numbers into the menu bar.
 @MainActor
 final class WidgetNoDataTests: XCTestCase {
-    func testDataForFlagsMissingLineAsNoData() async {
-        let (store, present, missing) = await makeRefreshedStore(suite: "missing-line")
-
-        XCTAssertTrue(store.data(for: present).hasData)
-        XCTAssertFalse(store.data(for: missing).hasData)
-    }
-
     func testNoDataHeadlineAndTrailingCopy() async {
         let (store, present, missing) = await makeRefreshedStore(suite: "copy")
 

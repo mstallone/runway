@@ -94,7 +94,6 @@ final class ClaudeTokenRenewalTests: XCTestCase {
         func writeText(_ path: String, _ text: String) throws { contents[path] = text }
         func writeTextPreservingMode(_ path: String, _ text: String) throws { contents[path] = text }
         func remove(_ path: String) throws { contents[path] = nil }
-        func ensureParentDirectory(for path: String) throws {}
     }
 
     struct StaticEnvironment: EnvironmentReading {

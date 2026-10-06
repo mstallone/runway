@@ -230,9 +230,10 @@ final class SakanaProviderTests: XCTestCase {
             now: { current }
         )
 
-        _ = await provider.refresh()
+        let snapshot = await provider.refresh()
 
         XCTAssertEqual(http.requests.count, 1)
+        XCTAssertEqual(snapshot.errorText, SakanaAuthError.sessionExpired.localizedDescription)
     }
 
     func testProviderKeepsLocalUltraTrendWhenConsoleSessionIsUnavailable() async throws {
