@@ -33,8 +33,9 @@ struct OpenCodeAuthStore: Sendable {
         \(currentRow);
         """
 
-    /// `[type, hasToken, time_created]` for the current `openai` row of one database. Only the facts
-    /// attribution needs leave SQLite; the tokens never do.
+    /// `[type, hasToken, oauthSince]` for the current `openai` row of one database. `oauthSince` is
+    /// the creation time of the earliest OAuth row the table still holds, active or not. Only the
+    /// facts attribution needs leave SQLite; the tokens never do.
     static let openAICredentialSQL = """
         SELECT json_array(
                  json_extract(value,'$.type'),
@@ -44,7 +45,8 @@ struct OpenCodeAuthStore: Sendable {
                    OR (json_type(value,'$.refresh') = 'text'
                      AND trim(json_extract(value,'$.refresh'), char(9,10,13,32)) <> ''),
                    0),
-                 time_created)
+                 (SELECT MIN(time_created) FROM credential
+                   WHERE integration_id = 'openai' AND json_extract(value,'$.type') = 'oauth'))
         FROM credential
         WHERE integration_id = 'openai'
         \(currentRow);
@@ -75,8 +77,9 @@ struct OpenCodeAuthStore: Sendable {
     /// key wins. Each database answers from its own store, see `credentialStore(databasePath:tables:)`.
     /// With no database at all, `auth.json` answers.
     ///
-    /// A present file, database, or data directory that can't be read throws `credentialsUnreadable`
-    /// when no key was found, so broken storage is never mistaken for logout.
+    /// Broken storage is never mistaken for logout. When no key was found, a database that could not
+    /// be queried throws `credentialDatabaseUnreadable`, and an unreadable `auth.json` or data
+    /// directory throws `credentialsUnreadable`.
     func goAPIKey() throws -> String? {
         let paths: [String]
         do {
@@ -107,13 +110,18 @@ struct OpenCodeAuthStore: Sendable {
     }
 
     /// What Codex attribution needs to know about a database's `openai` login: whether it is the
-    /// built-in ChatGPT / Codex OAuth flow, and when a `credential` row was created (`nil` for
-    /// `auth.json`, which carries no timestamp). No secret is part of this value.
+    /// built-in ChatGPT / Codex OAuth flow, and since when. No secret is part of this value.
     struct OpenAICredential: Sendable, Equatable {
+        /// Decided by the current row alone.
         var isOAuth: Bool
-        var createdAtMs: Int?
+        /// When the earliest OAuth row still in the `credential` table was created. OpenCode 2 adds
+        /// a row on every login and keeps the earlier ones, so this survives logging in again or
+        /// adding an account, where the current row's own time would not. A logout deletes its row,
+        /// so usage from before a logout and fresh login is not covered. `nil` for `auth.json`,
+        /// which carries no timestamp.
+        var oauthSinceMs: Int?
 
-        static let none = OpenAICredential(isOAuth: false, createdAtMs: nil)
+        static let none = OpenAICredential(isOAuth: false, oauthSinceMs: nil)
     }
 
     /// The `openai` login that governs one release-channel database. OpenCode 2 keeps a separate
@@ -122,8 +130,9 @@ struct OpenCodeAuthStore: Sendable {
     /// credentials under the same provider key, so the type must be checked before `openai` rows
     /// are attributed to the Codex card.
     ///
-    /// `tables` is the caller's probe of that database. Throws `credentialsUnreadable` when the
-    /// store can't be read or the row is malformed, so a locked database never reads as logout.
+    /// `tables` is the caller's probe of that database. Throws when the store can't be read or the
+    /// row is malformed (see `goAPIKey()` for which error), so a locked database never reads as
+    /// logout.
     func openAICredential(databasePath: String, tables: OpenCodeTables) throws -> OpenAICredential {
         switch try credentialStore(databasePath: databasePath, tables: tables) {
         case .table:
@@ -133,7 +142,7 @@ struct OpenCodeAuthStore: Sendable {
                 let hasToken = ["access", "refresh"].contains { field in
                     ((entry[field] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty) != nil
                 }
-                return OpenAICredential(isOAuth: entry["type"] as? String == "oauth" && hasToken, createdAtMs: nil)
+                return OpenAICredential(isOAuth: entry["type"] as? String == "oauth" && hasToken, oauthSinceMs: nil)
             }
             return tableFallback ? try tableOpenAICredential(databasePath) ?? .none : .none
         }
@@ -181,28 +190,28 @@ struct OpenCodeAuthStore: Sendable {
     private func tableOpenAICredential(_ path: String) throws -> OpenAICredential? {
         guard let json = try readingCredentials({ try sqlite.queryValue(path: path, sql: Self.openAICredentialSQL) })
         else { return nil }
-        // The row's creation time bounds which usage counts, so one that is not a plausible
-        // timestamp makes the row unusable rather than unbounded.
         guard let data = json.data(using: .utf8),
               let values = (try? JSONSerialization.jsonObject(with: data)) as? [Any], values.count == 3,
-              let hasToken = ProviderParse.number(values[1]),
-              let createdAtMs = ProviderParse.nonnegativeInt(values[2])
+              let hasToken = ProviderParse.number(values[1])
         else {
-            throw OpenCodeUsageError.credentialsUnreadable(detail: "openai credential row is malformed")
+            throw OpenCodeUsageError.credentialDatabaseUnreadable(detail: "openai credential row is malformed")
         }
-        return OpenAICredential(
-            isOAuth: values[0] as? String == "oauth" && hasToken == 1,
-            createdAtMs: createdAtMs
-        )
+        guard values[0] as? String == "oauth", hasToken == 1 else { return OpenAICredential.none }
+        // This time bounds which usage counts, so one that is not a plausible timestamp makes the
+        // login unusable rather than unbounded.
+        guard let oauthSinceMs = ProviderParse.nonnegativeInt(values[2]) else {
+            throw OpenCodeUsageError.credentialDatabaseUnreadable(detail: "openai credential time is malformed")
+        }
+        return OpenAICredential(isOAuth: true, oauthSinceMs: oauthSinceMs)
     }
 
-    /// Runs one SQLite read, turning its failure into `credentialsUnreadable` with sqlite3's message
-    /// as the log detail (never a credential value).
+    /// Runs one SQLite read, turning its failure into `credentialDatabaseUnreadable` with sqlite3's
+    /// message as the log detail (never a credential value).
     private func readingCredentials<T>(_ read: () throws -> T) throws -> T {
         do {
             return try read()
         } catch {
-            throw OpenCodeUsageError.credentialsUnreadable(detail: error.localizedDescription)
+            throw OpenCodeUsageError.credentialDatabaseUnreadable(detail: error.localizedDescription)
         }
     }
 

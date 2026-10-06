@@ -7,9 +7,11 @@ final class OpenCodeUsageScannerTests: XCTestCase {
     private func d(_ iso: String) -> Date { RunwayISO8601.date(from: iso)! }
     private func epochMs(_ iso: String) -> Int { Int(d(iso).timeIntervalSince1970 * 1000) }
     private func row(
-        _ iso: String, _ cost: String, _ tokens: Int, _ model: String, _ provider: String, id: String? = nil
+        _ iso: String, _ cost: String, _ tokens: Int, _ model: String, _ provider: String,
+        id: String? = nil, legacy: Bool = false
     ) -> String {
-        "[\(epochMs(iso)),\(cost),\(tokens),\"\(model)\",\"\(provider)\"\(id.map { ",\"\($0)\"" } ?? "")]"
+        let tail = id.map { ",\"\($0)\",\(legacy ? 1 : 0)" } ?? ""
+        return "[\(epochMs(iso)),\(cost),\(tokens),\"\(model)\",\"\(provider)\"\(tail)]"
     }
     private let now = RunwayISO8601.date(from: "2026-07-12T12:00:00.000Z")!
 
@@ -224,6 +226,22 @@ final class OpenCodeUsageScannerTests: XCTestCase {
         // The copy once (2), the other message (1), and both ID-less rows (0.5 each).
         XCTAssertEqual(scan.series.daily.compactMap(\.costUSD).reduce(0, +), 4.0, accuracy: 0.0001)
         XCTAssertEqual(scan.series.daily.reduce(0) { $0 + $1.totalTokens }, 1000)
+    }
+
+    func testOriginalMessageWinsOverItsMigratedCopy() async throws {
+        // Whatever order the rows arrive in, the `message` original is the one counted, as in the
+        // Codex attribution scan.
+        let copy = row("2026-07-11T10:00:00.000Z", "9.0", 900, "glm-5.2", "opencode-go", id: "msg-1")
+        let original = row("2026-07-10T10:00:00.000Z", "2.0", 500, "glm-5.2", "opencode-go", id: "msg-1", legacy: true)
+        for payload in ["[\(copy),\(original)]", "[\(original),\(copy)]"] {
+            let scanner = OpenCodeUsageScanner(
+                sqlite: OpenCodeFakeSQLite(data: ["/oc/opencode.db": payload]),
+                databasePaths: { ["/oc/opencode.db"] }
+            )
+            guard let scan = try await scanner.scan(now: now) else { return XCTFail("expected a scan") }
+            XCTAssertEqual(scan.series.daily.map(\.date), ["2026-07-10"])
+            XCTAssertEqual(scan.series.daily.compactMap(\.costUSD).reduce(0, +), 2.0, accuracy: 0.0001)
+        }
     }
 
     func testDatabaseWithoutMessageTablesDoesNotVote() async throws {

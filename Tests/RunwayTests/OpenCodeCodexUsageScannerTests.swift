@@ -302,6 +302,47 @@ final class OpenCodeCodexUsageScannerTests: XCTestCase {
         XCTAssertEqual(scan?.modelUsage?.daily.flatMap(\.models).map(\.model).first, "gpt-test")
     }
 
+    func testLoggingInAgainDoesNotDropEarlierOpenCode2Usage() async throws {
+        // First ChatGPT login on July 1, a second on July 11. OpenCode keeps the first row as an
+        // inactive account, so usage between the two logins still counts.
+        let dir = try DB(self)
+        try dir.execute(DB.openCode2Tables + [
+            DB.credential(
+                id: "c1", integration: "openai", value: #"{"type":"oauth","access":"a"}"#,
+                active: "0", created: String(ms("2026-07-01T00:00:00.000Z"))
+            ),
+            DB.credential(
+                id: "c2", integration: "openai", value: #"{"type":"oauth","access":"b"}"#,
+                created: String(ms("2026-07-11T00:00:00.000Z"))
+            ),
+            assistant("before-first-login", seq: 1, at: "2026-06-30T10:00:00.000Z", input: 4000, output: 4000),
+            assistant("between-logins", seq: 2, at: "2026-07-05T10:00:00.000Z", input: 20, output: 10),
+            assistant("after-second-login", seq: 3, at: "2026-07-12T10:00:00.000Z", input: 100, output: 50)
+        ].joined())
+
+        let scan = await realScanner(dir).scan(now: now, pricing: pricing)
+        XCTAssertEqual(totalTokens(scan), 180)
+    }
+
+    func testMigratedCopyDoesNotMoveAMessageToAnotherDay() async throws {
+        // OpenCode 2 copies an old message under its ID and stamps the copy's completion with the
+        // row's last update. The original keeps the day it had before the upgrade.
+        let dir = try DB(self)
+        let created = ms("2026-07-05T10:00:00.000Z")
+        let updated = ms("2026-07-08T10:00:00.000Z")
+        try dir.execute(DB.openCode2Tables + [
+            DB.credential(id: "c1", integration: "openai", value: #"{"type":"oauth","access":"a"}"#, created: "0"),
+            DB.sessionMessage(id: "m1", seq: 1, ms: created, data:
+                #"{"model":{"id":"gpt-test","providerID":"openai"},"cost":0,"time":{"created":\#(created),"completed":\#(updated)},"tokens":{"input":100,"output":50}}"#),
+            DB.message(id: "m1", ms: created, data:
+                #"{"role":"assistant","providerID":"openai","modelID":"gpt-test","cost":0,"time":{"created":\#(created),"completed":\#(created)},"tokens":{"total":150,"input":100,"output":50}}"#)
+        ].joined())
+
+        let scan = await realScanner(dir).scan(now: now, pricing: pricing)
+        XCTAssertEqual(scan?.series.daily.map(\.date), ["2026-07-05"])
+        XCTAssertEqual(totalTokens(scan), 150)
+    }
+
     func testOpenCode2APIKeyLoginIsNotAttributedDespiteStaleOAuthAuthFile() async throws {
         let dir = try DB(self)
         try dir.execute(DB.openCode2Tables + [

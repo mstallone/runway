@@ -98,9 +98,7 @@ struct OpenCodeUsageScanner: Sendable {
 
         var accumulator = DailyUsageAccumulator()
         var dayKeys = DailyUsageAccumulator.DayKeyCache()
-        var seenIDs: Set<String> = []
-        for row in rows {
-            if let id = row.id, !seenIDs.insert(id).inserted { continue }
+        for row in Self.deduplicated(rows) {
             let date = Date(timeIntervalSince1970: row.ms / 1000)
             guard date >= tileSince else { continue }
             accumulator.add(
@@ -139,16 +137,39 @@ struct OpenCodeUsageScanner: Sendable {
 
     // MARK: - Parsing
 
+    /// One row per message ID, in first-seen order. When a message is in both tables the `message`
+    /// original is the one counted, the same choice the Codex attribution scan makes, so an
+    /// upgrade does not change what an old message contributes. Rows without an ID stay independent.
+    private static func deduplicated(_ rows: [Row]) -> [Row] {
+        var result: [Row] = []
+        var indexByID: [String: Int] = [:]
+        for row in rows {
+            guard let id = row.id else {
+                result.append(row)
+                continue
+            }
+            if let index = indexByID[id] {
+                if row.isLegacy, !result[index].isLegacy { result[index] = row }
+            } else {
+                indexByID[id] = result.count
+                result.append(row)
+            }
+        }
+        return result
+    }
+
     private struct Row {
         var ms: Double
         var cost: Double
         var tokens: Int
         var model: String
         var id: String?
+        /// From the OpenCode 1 `message` table.
+        var isLegacy = false
     }
 
     /// Parse the `json_group_array(json_array(...))` payload: an array of
-    /// `[time_created, cost, tokensTotal, modelID, providerID, id]`. Rows with a missing timestamp/cost
+    /// `[time_created, cost, tokensTotal, modelID, providerID, id, isLegacy]`. Rows with a missing timestamp/cost
     /// or a non-string providerID are skipped at this boundary.
     private static func parseRows(_ json: String) -> [Row] {
         guard let data = json.data(using: .utf8),
@@ -166,7 +187,8 @@ struct OpenCodeUsageScanner: Sendable {
             let tokens = ProviderParse.clampedTokenCount(entry[2])
             let model = (entry[3] as? String) ?? ""
             let id = entry.count >= 6 ? (entry[5] as? String)?.nilIfEmpty : nil
-            rows.append(Row(ms: ms, cost: cost, tokens: tokens, model: model, id: id))
+            let isLegacy = entry.count >= 7 && ProviderParse.number(entry[6]) == 1
+            rows.append(Row(ms: ms, cost: cost, tokens: tokens, model: model, id: id, isLegacy: isLegacy))
         }
         return rows
     }
@@ -197,7 +219,7 @@ struct OpenCodeUsageScanner: Sendable {
 
     private static func rowsSQL(table: String, kind: String, cutoffMs: Int?) -> String {
         """
-          SELECT id, time_created, data FROM \(table)
+          SELECT id, time_created, data, \(table == "message" ? 1 : 0) AS legacy FROM \(table)
           WHERE \(cutoffMs.map { "time_created >= \($0)\n            AND " } ?? "")json_valid(data)
             AND \(kind)
             AND \(providerID) IN \(providerFilter)
@@ -205,8 +227,7 @@ struct OpenCodeUsageScanner: Sendable {
         """
     }
 
-    /// The hosted rows of whichever message tables the database holds. `message` comes first so that,
-    /// for a migrated message present in both, the original row is the one counted.
+    /// The hosted rows of whichever message tables the database holds.
     private static func source(_ tables: OpenCodeTables, cutoffMs: Int?) -> String {
         var bodies: [String] = []
         if tables.contains(.message) {
@@ -226,7 +247,8 @@ struct OpenCodeUsageScanner: Sendable {
                  \(totalTokens),
                  \(modelID),
                  \(providerID),
-                 id))
+                 id,
+                 legacy))
         FROM \(source(tables, cutoffMs: cutoffMs));
         """
     }

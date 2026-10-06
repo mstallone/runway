@@ -242,6 +242,70 @@ final class OpenCodeProviderTests: XCTestCase {
         XCTAssertNil(snapshot.applicableMetricIDs)
     }
 
+    func testRejectedKeyWithUnreadableDatabaseIsStillTheRejectedKey() async {
+        // No local data to fall back on, so the card says what the user can fix and stays marked
+        // as needing a login.
+        let snapshot = await provider(
+            files: FakeFiles(["/oc/auth.json": authJSON]),
+            scanner: OpenCodeUsageScanner(
+                sqlite: OpenCodeFakeSQLite(failing: ["/oc/opencode.db"]),
+                databasePaths: { ["/oc/opencode.db"] }
+            ),
+            client: unauthorizedClient()
+        ).refresh()
+        XCTAssertEqual(snapshot.errorText, OpenCodeUsageError.unauthorized.localizedDescription)
+        XCTAssertEqual(snapshot.loginRequired, true)
+    }
+
+    func testUnreadableCredentialDatabaseFailsTheRefreshEvenWithLocalUsage() async throws {
+        // The login could not be read from a busy database while the usage scan still worked.
+        // Publishing tiles alone would replace and cache over a card that had Go meters.
+        let dir = try OpenCodeDataDirectory(self)
+        try Data().write(to: dir.url.appendingPathComponent("opencode.db"))
+        let db = "[" + row("2026-07-12T10:00:00.000Z", "1.0", 500, "gpt-5.5", "opencode") + "]"
+        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: usageJSON()))
+        let now = self.now
+        let provider = OpenCodeProvider(
+            authStore: OpenCodeAuthStore(
+                files: FakeFiles([dir.path("auth.json"): authJSON]),
+                environment: FakeEnvironment(["OPENCODE_DATA_DIR": dir.url.path]),
+                homeDirectory: { URL(fileURLWithPath: "/nonexistent") },
+                sqlite: OpenCodeFakeSQLite(failing: [dir.path()])
+            ),
+            usageClient: OpenCodeUsageClient(http: http),
+            usageScanner: OpenCodeUsageScanner(
+                sqlite: OpenCodeFakeSQLite(data: [dir.path(): db]),
+                databasePaths: dir.databasePaths
+            ),
+            now: { now }
+        )
+
+        let snapshot = await provider.refresh()
+        XCTAssertEqual(
+            snapshot.errorText, OpenCodeUsageError.credentialDatabaseUnreadable(detail: "").localizedDescription
+        )
+        XCTAssertNil(snapshot.line(label: "Today"))
+        XCTAssertNil(snapshot.loginRequired)
+        XCTAssertTrue(http.requests.isEmpty)
+        let has = await provider.hasLocalCredentials()
+        XCTAssertTrue(has)
+    }
+
+    func testUnreadableAuthFileStillShowsLocalTiles() async {
+        // Unchanged from before: a bad auth.json does not block the tiles when there is usage.
+        let db = "[" + row("2026-07-12T10:00:00.000Z", "1.0", 500, "gpt-5.5", "opencode") + "]"
+        let snapshot = await provider(
+            files: UnreadableFiles(present: ["/oc/auth.json"]),
+            scanner: OpenCodeUsageScanner(
+                sqlite: OpenCodeFakeSQLite(data: ["/oc/opencode.db": db]),
+                databasePaths: { ["/oc/opencode.db"] }
+            )
+        ).refresh()
+        XCTAssertNil(snapshot.errorText)
+        XCTAssertNotNil(snapshot.line(label: "Today"))
+        XCTAssertNil(snapshot.line(label: "Session"))
+    }
+
     func testTransientGoMeterFailureStaysAHardErrorEvenWithLocalUsage() async {
         // A network error, a server error, or a malformed body is likely to pass. Failing the
         // refresh lets the store keep the last good meters and tiles on screen and retry soon,

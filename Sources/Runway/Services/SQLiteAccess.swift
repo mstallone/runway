@@ -15,18 +15,21 @@ struct SQLiteCLIAccessor: SQLiteAccessing {
     }
 
     func queryValue(path: String, sql: String) throws -> String? {
-        try query(path: path, sql: sql, json: false)
-    }
-
-    func queryJSONRows(path: String, sql: String) throws -> String? {
-        try query(path: path, sql: sql, json: true)
-    }
-
-    private func query(path: String, sql: String, json: Bool) throws -> String? {
         // A normal sqlite3 open can create a missing database. Credential probes must be read-only and
         // side-effect free, so absence returns nil before a process is launched.
         guard try databaseExists(path) else { return nil }
-        var result = try run(path: path, sql: sql, json: json)
+        let result = try run(path: path, sql: sql)
+        guard result.succeeded else {
+            throw SQLiteError.queryFailed(result.stderr)
+        }
+        let value = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
+    func queryJSONRows(path: String, sql: String) throws -> String? {
+        // Same no-create discipline as `queryValue`: absence returns nil before sqlite3 launches.
+        guard try databaseExists(path) else { return nil }
+        var result = try run(path: path, sql: sql, json: true)
         if !result.succeeded, result.stderr.contains("unable to open database file") {
             // A WAL-mode database whose -shm/-wal sidecars are missing cannot be opened with
             // -readonly (sqlite3 would have to create them). Nothing is writing such a database,
@@ -34,7 +37,7 @@ struct SQLiteCLIAccessor: SQLiteAccessing {
             result = try run(
                 path: immutableURI(forExpandedPath: expandHome(path)),
                 sql: sql,
-                json: json
+                json: true
             )
         }
         guard result.succeeded else {
