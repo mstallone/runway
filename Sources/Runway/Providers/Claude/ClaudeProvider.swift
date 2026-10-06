@@ -33,6 +33,9 @@ final class ClaudeProvider: ProviderRuntime {
     /// Last-good live usage, the rate-limit cooldown, and the launch-cached limits that stand in
     /// for last-good usage on a relaunch's first 429.
     private var liveUsageCache = ClaudeLiveUsageCache()
+    /// The account the state file named for the login behind the snapshot this refresh returns
+    /// (its limits, or just its plan badge), so the cache entry is stamped with that account. `nil`
+    /// when the pass read none for that login: no login, or one the state file does not describe.
     private(set) var snapshotAccountIdentityKey: String?
 
     init(
@@ -226,6 +229,7 @@ final class ClaudeProvider: ProviderRuntime {
     /// hard error card so an empty machine does not grow a blank Claude card.
     private func unauthenticatedLocalUsageSnapshot() async -> ProviderSnapshot {
         let error = ClaudeAuthError.notLoggedIn
+        snapshotAccountIdentityKey = nil
         let snapshot = await localUsageSnapshot(
             mapped: ClaudeMappedUsage(plan: nil, lines: []),
             warning: error.localizedDescription,
@@ -252,6 +256,7 @@ final class ClaudeProvider: ProviderRuntime {
             return ProviderSnapshot.error(provider: provider, error: error)
         }
         AppLog.info(LogTag.auth("claude"), "login needs renewal; serving local usage with a renewal notice")
+        snapshotAccountIdentityKey = renewalState?.stateFileIdentityKey
         let mapped = ClaudeMappedUsage(
             plan: renewalState.flatMap {
                 ClaudeUsageMapper.formatPlan(
@@ -276,6 +281,7 @@ final class ClaudeProvider: ProviderRuntime {
             lines: []
         )
 
+        snapshotAccountIdentityKey = state.stateFileIdentityKey
         var warning: String?
         var loginRequired: Bool?
         // Everything below is a "fix this, then refresh" notice; only the rate-limited fetch overrides it.
@@ -283,7 +289,8 @@ final class ClaudeProvider: ProviderRuntime {
         switch authStore.liveUsageAvailability(state) {
         case .available:
             mapped = try await fetchLiveUsage(state: state)
-            snapshotAccountIdentityKey = mapped.limitsIdentityKey
+            // Carried limits keep the account they were fetched under.
+            snapshotAccountIdentityKey = mapped.limitsIdentityKey ?? state.stateFileIdentityKey
             // A rate-limited fetch rides its "Updates blocked by Anthropic" notice on the mapped usage so
             // it reaches the header triangle even when the badge/note lines aren't in the user's layout.
             warning = mapped.warning
@@ -388,10 +395,11 @@ final class ClaudeProvider: ProviderRuntime {
         // Inside an active rate-limit cooldown, skip the live call and serve the last-good usage so a
         // constantly-limited endpoint doesn't blank the dashboard (and we don't pile on more 429s).
         if let until = liveUsageCache.rateLimitedUntil, now() < until {
-            return rateLimitedSnapshot(
-                state: state,
+            return liveUsageCache.rateLimitedUsage(
+                for: state,
                 retryAfterSeconds: Int(until.timeIntervalSince(now()).rounded(.up)),
-                cooldownActive: true
+                cooldownActive: true,
+                now: now()
             )
         }
 
@@ -430,7 +438,9 @@ final class ClaudeProvider: ProviderRuntime {
             liveUsageCache.startCooldown(until: now().addingTimeInterval(
                 TimeInterval(retryAfterSeconds ?? Int(ClaudeLiveUsageCache.rateLimitCooldown))
             ))
-            return rateLimitedSnapshot(state: state, retryAfterSeconds: retryAfterSeconds, cooldownActive: false)
+            return liveUsageCache.rateLimitedUsage(
+                for: state, retryAfterSeconds: retryAfterSeconds, cooldownActive: false, now: now()
+            )
         }
 
         var mapped = try ClaudeUsageMapper.mapUsageResponse(response, credentials: state.displayOAuth, now: now())
@@ -474,38 +484,4 @@ final class ClaudeProvider: ProviderRuntime {
             return nil
         }
     }
-
-    /// Last-good usage with an appended staleness note when we have it; before the first successful
-    /// fetch of this run, the launch-cached limits when their account gate passes (see
-    /// `ClaudeLiveUsageCache.launchCachedUsage`); otherwise the plain rate-limited badge. Both sources
-    /// hold only clean live-limit lines (never a rate-limited snapshot), so the note is never
-    /// duplicated and no stale spend tiles ride along — the provider appends those fresh after this
-    /// returns.
-    private func rateLimitedSnapshot(
-        state: ClaudeCredentialState,
-        retryAfterSeconds: Int?,
-        cooldownActive: Bool
-    ) -> ClaudeMappedUsage {
-        let credentials = state.displayOAuth
-        let lastGood = liveUsageCache.lastGoodUsage
-        let fallback = lastGood ?? liveUsageCache.launchCachedUsage(for: state, now: now())
-        let serving = lastGood != nil ? "last-good usage" : fallback != nil ? "launch-cached limits" : "badge"
-        AppLog.info(LogTag.plugin("claude"), "rate-limited (\(cooldownActive ? "cooldown active, " : "")serving \(serving))")
-        guard var mapped = fallback else {
-            return ClaudeUsageMapper.rateLimitedUsage(credentials: credentials, retryAfterSeconds: retryAfterSeconds)
-        }
-        // The cached mapping's plan is from fetch time; the tier can change during a long cooldown,
-        // so re-derive it from the credentials the caller just loaded.
-        mapped.plan = ClaudeUsageMapper.formatPlan(
-            subscriptionType: credentials.subscriptionType,
-            rateLimitTier: credentials.rateLimitTier
-        )
-        mapped.lines.append(ClaudeUsageMapper.rateLimitedNote(retryAfterSeconds: retryAfterSeconds))
-        mapped.warning = ClaudeUsageMapper.rateLimitedWarning(retryAfterSeconds: retryAfterSeconds)
-        // Last-good usage is a clean fetch, so its action is `.refresh`; the rate-limit notice replacing
-        // its warning must carry `.wait` with it or the triangle stays clickable on stale bars.
-        mapped.warningAction = .wait
-        return mapped
-    }
-
 }

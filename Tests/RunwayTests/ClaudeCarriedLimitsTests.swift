@@ -129,6 +129,86 @@ final class ClaudeCarriedLimitsTests: ClaudeLaunchSnapshotTestCase {
         assertBareBadge(relaunched.snapshots["claude"])
     }
 
+    private func stamp(_ defaults: UserDefaults) -> String? {
+        ProviderSnapshotCache(userDefaults: defaults).producedByIdentityKey(providerID: "claude")
+    }
+
+    /// Launch as A, then `claude /login` as B before the refresh.
+    private func filesReloggedAsB(scopes: String = "user:profile") -> FakeFiles {
+        FakeFiles([
+            ClaudeLaunchFixture.statePath: ClaudeLaunchFixture.stateFile(account: "ACCT-B"),
+            ClaudeLaunchFixture.credentialsPath:
+                #"{"claudeAiOauth":{"accessToken":"b-token","refreshToken":"b-refresh","subscriptionType":"max","scopes":["\#(scopes)"]}}"#
+        ])
+    }
+
+    func testRateLimitedBadgeIsStampedWithTheAccountTheStateFileNamed() async {
+        // The badge snapshot carries B's plan. Stamped as launch account A it would paint on A's
+        // card at the next launch as A.
+        let defaults = makeDefaults("badge-stamp")
+        let store = launch(defaults: defaults, files: filesReloggedAsB(), http: FakeHTTPClient(response: ClaudeLaunchFixture.rateLimited))
+        await store.refresh(providerID: "claude")
+        assertBareBadge(store.snapshots["claude"])
+        XCTAssertEqual(store.snapshots["claude"]?.plan, "Max")
+        XCTAssertEqual(stamp(defaults), "acct-b|org-1")
+
+        // The cooldown path (no request) stamps the same way.
+        await store.refresh(providerID: "claude", force: true)
+        XCTAssertEqual(stamp(defaults), "acct-b|org-1")
+
+        // Next launch as A: B's badge is discarded, and nothing of it can be carried.
+        let http = FakeHTTPClient(response: ClaudeLaunchFixture.rateLimited)
+        let asA = launch(defaults: defaults, files: makeFiles(), http: http)
+        XCTAssertNil(asA.snapshots["claude"])
+        await asA.refresh(providerID: "claude")
+        assertBareBadge(asA.snapshots["claude"])
+        XCTAssertEqual(asA.snapshots["claude"]?.plan, "Pro")
+        XCTAssertEqual(stamp(defaults), ClaudeLaunchFixture.identityKey)
+    }
+
+    func testSpendOnlySnapshotsAreStampedWithTheAccountTheStateFileNamed() async {
+        // A login that cannot read live usage: the snapshot is local spend plus B's plan badge.
+        let scoped = makeDefaults("scope-stamp")
+        let http = FakeHTTPClient(response: ClaudeLaunchFixture.rateLimited)
+        let noScope = launch(defaults: scoped, files: filesReloggedAsB(scopes: "user:inference"), http: http)
+        await noScope.refresh(providerID: "claude")
+        XCTAssertEqual(noScope.snapshots["claude"]?.warning, ClaudeUsageMapper.missingProfileScopeWarning)
+        XCTAssertTrue(http.requests.isEmpty)
+        XCTAssertEqual(stamp(scoped), "acct-b|org-1")
+
+        // A rejected token with nothing to fall back to: the renewal notice over local spend.
+        let renewal = makeDefaults("renewal-stamp")
+        let rejected = launch(
+            defaults: renewal,
+            files: filesReloggedAsB(),
+            http: FakeHTTPClient(response: HTTPResponse(statusCode: 401, headers: [:], body: Data()))
+        )
+        await rejected.refresh(providerID: "claude")
+        XCTAssertEqual(rejected.snapshots["claude"]?.loginRequired, true)
+        XCTAssertEqual(stamp(renewal), "acct-b|org-1")
+    }
+
+    func testLoginWithoutAccountEvidenceKeepsTheLaunchStampOnARateLimit() async {
+        // The keychain login the state file describes is rejected; the file login behind it gets the
+        // 429. The state file does not describe that login, so its badge is stamped as before.
+        let defaults = makeDefaults("fallback-stamp")
+        let files = filesReloggedAsB()
+        let keychain = ServiceKeychain()
+        let service = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]), files: files, keychain: keychain
+        ).keychainServiceCandidates().first!
+        keychain.currentUserValues[service] = ClaudeLaunchFixture.credentials(accessToken: "keychain-token")
+        let http = RoutingHTTPClient { request in
+            request.headers["Authorization"] == "Bearer keychain-token"
+                ? HTTPResponse(statusCode: 401, headers: [:], body: Data())
+                : ClaudeLaunchFixture.rateLimited
+        }
+        let store = launch(defaults: defaults, files: files, keychain: keychain, http: http)
+        await store.refresh(providerID: "claude")
+        assertBareBadge(store.snapshots["claude"])
+        XCTAssertEqual(stamp(defaults), ClaudeLaunchFixture.identityKey)
+    }
+
     func testUnresolvedCardStaysUnstampedWhateverTheProviderNames() async {
         let defaults = makeDefaults("unresolved-stamp")
         let store = launch(

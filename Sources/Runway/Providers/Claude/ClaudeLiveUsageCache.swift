@@ -63,6 +63,40 @@ struct ClaudeLiveUsageCache {
         rateLimitedUntil = until
     }
 
+    /// Last-good usage with an appended staleness note when we have it; before the first successful
+    /// fetch of this run, the launch-cached limits when their account gate passes (see
+    /// `launchCachedUsage`); otherwise the plain rate-limited badge. Both sources
+    /// hold only clean live-limit lines (never a rate-limited snapshot), so the note is never
+    /// duplicated and no stale spend tiles ride along — the provider appends those fresh after this
+    /// returns.
+    func rateLimitedUsage(
+        for state: ClaudeCredentialState,
+        retryAfterSeconds: Int?,
+        cooldownActive: Bool,
+        now: Date
+    ) -> ClaudeMappedUsage {
+        let credentials = state.displayOAuth
+        let lastGood = lastGoodUsage
+        let fallback = lastGood ?? launchCachedUsage(for: state, now: now)
+        let serving = lastGood != nil ? "last-good usage" : fallback != nil ? "launch-cached limits" : "badge"
+        AppLog.info(LogTag.plugin("claude"), "rate-limited (\(cooldownActive ? "cooldown active, " : "")serving \(serving))")
+        guard var mapped = fallback else {
+            return ClaudeUsageMapper.rateLimitedUsage(credentials: credentials, retryAfterSeconds: retryAfterSeconds)
+        }
+        // The cached mapping's plan is from fetch time; the tier can change during a long cooldown,
+        // so re-derive it from the credentials the caller just loaded.
+        mapped.plan = ClaudeUsageMapper.formatPlan(
+            subscriptionType: credentials.subscriptionType,
+            rateLimitTier: credentials.rateLimitTier
+        )
+        mapped.lines.append(ClaudeUsageMapper.rateLimitedNote(retryAfterSeconds: retryAfterSeconds))
+        mapped.warning = ClaudeUsageMapper.rateLimitedWarning(retryAfterSeconds: retryAfterSeconds)
+        // Last-good usage is a clean fetch, so its action is `.refresh`; the rate-limit notice replacing
+        // its warning must carry `.wait` with it or the triangle stays clickable on stale bars.
+        mapped.warningAction = .wait
+        return mapped
+    }
+
     /// The launch-cached limits a rate-limited refresh may show when there is no last-good usage,
     /// or `nil` to fall back to the bare badge.
     ///
