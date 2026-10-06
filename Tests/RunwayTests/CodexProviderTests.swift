@@ -128,7 +128,7 @@ final class CodexAuthStoreTests: XCTestCase {
             store.loadAuthCandidates().compactMap(\.auth.tokens?.accessToken),
             ["work"]
         )
-        XCTAssertNil(store.loadKeychainAuth(), "a scoped card never borrows an ambiguous service-level item")
+        XCTAssertNil(store.loadKeychainCredentials().state, "a scoped card never borrows an ambiguous service-level item")
         XCTAssertEqual(store.authPaths(), ["/tmp/codex-work/auth.json"])
     }
 
@@ -161,7 +161,7 @@ final class CodexAuthStoreTests: XCTestCase {
             scope: .home(path: workHome)
         )
 
-        let state = try XCTUnwrap(store.loadKeychainAuth())
+        let state = try XCTUnwrap(store.loadKeychainCredentials().state)
         XCTAssertEqual(state.auth.tokens?.accessToken, "work")
         XCTAssertEqual(state.keychainAccount, workAccount)
         XCTAssertEqual(state.credentialHome, workHome)
@@ -878,11 +878,6 @@ private final class TrackingOpenCodeSQLite: SQLiteAccessing, @unchecked Sendable
     }
 
     func queryJSONRows(path: String, sql: String) throws -> String? { nil }
-}
-
-final class CodexUsageClientRefreshTests: XCTestCase {
-
-
 }
 
 @MainActor

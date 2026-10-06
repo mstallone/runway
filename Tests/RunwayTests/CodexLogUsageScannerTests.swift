@@ -1055,21 +1055,6 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(second?.series.daily.reduce(0) { $0 + $1.totalTokens }, 200)
     }
 
-    /// Manual parity harness against the real logs on this machine: prints per-day totals to compare
-    /// with `ccusage codex daily --json --offline`. Gated like the other live tests.
-    func testParityAgainstRealLocalLogs() async throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["RUNWAY_CODEX_PARITY"] == "1")
-        let scanner = CodexLogUsageScanner()
-        let result = await scanner.scan(pricing: TestPricing.bundled)
-        let scan = try XCTUnwrap(result)
-        for day in scan.series.daily.sorted(by: { $0.date < $1.date }) {
-            print("PARITY \(day.date) tokens=\(day.totalTokens) cost=\(day.costUSD.map { String(format: "%.4f", $0) } ?? "nil")")
-        }
-        if !scan.unknownModelsByDay.isEmpty {
-            print("PARITY unknown models: \(scan.unknownModelsByDay)")
-        }
-    }
-
     func testScanPricesRealCodexModelsFromBundledSnapshots() async throws {
         let day = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-3600))
         let home = try CodexLogFixture.makeHome(files: [

@@ -11,7 +11,7 @@ final class LayoutStore {
     var placed: [PlacedWidget]
 
     /// In-popover navigation (screen, Customize master/detail, screen-switch slide). Its own store so
-    /// screen routing isn't tangled with layout state; the `screen`/`isEditing`/`customizeProviderID`/
+    /// screen routing isn't tangled with layout state; the `screen`/`customizeProviderID`/
     /// `screenSlide*` surface below forwards to it, so existing call sites are unchanged. Private so the
     /// forwarding surface stays the ONLY spelling — two live paths to the same state invites drift.
     private let navigation = PopoverNavigationStore()
@@ -25,11 +25,6 @@ final class LayoutStore {
     /// The screen being left plus a per-switch counter, for DashboardView's horizontal slide.
     var screenSlideFrom: PopoverScreen { navigation.screenSlideFrom }
     var screenSlideID: Int { navigation.screenSlideID }
-    /// Whether the Customize screen is showing — a bridge over `screen` for edit-mode call sites.
-    var isEditing: Bool {
-        get { navigation.isEditing }
-        set { navigation.isEditing = newValue }
-    }
     /// The provider whose Customize detail (L2) is showing (nil shows the L1 list).
     var customizeProviderID: String? {
         get { navigation.customizeProviderID }
