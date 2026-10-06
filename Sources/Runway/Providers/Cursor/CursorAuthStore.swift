@@ -19,6 +19,8 @@ enum CursorAuthError: Error, LocalizedError, Equatable {
     /// An attempted manual read of the Cursor Keychain item was denied.
     case keychainPermissionRequired
     case credentialStoreUnreadable
+    /// Cursor's state database exists but the read failed (locked database, `sqlite3` timeout).
+    case stateDatabaseUnreadable
 
     var errorDescription: String? {
         switch self {
@@ -32,6 +34,8 @@ enum CursorAuthError: Error, LocalizedError, Equatable {
             return "Keychain access to the Cursor login was declined. Refresh and choose Always Allow when macOS asks."
         case .credentialStoreUnreadable:
             return "Cursor login couldn’t be read. Unlock your login keychain and refresh."
+        case .stateDatabaseUnreadable:
+            return "Cursor’s local login data couldn’t be read. Refresh in a moment; if it keeps happening, restart Cursor."
         }
     }
 }
@@ -49,6 +53,9 @@ enum CursorCredentialLoad: Equatable, Sendable {
     /// securityd failing. Kept apart from `keychainPermissionRequired` so the card gives advice
     /// that works.
     case unreadable
+    /// Cursor's state database exists but could not be read, and no keychain login stood in for
+    /// it. A real footprint, and not the same as being logged out.
+    case stateDatabaseUnreadable
     case none
 
     var state: CursorAuthState? {
@@ -84,7 +91,7 @@ struct CursorAuthStore: Sendable {
         // Only the access token matters: Runway is read-only, so the refresh-token entries (SQLite
         // row and keychain item) are never read — a stale refresh credential must not influence
         // source selection or block a usable access token behind a permission notice.
-        let stateValues = readStateValues([Self.accessTokenKey, Self.membershipTypeKey])
+        let (stateValues, stateReadFailed) = readStateValues([Self.accessTokenKey, Self.membershipTypeKey])
         let sqliteAccessToken = stateValues[Self.accessTokenKey]
         let sqliteMembershipType = stateValues[Self.membershipTypeKey]?.lowercased()
 
@@ -172,7 +179,8 @@ struct CursorAuthStore: Sendable {
         if hasKeychainAuth {
             return .state(CursorAuthState(accessToken: keychainAccessToken, source: .keychain))
         }
-        return .none
+        // A failed read is not a logout: say so, so the card doesn't tell a signed-in user to sign in.
+        return stateReadFailed ? .stateDatabaseUnreadable : .none
     }
 
     /// A live token for the SAME account from whichever source was not selected. Runway cannot
@@ -203,7 +211,7 @@ struct CursorAuthStore: Sendable {
             candidate = read.trimmedValue
             source = .keychain
         case .keychain:
-            candidate = readStateValues([Self.accessTokenKey])[Self.accessTokenKey]
+            candidate = readStateValues([Self.accessTokenKey]).values[Self.accessTokenKey]
             source = .sqlite
         }
         guard let candidate,
@@ -256,7 +264,10 @@ struct CursorAuthStore: Sendable {
     /// JSON object value, so the one-value `queryValue` contract still fits; a missing key is
     /// simply absent from the object, and no rows at all yields NULL (→ empty dictionary), the
     /// same nil-per-key result the per-key reads produced. Values come back trimmed.
-    private func readStateValues(_ keys: [String]) -> [String: String] {
+    ///
+    /// `readFailed` is true when the database exists but the query threw or returned something
+    /// other than an object; the failure is logged here.
+    private func readStateValues(_ keys: [String]) -> (values: [String: String], readFailed: Bool) {
         let list = keys.map { "'\(Self.sqlEscaped($0))'" }.joined(separator: ", ")
         let sql = "SELECT json_group_object(key, value) FROM ItemTable WHERE key IN (\(list));"
         let raw: String?
@@ -266,14 +277,14 @@ struct CursorAuthStore: Sendable {
             // A missing database returns nil above; a throw is a real failure (locked database,
             // `sqlite3` timeout) that would otherwise read as "not logged in".
             AppLog.warn(LogTag.auth("cursor"), "couldn't read Cursor's state database: \(error.localizedDescription)")
-            return [:]
+            return ([:], true)
         }
-        guard let raw else { return [:] }
+        guard let raw else { return ([:], false) }
         // Decoded loosely and filtered to strings, so one NULL or numeric row can't discard the
         // token read alongside it.
         guard let decoded = try? JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any] else {
             AppLog.warn(LogTag.auth("cursor"), "Cursor's state database returned an unexpected shape")
-            return [:]
+            return ([:], true)
         }
         let object = decoded.compactMapValues { $0 as? String }
         var values: [String: String] = [:]
@@ -281,7 +292,7 @@ struct CursorAuthStore: Sendable {
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty { values[key] = trimmed }
         }
-        return values
+        return (values, false)
     }
 
     private func readKeychainValue(_ service: String, allowInteraction: Bool) -> NonInteractiveKeychainRead {

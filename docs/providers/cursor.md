@@ -33,6 +33,7 @@ Today, Yesterday, Last 30 Days, and Usage Trend come from Cursor's usage export.
 ## Troubleshooting
 
 - **"Not logged in" / token errors**: open Cursor and make sure you are signed in, then refresh.
+- **"Cursor's local login data couldn't be read"**: Cursor's state database exists but the read failed, usually because Cursor had it locked. Refresh again; restart Cursor if it persists. The cause is in the log.
 - **Some metrics missing**: Cursor omits fields depending on plan type. Missing metrics show "No data".
 - **Optional lookup failed**: plan, credit-grant, prepaid-balance, Grok Bot, and request-fallback failures are nonfatal when primary usage is available. Runway records fixed, credential-free reasons in the log.
 
