@@ -169,7 +169,7 @@ final class ResetDisplayTests: XCTestCase {
 
         // Same wiring pin for the menu-bar tray suffix (it replaced a title-string match).
         let suffixed = descriptors.filter { $0.sample.traySuffix != nil }
-        XCTAssertEqual(Set(suffixed.map(\.id)), ["codex.rateLimitResets", "grok.rateLimitResets"])
+        XCTAssertEqual(Set(suffixed.map(\.id)), ["claude.rateLimitResets", "codex.rateLimitResets", "grok.rateLimitResets"])
         XCTAssertTrue(suffixed.allSatisfy { $0.sample.traySuffix == "resets" })
     }
 
