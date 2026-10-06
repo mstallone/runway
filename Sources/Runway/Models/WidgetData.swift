@@ -30,7 +30,7 @@ struct WidgetData: Hashable {
     /// always show the tick when a reset window exists; this toggle only adds it on blue.
     var alwaysShowPacing: Bool = false
     var resetsAt: Date?
-    /// Zero or more future expiry instants surfaced in the row's hover tooltip (Codex and Grok
+    /// Zero or more future expiry instants surfaced in the row's hover tooltip (Claude, Codex, and Grok
     /// rate-limit-reset credits — one entry per still-available credit). Empty for every other row.
     /// Kept as raw `Date`s so the tooltip formats live and follows the global relative/absolute mode
     /// (see `expiryTooltip`).
