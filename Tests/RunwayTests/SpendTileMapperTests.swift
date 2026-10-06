@@ -60,6 +60,33 @@ final class SpendTileMapperTests: XCTestCase {
                         MetricValue(number: 12_000, kind: .count, label: "tokens")])
     }
 
+    func testLast30DaysSumsCostAndTokensAcrossTheWindow() {
+        var lines: [MetricLine] = []
+        SpendTileMapper.appendTokenUsage(
+            DailyUsageSeries(daily: [
+                DailyUsageEntry(date: "2026-06-26", totalTokens: 150, costUSD: 0.75),
+                DailyUsageEntry(date: "2026-06-07", totalTokens: 300, costUSD: 1.0)
+            ]),
+            to: &lines, now: day(2026, 6, 26), estimated: true
+        )
+
+        XCTAssertEqual(values(lines, "Last 30 Days"),
+                       [MetricValue(number: 1.75, kind: .dollars, estimated: true),
+                        MetricValue(number: 450, kind: .count, label: "tokens")])
+    }
+
+    func testReportedZeroDayLeavesAllTilesUnbacked() {
+        // The only reported day is an explicit zero-token Yesterday: Today is absent, Yesterday is idle,
+        // and the 30-day total is zero, so nothing is appended.
+        var lines: [MetricLine] = []
+        SpendTileMapper.appendTokenUsage(
+            DailyUsageSeries(daily: [DailyUsageEntry(date: "2026-06-25", totalTokens: 0, costUSD: nil)]),
+            to: &lines, now: day(2026, 6, 26), estimated: true
+        )
+
+        XCTAssertTrue(lines.isEmpty, "an all-zero window appends no spend tiles")
+    }
+
     func testSingleModelPeriodStillGetsModelBreakdown() throws {
         var lines: [MetricLine] = []
         SpendTileMapper.appendTokenUsage(

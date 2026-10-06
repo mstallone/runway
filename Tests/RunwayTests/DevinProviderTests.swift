@@ -190,14 +190,7 @@ final class DevinProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertEqual(snapshot.lines.first?.label, "Error")
-        XCTAssertEqual(errorText(snapshot.lines), DevinAuthError.notLoggedIn.localizedDescription)
-    }
-
-    private func errorText(_ lines: [MetricLine]) -> String? {
-        guard case .badge(_, let text, _, _) = lines.first else {
-            return nil
-        }
-        return text
+        XCTAssertEqual(snapshot.errorText, DevinAuthError.notLoggedIn.localizedDescription)
     }
 }
 
@@ -243,8 +236,6 @@ private final class FakeSQLite: SQLiteAccessing, @unchecked Sendable {
 
     // JSON row queries are not exercised here.
     func queryJSONRows(path: String, sql: String) throws -> String? { nil }
-
-    func execute(path: String, sql: String) throws {}
 }
 
 private final class QueueHTTPClient: HTTPClient, @unchecked Sendable {

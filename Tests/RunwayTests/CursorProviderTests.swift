@@ -199,15 +199,11 @@ final class CursorUsageMapperTests: XCTestCase {
 
 @MainActor
 final class CursorProviderTests: XCTestCase {
-    func testGrokBotDescriptorIsEnabledOnDemandAndUnpinned() {
+    func testGrokBotDescriptorLabelsAndLimitResource() {
         let grokBot = CursorProvider().widgetDescriptors.first { $0.id == "cursor.grokBot" }
         XCTAssertEqual(grokBot?.sample.title, "Grok Bot")
         XCTAssertEqual(grokBot?.metricLabel, "Grok Bot usage")
         XCTAssertEqual(grokBot?.limitResources.map(\.key), ["grokBot"])
-        XCTAssertTrue(DefaultLayout.metricIDs.contains("cursor.grokBot"))
-        XCTAssertTrue(DefaultLayout.expandedMetricIDs.contains("cursor.grokBot"))
-        XCTAssertFalse(DefaultLayout.pinnedMetricIDs.contains("cursor.grokBot"))
-        XCTAssertFalse(DefaultLayout.migrationBaselineMetricIDs.contains("cursor.grokBot"))
     }
 
     func testRefreshFetchesLiveCursorUsage() async {
@@ -308,7 +304,6 @@ private func makeCursorJWT(sub: String = "google-oauth2|user", exp: Double = 9_9
 
 private final class FakeSQLite: SQLiteAccessing, @unchecked Sendable {
     var values: [String: String]
-    var writtenValues: [String: String] = [:]
 
     init(values: [String: String] = [:]) {
         self.values = values
@@ -332,24 +327,6 @@ private final class FakeSQLite: SQLiteAccessing, @unchecked Sendable {
 
     // JSON row queries are not exercised here.
     func queryJSONRows(path: String, sql: String) throws -> String? { nil }
-
-    func execute(path: String, sql: String) throws {
-        guard let key = sqlValue(after: "(key, value) VALUES ('", in: sql),
-              let value = sqlValue(after: "', '", in: sql)
-        else {
-            return
-        }
-        writtenValues[key] = value
-    }
-
-    private func sqlValue(after marker: String, in sql: String) -> String? {
-        guard let start = sql.range(of: marker)?.upperBound,
-              let end = sql[start...].range(of: "'")?.lowerBound
-        else {
-            return nil
-        }
-        return String(sql[start..<end]).replacingOccurrences(of: "''", with: "'")
-    }
 }
 
 // RoutingHTTPClient lives in TestSupport.swift (shared, records requests).

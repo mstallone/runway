@@ -153,15 +153,6 @@ final class MemorySystemClientsTests: XCTestCase {
         XCTAssertEqual(try posixMode(of: path), 0o600)
     }
 
-    func testProtocolDefaultDelegatesToWriteText() throws {
-        let fake = FakeFiles()
-        let files: any TextFileAccessing = fake
-
-        try files.writeTextPreservingMode("/tmp/fake.md", "text")
-
-        XCTAssertEqual(fake.files["/tmp/fake.md"], "text")
-    }
-
     // MARK: - queryJSONRows
 
     func testQueryJSONRowsDoesNotLaunchForMissingDatabase() throws {

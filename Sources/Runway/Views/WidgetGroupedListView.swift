@@ -386,7 +386,7 @@ struct WidgetGroupedListView: View {
     private func openCustomize(for providerID: String) {
         withAnimation(Motion.modeSwitch) {
             layout.customizeProviderID = providerID
-            layout.isEditing = true
+            layout.screen = .customize
         }
     }
 

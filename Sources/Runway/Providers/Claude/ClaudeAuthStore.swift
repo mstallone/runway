@@ -316,10 +316,6 @@ struct ClaudeAuthStore: Sendable {
         )
     }
 
-    func loadCredentialCandidates() -> [ClaudeCredentialState] {
-        loadCredentialSet().candidates
-    }
-
     /// Whether this scoped card has a credential refresh can actually start with. Standard detection
     /// uses the same loaders and usability filters as refresh, with all Keychain interaction forbidden.
     func hasCredentialFootprint() -> Bool {

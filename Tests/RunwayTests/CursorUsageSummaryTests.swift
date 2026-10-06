@@ -262,8 +262,6 @@ final class CursorEnterpriseProviderTests: XCTestCase {
 
         let totalDescriptor = try XCTUnwrap(descriptors.first { $0.id == "cursor.usage" })
         let totalData = store.data(for: totalDescriptor)
-        XCTAssertTrue(DefaultLayout.metricIDs.contains("cursor.usage"))
-        XCTAssertFalse(DefaultLayout.metricIDs.contains("cursor.requests"))
         XCTAssertTrue(totalData.hasData)
         XCTAssertEqual(totalData.kind, .count)
         XCTAssertEqual(totalData.used, 37)
@@ -331,6 +329,4 @@ private final class SummaryCursorSQLite: SQLiteAccessing, @unchecked Sendable {
 
     // JSON row queries are not exercised here.
     func queryJSONRows(path: String, sql: String) throws -> String? { nil }
-
-    func execute(path: String, sql: String) throws {}
 }

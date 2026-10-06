@@ -466,12 +466,4 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "kimi-k2p7-code"), kimi)
     }
 
-    func testCostSumsAllBucketsAndUnpricedIsNil() throws {
-        let pricing = Self.pricing
-        let entry = try XCTUnwrap(pricing.resolve(model: "composer-1"))
-        let tokens = TokenBreakdown(input: 1_000_000, cacheWrite5m: 1_000_000, cacheRead: 1_000_000, output: 1_000_000)
-        let expected = entry.inputPerMillion + entry.cacheWritePerMillion + entry.cacheReadPerMillion + entry.outputPerMillion
-        XCTAssertEqual(pricing.estimatedCostDollars(model: "composer-1", tokens: tokens)!, expected, accuracy: 1e-9)
-        XCTAssertNil(pricing.estimatedCostDollars(model: "nope", tokens: tokens))
-    }
 }

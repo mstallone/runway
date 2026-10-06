@@ -21,8 +21,7 @@ enum PopoverScreen: Hashable, Sendable {
 /// In-popover navigation: which screen is showing, the master/detail route inside Customize, and the
 /// horizontal screen-switch slide bookkeeping. Split out of `LayoutStore` (which owns the *layout* —
 /// enabled widgets, order, pins) so screen routing is its own concern; `LayoutStore` forwards its
-/// existing `screen`/`isEditing`/`customizeProviderID`/`screenSlide*` surface to this store, so callers
-/// are unchanged.
+/// `screen`/`customizeProviderID`/`screenSlide*` surface to this store.
 @MainActor
 @Observable
 final class PopoverNavigationStore {
@@ -46,12 +45,6 @@ final class PopoverNavigationStore {
     /// that ticks on every switch so the view can detect and animate each transition. UI-only; not persisted.
     private(set) var screenSlideFrom = PopoverScreen.dashboard
     private(set) var screenSlideID = 0
-    /// Whether the Customize screen is showing — a bridge over `screen` for the many call sites that
-    /// think in terms of edit mode.
-    var isEditing: Bool {
-        get { screen == .customize }
-        set { screen = newValue ? .customize : .dashboard }
-    }
     /// The provider whose Customize detail (L2) is showing. nil shows the provider list (L1); a set id
     /// shows that provider's metric sections and API key. UI-only (not persisted): cleared when leaving
     /// Customize (see `screen`'s didSet) and on popover close.

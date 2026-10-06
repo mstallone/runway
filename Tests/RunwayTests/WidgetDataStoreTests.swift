@@ -568,13 +568,18 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(weekly.boundedSubtitle, "Resets in 7d 0h")
     }
 
-    func testDollarLimitSubtitleIsNotAReset() {
-        // A dollar limit subtitle is not a reset countdown; it renders as plain "$<limit> limit" text.
-        let onDemand = WidgetData(
-            title: "On-demand", icon: .providerMark("cursor"),
-            kind: .dollars, used: 0, limit: 100, limitNoun: "limit"
-        )
-        XCTAssertEqual(onDemand.boundedSubtitle, "$100 limit")
+    func testDollarLimitSubtitleNamesTheLimitNotAReset() {
+        // A dollar limit subtitle is not a reset countdown; it renders as plain "$<limit> <noun>" text,
+        // defaulting to "limit" — never "total".
+        func subtitle(limit: Double, noun: String?) -> String? {
+            WidgetData(
+                title: "On-Demand", icon: .providerMark("cursor"),
+                kind: .dollars, used: 0, limit: limit, limitNoun: noun
+            ).boundedSubtitle
+        }
+        XCTAssertEqual(subtitle(limit: 100, noun: "limit"), "$100 limit")
+        XCTAssertEqual(subtitle(limit: 20, noun: nil), "$20 limit")
+        XCTAssertEqual(subtitle(limit: 50, noun: "purchased"), "$50 purchased")
     }
 
     func testDonutFractionMatchesRoundedHeadline() {
@@ -610,31 +615,6 @@ final class WidgetDataStoreTests: XCTestCase {
         )
         XCTAssertEqual(nearlyFull.valueText, "100%")
         XCTAssertEqual(nearlyFull.fraction, 1, accuracy: 0.0001)
-    }
-
-    func testOnDemandDollarLimitAppendsLimitNoun() {
-        let onDemand = WidgetData(
-            title: "On-Demand",
-            icon: .providerMark("cursor"),
-            kind: .dollars,
-            used: 0,
-            limit: 100,
-            limitNoun: "limit"
-        )
-        XCTAssertEqual(onDemand.boundedSubtitle, "$100 limit")
-    }
-
-    func testCreditsDollarLimitAppendsLimitNoun() {
-        // Every bounded dollar metric's subtitle renders as "$X limit" — never "total".
-        let credits = WidgetData(
-            title: "Credits",
-            icon: .providerMark("cursor"),
-            kind: .dollars,
-            used: 0,
-            limit: 20,
-            limitNoun: "limit"
-        )
-        XCTAssertEqual(credits.boundedSubtitle, "$20 limit")
     }
 
     func testRequestsShowsBillingResetInsteadOfSuffix() {

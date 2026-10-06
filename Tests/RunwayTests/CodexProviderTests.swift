@@ -128,7 +128,7 @@ final class CodexAuthStoreTests: XCTestCase {
             store.loadAuthCandidates().compactMap(\.auth.tokens?.accessToken),
             ["work"]
         )
-        XCTAssertNil(store.loadKeychainAuth(), "a scoped card never borrows an ambiguous service-level item")
+        XCTAssertNil(store.loadKeychainCredentials().state, "a scoped card never borrows an ambiguous service-level item")
         XCTAssertEqual(store.authPaths(), ["/tmp/codex-work/auth.json"])
     }
 
@@ -161,7 +161,7 @@ final class CodexAuthStoreTests: XCTestCase {
             scope: .home(path: workHome)
         )
 
-        let state = try XCTUnwrap(store.loadKeychainAuth())
+        let state = try XCTUnwrap(store.loadKeychainCredentials().state)
         XCTAssertEqual(state.auth.tokens?.accessToken, "work")
         XCTAssertEqual(state.keychainAccount, workAccount)
         XCTAssertEqual(state.credentialHome, workHome)
@@ -212,23 +212,21 @@ final class CodexUsageMapperTests: XCTestCase {
     }
 
     func testMapsLimitWindowSecondsFromAPI() throws {
+        // Durations no window is known by: they must pass through, not fall back to the defaults.
         let body = Data("""
         {
           "rate_limit": {
-            "primary_window": {
-              "reset_after_seconds": 60,
-              "used_percent": 1,
-              "limit_window_seconds": 18000
-            }
+            "primary_window": { "used_percent": 1, "limit_window_seconds": 86400 },
+            "secondary_window": { "used_percent": 2, "limit_window_seconds": 2592000 }
           }
         }
         """.utf8)
-        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
         let mapped = try CodexUsageMapper.mapUsageResponse(
-            response,
-            now: Date(timeIntervalSince1970: 1_800_000_000)
+            HTTPResponse(statusCode: 200, headers: [:], body: body)
         )
-        XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, 18_000_000)
+
+        XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, 86_400_000)
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.periodDurationMs, 2_592_000_000)
     }
 
     func testMapsWeeklyOnlyPrimaryWindowByDuration() throws {
@@ -521,57 +519,6 @@ final class CodexUsageMapperTests: XCTestCase {
         XCTAssertNil(progress(mapped.lines, "Some Other Model"))
     }
 
-    func testAppendsTokenUsageLines() {
-        var lines: [MetricLine] = []
-        let usage = DailyUsageSeries(daily: [
-            DailyUsageEntry(date: "2026-02-20", totalTokens: 150, costUSD: 0.75),
-            DailyUsageEntry(date: "2026-02-01", totalTokens: 300, costUSD: 1.0)
-        ])
-
-        SpendTileMapper.appendTokenUsage(
-            usage,
-            to: &lines,
-            now: makeDate("2026-02-20T16:00:00.000Z")
-        )
-
-        XCTAssertEqual(values(lines, "Today"),
-                       [MetricValue(number: 0.75, kind: .dollars, estimated: true),
-                        MetricValue(number: 150, kind: .count, label: "tokens")])
-        // No usage yesterday → "No data" (no backing line), not a fabricated "$0.00 · 0 tokens".
-        XCTAssertNil(values(lines, "Yesterday"))
-        XCTAssertEqual(values(lines, "Last 30 Days"),
-                       [MetricValue(number: 1.75, kind: .dollars, estimated: true),
-                        MetricValue(number: 450, kind: .count, label: "tokens")])
-    }
-
-    func testZeroUsageLeavesTilesUnbacked() {
-        // A period with no usage is "No data" — no tile is appended, never a fabricated "$0.00 · 0 tokens".
-        // Fixed once in SpendTileMapper, so it holds for every provider that funnels through it. Here the
-        // only reported day is a zero-token Yesterday; Today is absent, Yesterday is idle, and the 30-day
-        // total is zero, so nothing is appended.
-        var lines: [MetricLine] = []
-        SpendTileMapper.appendTokenUsage(
-            DailyUsageSeries(daily: [DailyUsageEntry(date: "2026-02-19", totalTokens: 0, costUSD: nil)]),
-            to: &lines,
-            now: makeDate("2026-02-20T16:00:00.000Z")
-        )
-
-        XCTAssertTrue(lines.isEmpty, "an all-zero window appends no spend tiles")
-    }
-
-    func testUnpricedTokensShowTokensWithoutAFabricatedZeroDollar() {
-        // A day with real tokens the runner couldn't price omits the dollar — its cost is unknown, not
-        // zero — so the row shows just the labeled token count rather than a misleading "$0.00 ·".
-        var lines: [MetricLine] = []
-        SpendTileMapper.appendTokenUsage(
-            DailyUsageSeries(daily: [DailyUsageEntry(date: "2026-02-20", totalTokens: 1_200_000, costUSD: nil)]),
-            to: &lines,
-            now: makeDate("2026-02-20T16:00:00.000Z")
-        )
-
-        XCTAssertEqual(values(lines, "Today"), [MetricValue(number: 1_200_000, kind: .count, label: "tokens")])
-    }
-
     // Regression: dollar amounts must group thousands (e.g. "$1,200.00") consistently with the
     // headline, which formats through `Formatters.currency`. Credit lines previously used a bare
     // `$%.2f` that dropped the separator.
@@ -767,10 +714,6 @@ final class CodexUsageMapperTests: XCTestCase {
         }
         return values
     }
-
-    private func makeDate(_ value: String) -> Date {
-        RunwayISO8601.date(from: value)!
-    }
 }
 
 @MainActor
@@ -911,11 +854,6 @@ private final class TrackingOpenCodeSQLite: SQLiteAccessing, @unchecked Sendable
     }
 
     func queryJSONRows(path: String, sql: String) throws -> String? { nil }
-}
-
-final class CodexUsageClientRefreshTests: XCTestCase {
-
-
 }
 
 @MainActor
@@ -1066,7 +1004,7 @@ final class CodexReadOnlyCredentialTests: XCTestCase {
         XCTAssertEqual(files.files["/tmp/codex/auth.json"], originalBlob, "auth.json is never written by Runway")
         // Degraded like Claude: the renewal notice rides the header warning over the (still-local)
         // spend tiles, not a hard error card.
-        XCTAssertNil(errorBadge(snapshot))
+        XCTAssertNil(snapshot.errorText)
         XCTAssertEqual(snapshot.warning, CodexAuthError.loginRenewalRequired.localizedDescription)
         XCTAssertEqual(snapshot.loginRequired, true)
     }
@@ -1101,7 +1039,7 @@ final class CodexReadOnlyCredentialTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertEqual(http.requests.count, 1, "no refresh-and-retry: one usage call, then renewal")
-        XCTAssertNil(errorBadge(snapshot))
+        XCTAssertNil(snapshot.errorText)
         XCTAssertEqual(snapshot.warning, CodexAuthError.loginRenewalRequired.localizedDescription)
         XCTAssertEqual(snapshot.loginRequired, true)
     }
@@ -1120,13 +1058,6 @@ final class CodexReadOnlyCredentialTests: XCTestCase {
             return XCTFail("a denied prompt must report permission-required")
         }
         XCTAssertEqual(keychain.interactiveReads, 1, "a denial must not raise further per-home prompts")
-    }
-
-    private func errorBadge(_ snapshot: ProviderSnapshot) -> String? {
-        snapshot.lines.compactMap { line -> String? in
-            guard case .badge(_, let text, _, _) = line, line.label == "Error" else { return nil }
-            return text
-        }.first
     }
 
     private func jwt(exp date: Date) -> String {

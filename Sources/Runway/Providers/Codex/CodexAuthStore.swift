@@ -177,7 +177,7 @@ struct CodexAuthStore: Sendable {
     }
 
     /// Reads the credential from a single on-disk auth file — the targeted counterpart to
-    /// `loadKeychainAuth()`, used when reloading the exact source we already loaded from so we don't
+    /// `loadKeychainCredentials()`, used when reloading the exact source we already loaded from so we don't
     /// re-scan every candidate path. Returns `nil` when the file is missing, unreadable, or doesn't
     /// carry token-like auth.
     func loadAuth(at path: String) -> CodexAuthState? {
@@ -193,13 +193,6 @@ struct CodexAuthStore: Sendable {
             source: .file(path: path),
             credentialHome: Self.canonicalHome(forAuthPath: path)
         )
-    }
-
-    /// Convenience for callers that only care about a successfully loaded credential (the identity
-    /// warm task); the permission state collapses to nil there, keeping the home hidden.
-    func loadKeychainAuth() -> CodexAuthState? {
-        guard case .state(let state) = loadKeychainCredentials() else { return nil }
-        return state
     }
 
     /// Keychain access stays in-process. Automatic refreshes inspect metadata and reuse a manually

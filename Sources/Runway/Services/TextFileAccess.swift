@@ -16,38 +16,13 @@ protocol TextFileAccessing: Sendable {
     func remove(_ path: String) throws
     /// Create the directory that will contain `path` (with intermediates). Writes land in a temp
     /// file beside the destination, so a first-ever file in a not-yet-existing folder (Grok's
-    /// `memory/MEMORY.md`) needs this before the write. No-op default for in-memory test doubles.
+    /// `memory/MEMORY.md`) needs this before the write.
     func ensureParentDirectory(for path: String) throws
     /// Atomically create `path` with `text` only when nothing exists there yet; returns false when
     /// the destination already exists (that content stands — creating means "make the file
     /// exist"). The local accessor publishes with an exclusive rename, so a file another process
     /// creates between any pre-check and the publish is never clobbered.
     func createTextFileExclusively(_ path: String, _ text: String) throws -> Bool
-}
-
-extension TextFileAccessing {
-    /// Compatibility path for test doubles. The production accessor classifies the read error directly
-    /// so it does not have an exists-then-read race.
-    func readTextIfPresent(_ path: String) throws -> String? {
-        guard exists(path) else { return nil }
-        return try readText(path)
-    }
-
-    /// Compatibility path for test doubles that store text in memory and have no mode to preserve.
-    func writeTextPreservingMode(_ path: String, _ text: String) throws {
-        try writeText(path, text)
-    }
-
-    /// No-op for in-memory test doubles; the local accessor creates real directories.
-    func ensureParentDirectory(for path: String) throws {}
-
-    /// Check-then-write for in-memory test doubles, which have no concurrent writers.
-    func createTextFileExclusively(_ path: String, _ text: String) throws -> Bool {
-        guard !exists(path) else { return false }
-        try ensureParentDirectory(for: path)
-        try writeTextPreservingMode(path, text)
-        return true
-    }
 }
 
 struct LocalTextFileAccessor: TextFileAccessing {

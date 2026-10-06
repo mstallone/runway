@@ -429,6 +429,38 @@ final class FakeHTTPClient: HTTPClient, @unchecked Sendable {
     }
 }
 
+extension ProviderSnapshot {
+    /// The provider-level error message a failed refresh surfaces, or nil when there is none.
+    var errorText: String? {
+        lines.compactMap { line -> String? in
+            guard case .badge(let label, let text, _, _) = line, label == MetricLine.errorBadgeLabel else { return nil }
+            return text
+        }.first
+    }
+}
+
+/// Test-target-only defaults so in-memory doubles don't each need a stub. The app target has none on
+/// purpose: a real accessor must make its own race-free, mode-aware implementations.
+extension TextFileAccessing {
+    func readTextIfPresent(_ path: String) throws -> String? {
+        guard exists(path) else { return nil }
+        return try readText(path)
+    }
+
+    func writeTextPreservingMode(_ path: String, _ text: String) throws {
+        try writeText(path, text)
+    }
+
+    func ensureParentDirectory(for path: String) throws {}
+
+    func createTextFileExclusively(_ path: String, _ text: String) throws -> Bool {
+        guard !exists(path) else { return false }
+        try ensureParentDirectory(for: path)
+        try writeTextPreservingMode(path, text)
+        return true
+    }
+}
+
 /// Test-target-only default so test doubles don't each need a stub. The app target has no such
 /// default on purpose: a real provider must decide its own credential probe (see `FirstRunSeeder`).
 extension ProviderRuntime {

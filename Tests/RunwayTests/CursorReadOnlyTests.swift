@@ -3,9 +3,9 @@ import XCTest
 
 @MainActor
 final class CursorReadOnlyCredentialTests: XCTestCase {
-    func testExpiredTokenNeverRefreshesOrWritesAndReportsRenewal() async {
+    func testExpiredTokenNeverRefreshesAndReportsRenewal() async {
         // Runway is a read-only consumer of Cursor's credentials: an expired token means NO
-        // token-endpoint call, NO state-database or keychain write, and a renewal notice.
+        // token-endpoint call and a renewal notice. (`SQLiteAccessing` has no write method.)
         let sqlite = FakeCursorSQLite(values: [
             CursorAuthStore.accessTokenKey: makeSharedCursorJWT(exp: 1),
             CursorAuthStore.membershipTypeKey: "pro"
@@ -19,12 +19,8 @@ final class CursorReadOnlyCredentialTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertTrue(http.requests.isEmpty, "an expired token short-circuits before any network call")
-        XCTAssertTrue(sqlite.writtenValues.isEmpty, "Cursor's state database is never written by Runway")
         XCTAssertEqual(
-            snapshot.lines.compactMap { line -> String? in
-                guard case .badge(_, let text, _, _) = line, line.label == "Error" else { return nil }
-                return text
-            }.first,
+            snapshot.errorText,
             CursorAuthError.loginRenewalRequired.localizedDescription
         )
     }
@@ -50,10 +46,7 @@ final class CursorReadOnlyCredentialTests: XCTestCase {
 
         XCTAssertEqual(http.requests.count, 1, "no refresh-and-retry: one usage call, then renewal")
         XCTAssertEqual(
-            snapshot.lines.compactMap { line -> String? in
-                guard case .badge(_, let text, _, _) = line, line.label == "Error" else { return nil }
-                return text
-            }.first,
+            snapshot.errorText,
             CursorAuthError.loginRenewalRequired.localizedDescription
         )
     }
@@ -112,10 +105,7 @@ final class CursorRevokedTokenFallbackTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertNil(
-            snapshot.lines.compactMap { line -> String? in
-                guard case .badge(_, let text, _, _) = line, line.label == "Error" else { return nil }
-                return text
-            }.first,
+            snapshot.errorText,
             "the live same-account token should have served this refresh"
         )
     }
@@ -150,10 +140,7 @@ final class CursorRevokedTokenFallbackTests: XCTestCase {
 
         let snapshot = await provider.refresh()
 
-        let error = snapshot.lines.compactMap { line -> String? in
-            guard case .badge(_, let text, _, _) = line, line.label == "Error" else { return nil }
-            return text
-        }.first
+        let error = snapshot.errorText
         XCTAssertEqual(error, ProviderUsageErrorText.requestFailed(statusCode: 503))
         XCTAssertNotEqual(error, CursorAuthError.loginRenewalRequired.localizedDescription)
     }
@@ -182,10 +169,7 @@ final class CursorRevokedTokenFallbackTests: XCTestCase {
 
         XCTAssertEqual(http.requests.count, 1, "another account's token must never be tried")
         XCTAssertEqual(
-            snapshot.lines.compactMap { line -> String? in
-                guard case .badge(_, let text, _, _) = line, line.label == "Error" else { return nil }
-                return text
-            }.first,
+            snapshot.errorText,
             CursorAuthError.loginRenewalRequired.localizedDescription
         )
     }
