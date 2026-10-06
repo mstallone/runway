@@ -84,7 +84,7 @@ For bounded resources, `unit` follows the provider's live metric format. Cursor 
 
 | Provider | Resource keys |
 | --- | --- |
-| Claude | `session`, `weekly`, `sonnet`, `fable`, `extraUsage` |
+| Claude | `session`, `weekly`, `sonnet`, `fable`, `extraUsage`, `rateLimitResets` |
 | Codex | `session`, `weekly`, `spark`, `sparkWeekly`, `credits`, `creditValue`, `rateLimitResets` |
 | Cursor | `totalUsage`, `autoUsage`, `apiUsage`, `grokBot`, `onDemand`, `requests`, `credits` |
 | Antigravity | `geminiSession`, `geminiWeekly`, `nonGeminiSession`, `nonGeminiWeekly` |
