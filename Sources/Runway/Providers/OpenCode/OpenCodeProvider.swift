@@ -215,6 +215,7 @@ final class OpenCodeProvider: ProviderRuntime {
 
     private func fetchGoMeters(apiKey: String) async -> GoFetch {
         let response: HTTPResponse
+        let requestedAt = now()
         do {
             response = try await usageClient.fetchUsage(apiKey: apiKey)
         } catch {
@@ -231,7 +232,7 @@ final class OpenCodeProvider: ProviderRuntime {
             return .failed(.requestFailed(response.statusCode))
         }
         do {
-            return .meters(try OpenCodeUsageMapper.meterLines(response, capturedAt: now()))
+            return .meters(try OpenCodeUsageMapper.meterLines(response, requestedAt: requestedAt, receivedAt: now()))
         } catch let error as OpenCodeUsageError {
             return .failed(error)
         } catch {

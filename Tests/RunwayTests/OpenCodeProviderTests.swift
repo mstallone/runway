@@ -122,7 +122,13 @@ final class OpenCodeProviderTests: XCTestCase {
 
     /// The Session row as the dashboard reads it, after a real provider refresh through
     /// `WidgetDataStore`, for a usage response whose rolling window reads `percent` with `rollingReset`.
-    private func sessionRow(percent: Int, rollingReset: Date, dateHeader: String?) async throws -> WidgetData {
+    /// `responseDelay` is how long the usage request takes on the provider's clock.
+    private func sessionRow(
+        percent: Int,
+        rollingReset: Date,
+        dateHeader: String?,
+        responseDelay: TimeInterval = 0
+    ) async throws -> WidgetData {
         let body: [String: Any] = [
             "usage": [
                 "rolling": ["status": "ok", "percent": percent,
@@ -136,10 +142,12 @@ final class OpenCodeProviderTests: XCTestCase {
             headers: dateHeader.map { ["date": $0] } ?? [:],
             body: try JSONSerialization.data(withJSONObject: body)
         )
-        let runtime = provider(
-            files: FakeFiles(["/oc/auth.json": authJSON]),
-            scanner: OpenCodeUsageScanner(sqlite: StubSQLite(), databasePaths: { [] }),
-            client: OpenCodeUsageClient(http: FakeHTTPClient(response: response))
+        let clock = SteppingClock(now)
+        let runtime = OpenCodeProvider(
+            authStore: authStore(files: FakeFiles(["/oc/auth.json": authJSON])),
+            usageClient: OpenCodeUsageClient(http: SlowHTTPClient(response: response, clock: clock, delay: responseDelay)),
+            usageScanner: OpenCodeUsageScanner(sqlite: StubSQLite(), databasePaths: { [] }),
+            now: { clock.now }
         )
         let descriptors = runtime.widgetDescriptors
         let suiteName = "OpenCodeProviderTests.session.\(UUID().uuidString)"
@@ -191,6 +199,35 @@ final class OpenCodeProviderTests: XCTestCase {
             let later = now.addingTimeInterval(20 * 60)
             XCTAssertEqual(data.boundedTrailingText(now: later), "Not started")
         }
+    }
+
+    func testUntouchedSessionShowsNotStartedAfterSlowResponseWithoutDateHeader() async throws {
+        // No `Date` header, and the response takes 10 seconds. The server computed the placeholder
+        // half a second into the request, so it sits 9.5 seconds short of a full period by the time
+        // the response is read. It is still the placeholder.
+        let placeholderReset = now.addingTimeInterval(5 * 3600 + 0.5)
+        let data = try await sessionRow(
+            percent: 0, rollingReset: placeholderReset, dateHeader: nil, responseDelay: 10
+        )
+        XCTAssertEqual(data.used, 0)
+        XCTAssertNil(data.resetsAt)
+        XCTAssertEqual(data.boundedTrailingText(now: now), "Not started")
+
+        // A started session is unaffected by the slow response.
+        let started = try await sessionRow(
+            percent: 3, rollingReset: placeholderReset, dateHeader: nil, responseDelay: 10
+        )
+        XCTAssertEqual(started.resetsAt, placeholderReset)
+        XCTAssertEqual(started.boundedTrailingText(now: now)?.hasPrefix("Resets in "), true)
+
+        // With a `Date` header the slow response changes nothing: a reset 9.5 seconds inside the
+        // period from the server date is an anchored session and keeps its countdown.
+        let anchoredReset = now.addingTimeInterval(5 * 3600 - 9.5)
+        let anchored = try await sessionRow(
+            percent: 0, rollingReset: anchoredReset, dateHeader: "Sun, 12 Jul 2026 12:00:00 GMT", responseDelay: 10
+        )
+        XCTAssertEqual(anchored.resetsAt, anchoredReset)
+        XCTAssertEqual(anchored.boundedTrailingText(now: now)?.hasPrefix("Resets in "), true)
     }
 
     func testStartedSessionKeepsCountdownAtFullPeriod() async throws {
@@ -382,4 +419,30 @@ private final class StubSQLite: SQLiteAccessing, @unchecked Sendable {
 
     // JSON row queries are not exercised here.
     func queryJSONRows(path: String, sql: String) throws -> String? { nil }
+}
+
+/// A clock the fake HTTP client can move, so a request takes time on the provider's clock.
+private final class SteppingClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: Date
+
+    init(_ start: Date) { current = start }
+
+    var now: Date { lock.withLock { current } }
+
+    func advance(by interval: TimeInterval) {
+        lock.withLock { current = current.addingTimeInterval(interval) }
+    }
+}
+
+/// Answers with a fixed response after `delay` has passed on `clock`.
+private struct SlowHTTPClient: HTTPClient {
+    let response: HTTPResponse
+    let clock: SteppingClock
+    let delay: TimeInterval
+
+    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+        clock.advance(by: delay)
+        return response
+    }
 }

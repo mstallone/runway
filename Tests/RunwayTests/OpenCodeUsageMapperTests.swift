@@ -34,7 +34,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
     }
 
     func testMeterLinesMatchDashboardPercentsAndResets() throws {
-        let lines = try OpenCodeUsageMapper.meterLines(body: sampleBody, capturedAt: capturedAt)
+        let lines = try OpenCodeUsageMapper.meterLines(body: sampleBody, serverTime: capturedAt...capturedAt)
         XCTAssertEqual(lines.map(\.label), ["Session", "Weekly", "Monthly"])
 
         guard case let .progress(_, sessionUsed, sessionLimit, sessionFormat, sessionReset, sessionPeriod, _) = lines[0] else {
@@ -70,7 +70,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
                 "monthly": ["percent": 0, "resetsAt": "2026-08-04T00:00:00.000Z"]
             ]
         ]
-        let lines = try OpenCodeUsageMapper.meterLines(body: body, capturedAt: capturedAt)
+        let lines = try OpenCodeUsageMapper.meterLines(body: body, serverTime: capturedAt...capturedAt)
         guard case let .progress(_, used, limit, format, _, _, _) = lines[0] else {
             return XCTFail("session is not a progress line")
         }
@@ -85,7 +85,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
     func testUntouchedRollingWindowDropsPlaceholderReset() throws {
         let placeholder = capturedAt.addingTimeInterval(sessionPeriod + 0.8)
         let lines = try OpenCodeUsageMapper.meterLines(
-            body: zeroUsageBody(rollingReset: placeholder), capturedAt: capturedAt
+            body: zeroUsageBody(rollingReset: placeholder), serverTime: capturedAt...capturedAt
         )
         guard case let .progress(_, used, _, _, resetsAt, _, _) = lines[0] else {
             return XCTFail("session is not a progress line")
@@ -100,7 +100,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         for age in [30.0, 60.0, 4 * 3600.0] {
             let anchored = capturedAt.addingTimeInterval(sessionPeriod - age)
             let lines = try OpenCodeUsageMapper.meterLines(
-                body: zeroUsageBody(rollingReset: anchored), capturedAt: capturedAt
+                body: zeroUsageBody(rollingReset: anchored), serverTime: capturedAt...capturedAt
             )
             XCTAssertEqual(sessionReset(lines), anchored, "active session aged \(age)s lost its reset")
         }
@@ -110,7 +110,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         func mappedReset(offsetFromFullPeriod offset: TimeInterval) throws -> Date? {
             let reset = capturedAt.addingTimeInterval(sessionPeriod + offset)
             return sessionReset(try OpenCodeUsageMapper.meterLines(
-                body: zeroUsageBody(rollingReset: reset), capturedAt: capturedAt
+                body: zeroUsageBody(rollingReset: reset), serverTime: capturedAt...capturedAt
             ))
         }
         let tolerance = OpenCodeUsageMapper.placeholderResetTolerance
@@ -128,7 +128,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         var usage = try XCTUnwrap(body["usage"] as? [String: Any])
         usage["rolling"] = ["percent": 1, "resetsAt": RunwayISO8601.string(from: reset)]
         body["usage"] = usage
-        XCTAssertEqual(sessionReset(try OpenCodeUsageMapper.meterLines(body: body, capturedAt: capturedAt)), reset)
+        XCTAssertEqual(sessionReset(try OpenCodeUsageMapper.meterLines(body: body, serverTime: capturedAt...capturedAt)), reset)
     }
 
     func testHTTPDateHeaderWinsOverSkewedLocalClock() throws {
@@ -138,7 +138,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         // The local clock is two minutes fast. Only the server date identifies the placeholder.
         let skewedLocal = serverDate.addingTimeInterval(2 * 60)
         let withHeader = HTTPResponse(statusCode: 200, headers: ["date": "Fri, 15 Jan 2027 08:00:00 GMT"], body: data)
-        XCTAssertNil(sessionReset(try OpenCodeUsageMapper.meterLines(withHeader, capturedAt: skewedLocal)))
+        XCTAssertNil(sessionReset(try OpenCodeUsageMapper.meterLines(withHeader, requestedAt: skewedLocal, receivedAt: skewedLocal)))
 
         // And the reverse: an anchored reset stays even when the skewed local clock makes it look
         // exactly one period away.
@@ -151,7 +151,8 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         )
         XCTAssertEqual(
             sessionReset(try OpenCodeUsageMapper.meterLines(
-                anchoredResponse, capturedAt: serverDate.addingTimeInterval(-120)
+                anchoredResponse,
+                requestedAt: serverDate.addingTimeInterval(-120), receivedAt: serverDate.addingTimeInterval(-120)
             )),
             anchored
         )
@@ -162,8 +163,54 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         let data = try JSONSerialization.data(withJSONObject: body)
         for headers in [[:], ["date": "not-an-http-date"]] {
             let response = HTTPResponse(statusCode: 200, headers: headers, body: data)
-            XCTAssertNil(sessionReset(try OpenCodeUsageMapper.meterLines(response, capturedAt: capturedAt)))
+            XCTAssertNil(sessionReset(try OpenCodeUsageMapper.meterLines(response, requestedAt: capturedAt, receivedAt: capturedAt)))
         }
+    }
+
+    /// Without a `Date` header the server answered at some instant during the request, so a slow
+    /// response must not push an untouched session's placeholder outside the tolerance.
+    func testSlowResponseWithoutDateHeaderStillDropsPlaceholder() throws {
+        let requestedAt = capturedAt
+        let receivedAt = capturedAt.addingTimeInterval(10)
+        func mappedReset(serverAnsweredAfter delay: TimeInterval, percent: Int = 0) throws -> Date? {
+            let reset = requestedAt.addingTimeInterval(delay + sessionPeriod)
+            var body = zeroUsageBody(rollingReset: reset)
+            var usage = try XCTUnwrap(body["usage"] as? [String: Any])
+            usage["rolling"] = ["percent": percent, "resetsAt": RunwayISO8601.string(from: reset)]
+            body["usage"] = usage
+            let response = HTTPResponse(statusCode: 200, headers: [:], body: try JSONSerialization.data(withJSONObject: body))
+            return sessionReset(try OpenCodeUsageMapper.meterLines(response, requestedAt: requestedAt, receivedAt: receivedAt))
+        }
+        let tolerance = OpenCodeUsageMapper.placeholderResetTolerance
+        // The server may have answered anywhere in the request interval.
+        for delay in [-tolerance, 0, 0.5, 5, 10, 10 + tolerance] {
+            XCTAssertNil(try mappedReset(serverAnsweredAfter: delay), "placeholder kept at \(delay)s")
+        }
+        // Outside the interval it is an anchored reset and keeps its countdown.
+        XCTAssertNotNil(try mappedReset(serverAnsweredAfter: -tolerance - 0.5))
+        XCTAssertNotNil(try mappedReset(serverAnsweredAfter: 10 + tolerance + 0.5))
+        XCTAssertNotNil(try mappedReset(serverAnsweredAfter: -30))
+        // Usage above zero is never a placeholder.
+        XCTAssertNotNil(try mappedReset(serverAnsweredAfter: 5, percent: 1))
+    }
+
+    /// With a `Date` header the request interval is ignored: only the server date decides.
+    func testDateHeaderPathIgnoresRequestDuration() throws {
+        let serverDate = RunwayISO8601.date(from: "2027-01-15T08:00:00.000Z")!
+        let headers = ["date": "Fri, 15 Jan 2027 08:00:00 GMT"]
+        func mappedReset(offsetFromFullPeriod offset: TimeInterval) throws -> Date? {
+            let body = zeroUsageBody(rollingReset: serverDate.addingTimeInterval(sessionPeriod + offset))
+            let response = HTTPResponse(statusCode: 200, headers: headers, body: try JSONSerialization.data(withJSONObject: body))
+            return sessionReset(try OpenCodeUsageMapper.meterLines(
+                response, requestedAt: serverDate.addingTimeInterval(-8), receivedAt: serverDate.addingTimeInterval(6)
+            ))
+        }
+        let tolerance = OpenCodeUsageMapper.placeholderResetTolerance
+        XCTAssertNil(try mappedReset(offsetFromFullPeriod: tolerance))
+        XCTAssertNil(try mappedReset(offsetFromFullPeriod: -tolerance))
+        // Inside the 14-second request, but more than the tolerance from the server date: anchored.
+        XCTAssertNotNil(try mappedReset(offsetFromFullPeriod: -5))
+        XCTAssertNotNil(try mappedReset(offsetFromFullPeriod: 4))
     }
 
     /// Weekly and monthly resets are calendar and billing instants that exist with or without usage.
@@ -178,7 +225,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
                 "monthly": ["percent": 0, "resetsAt": RunwayISO8601.string(from: monthlyReset)]
             ]
         ]
-        let lines = try OpenCodeUsageMapper.meterLines(body: body, capturedAt: capturedAt)
+        let lines = try OpenCodeUsageMapper.meterLines(body: body, serverTime: capturedAt...capturedAt)
         guard case let .progress(_, _, _, _, weekly, _, _) = lines[1],
               case let .progress(_, _, _, _, monthly, _, _) = lines[2] else {
             return XCTFail("expected progress lines")
@@ -201,7 +248,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
                     "monthly": ["percent": 0, "resetsAt": "2027-02-10T08:00:00.000Z"]
                 ]
             ]
-            XCTAssertThrowsError(try OpenCodeUsageMapper.meterLines(body: body, capturedAt: capturedAt)) { error in
+            XCTAssertThrowsError(try OpenCodeUsageMapper.meterLines(body: body, serverTime: capturedAt...capturedAt)) { error in
                 XCTAssertEqual(error as? OpenCodeUsageError, .invalidResponse)
             }
         }
@@ -218,7 +265,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
                 "monthly": ["percent": 35, "resetsAt": "not-a-date"]
             ]
         ]
-        let lines = try OpenCodeUsageMapper.meterLines(body: body, capturedAt: capturedAt)
+        let lines = try OpenCodeUsageMapper.meterLines(body: body, serverTime: capturedAt...capturedAt)
         guard case let .progress(_, weeklyUsed, _, _, weeklyReset, weeklyPeriod, _) = lines[1],
               case let .progress(_, monthlyUsed, _, _, monthlyReset, monthlyPeriod, _) = lines[2] else {
             return XCTFail("expected progress lines")
@@ -240,7 +287,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
                 "monthly": ["percent": 35, "resetsAt": "2026-08-04T11:18:32.662Z"]
             ]
         ]
-        let lines = try OpenCodeUsageMapper.meterLines(body: body, capturedAt: capturedAt)
+        let lines = try OpenCodeUsageMapper.meterLines(body: body, serverTime: capturedAt...capturedAt)
         guard case let .progress(_, rolling, _, _, _, _, _) = lines[0],
               case let .progress(_, weekly, _, _, _, _, _) = lines[1] else {
             return XCTFail("expected progress lines")
@@ -251,15 +298,17 @@ final class OpenCodeUsageMapperTests: XCTestCase {
 
     func testHTTPResponseBodyRoundTrip() throws {
         let data = try JSONSerialization.data(withJSONObject: sampleBody)
-        let lines = try OpenCodeUsageMapper.meterLines(HTTPResponse(statusCode: 200, headers: [:], body: data), capturedAt: capturedAt)
+        let lines = try OpenCodeUsageMapper.meterLines(HTTPResponse(statusCode: 200, headers: [:], body: data),
+            requestedAt: capturedAt, receivedAt: capturedAt
+        )
         XCTAssertEqual(lines.count, 3)
     }
 
     func testMissingUsageOrWindowIsInvalid() {
-        XCTAssertThrowsError(try OpenCodeUsageMapper.meterLines(body: [:], capturedAt: capturedAt)) { error in
+        XCTAssertThrowsError(try OpenCodeUsageMapper.meterLines(body: [:], serverTime: capturedAt...capturedAt)) { error in
             XCTAssertEqual(error as? OpenCodeUsageError, .invalidResponse)
         }
-        XCTAssertThrowsError(try OpenCodeUsageMapper.meterLines(body: ["usage": ["weekly": ["percent": 1]]], capturedAt: capturedAt)) { error in
+        XCTAssertThrowsError(try OpenCodeUsageMapper.meterLines(body: ["usage": ["weekly": ["percent": 1]]], serverTime: capturedAt...capturedAt)) { error in
             XCTAssertEqual(error as? OpenCodeUsageError, .invalidResponse)
         }
     }

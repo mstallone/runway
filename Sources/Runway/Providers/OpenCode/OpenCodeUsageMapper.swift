@@ -11,29 +11,35 @@ enum OpenCodeUsageMapper {
     /// started" until the next refresh; widening the tolerance would lengthen that stale state.
     static let placeholderResetTolerance: TimeInterval = 2
 
-    /// `capturedAt` is the local time the response was received.
-    static func meterLines(_ response: HTTPResponse, capturedAt: Date) throws -> [MetricLine] {
+    /// `requestedAt` and `receivedAt` are the local times just before the request was sent and just
+    /// after its response arrived.
+    static func meterLines(_ response: HTTPResponse, requestedAt: Date, receivedAt: Date) throws -> [MetricLine] {
         guard let body = ProviderParse.jsonObject(response.body) else {
             throw OpenCodeUsageError.invalidResponse
         }
         // Compare two server-authored instants when possible, which removes Mac clock skew from the
-        // placeholder test. HTTP allows a response without a usable `Date` header, so that case falls
-        // back to the local capture time.
+        // placeholder test. HTTP allows a response without a usable `Date` header. Then the server
+        // computed the reset at some unknown instant while the request was in flight, so the whole
+        // request interval stands in for it. A slow response would otherwise put the placeholder
+        // outside the tolerance and show a five-hour countdown on an untouched session. The cost is
+        // that a session started during that request reads "Not started" until the next refresh.
         let serverDate = response.header("date")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .flatMap(HTTPDateFormatter.date(from:))
-        return try meterLines(body: body, capturedAt: serverDate ?? capturedAt)
+        let serverTime = serverDate.map { $0...$0 } ?? min(requestedAt, receivedAt)...max(requestedAt, receivedAt)
+        return try meterLines(body: body, serverTime: serverTime)
     }
 
-    static func meterLines(body: [String: Any], capturedAt: Date) throws -> [MetricLine] {
+    /// `serverTime` bounds the instant the server answered: a single instant when it is known.
+    static func meterLines(body: [String: Any], serverTime: ClosedRange<Date>) throws -> [MetricLine] {
         guard let usage = body["usage"] as? [String: Any] else {
             throw OpenCodeUsageError.invalidResponse
         }
         return [
             try window(usage["rolling"], label: "Session", periodMs: MetricPeriod.sessionMs,
-                       capturedAt: capturedAt, isRollingSession: true),
-            try window(usage["weekly"], label: "Weekly", periodMs: MetricPeriod.weekMs, capturedAt: capturedAt),
-            try window(usage["monthly"], label: "Monthly", periodMs: MetricPeriod.monthMs, capturedAt: capturedAt)
+                       serverTime: serverTime, isRollingSession: true),
+            try window(usage["weekly"], label: "Weekly", periodMs: MetricPeriod.weekMs, serverTime: serverTime),
+            try window(usage["monthly"], label: "Monthly", periodMs: MetricPeriod.monthMs, serverTime: serverTime)
         ]
     }
 
@@ -67,7 +73,7 @@ enum OpenCodeUsageMapper {
         _ raw: Any?,
         label: String,
         periodMs: Int,
-        capturedAt: Date,
+        serverTime: ClosedRange<Date>,
         isRollingSession: Bool = false
     ) throws -> MetricLine {
         guard let object = raw as? [String: Any],
@@ -79,9 +85,12 @@ enum OpenCodeUsageMapper {
         var resetsAt = (object["resetsAt"] as? String).flatMap(RunwayISO8601.date(from:))
         if isRollingSession {
             guard let reportedReset = resetsAt else { throw OpenCodeUsageError.invalidResponse }
-            let period = TimeInterval(periodMs) / 1000
-            let distanceFromFullPeriod = abs(reportedReset.timeIntervalSince(capturedAt) - period)
-            if used == 0, distanceFromFullPeriod <= placeholderResetTolerance {
+            // The placeholder is the server's clock plus one period, so it implies when the server
+            // answered. It is the placeholder when that instant fits `serverTime`.
+            let impliedServerTime = reportedReset.addingTimeInterval(-TimeInterval(periodMs) / 1000)
+            let earliest = serverTime.lowerBound.addingTimeInterval(-placeholderResetTolerance)
+            let latest = serverTime.upperBound.addingTimeInterval(placeholderResetTolerance)
+            if used == 0, impliedServerTime >= earliest, impliedServerTime <= latest {
                 resetsAt = nil
             }
         } else if resetsAt == nil {
