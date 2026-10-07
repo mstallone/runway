@@ -5,6 +5,10 @@ import Foundation
 /// own hosted gateways is authoritative (Zen models aren't in our pricing snapshots), so it is summed
 /// directly rather than re-priced. Go plan windows come from the usage API, not this scan.
 ///
+/// OpenCode 1 logs to the `message` table and OpenCode 2 to `session_message`. An upgraded database
+/// keeps both, with old messages copied into the new table under their original IDs, so both are
+/// read and each message ID is counted once.
+///
 /// A `Sendable` struct (like the Grok scanner), `async` and nonisolated, so the SQLite reads run off the
 /// main actor when the `@MainActor` provider `await`s it.
 struct OpenCodeUsageScanner: Sendable {
@@ -68,14 +72,18 @@ struct OpenCodeUsageScanner: Sendable {
         var failures: [String: String] = [:]
 
         for path in paths {
-            checked.insert(path)
             do {
-                if let json = try sqlite.queryValue(path: path, sql: Self.dataSQL(cutoffMs: cutoffMs)) {
+                // A database with neither message table has no usage to read and does not vote on
+                // whether the scan failed.
+                let tables = try OpenCodeTables.probe(path: path, sqlite: sqlite)
+                guard !tables.isDisjoint(with: .messageLogs) else { continue }
+                checked.insert(path)
+                if let json = try sqlite.queryValue(path: path, sql: Self.dataSQL(cutoffMs: cutoffMs, tables: tables)) {
                     rows.append(contentsOf: Self.parseRows(json))
                 }
             } catch {
+                checked.insert(path)
                 failures[path] = error.localizedDescription
-                continue
             }
         }
         // Per-path detail is logged only for newly failing paths (the reporter edge-triggers), so a
@@ -84,13 +92,13 @@ struct OpenCodeUsageScanner: Sendable {
         for path in newlyFailing.sorted() {
             AppLog.warn(LogTag.plugin("opencode"), "usage query failed for \(path): \(failures[path] ?? "unknown error")")
         }
-        if failures.count == checked.count {
+        if !checked.isEmpty, failures.count == checked.count {
             throw OpenCodeUsageError.databaseUnreadable
         }
 
         var accumulator = DailyUsageAccumulator()
         var dayKeys = DailyUsageAccumulator.DayKeyCache()
-        for row in rows {
+        for row in Self.deduplicated(rows) {
             let date = Date(timeIntervalSince1970: row.ms / 1000)
             guard date >= tileSince else { continue }
             accumulator.add(
@@ -115,7 +123,9 @@ struct OpenCodeUsageScanner: Sendable {
         }
         for path in paths {
             do {
-                if let value = try sqlite.queryValue(path: path, sql: Self.probeSQL), !value.isEmpty {
+                let tables = try OpenCodeTables.probe(path: path, sqlite: sqlite)
+                guard !tables.isDisjoint(with: .messageLogs) else { continue }
+                if let value = try sqlite.queryValue(path: path, sql: Self.probeSQL(tables: tables)), !value.isEmpty {
                     return true
                 }
             } catch {
@@ -127,16 +137,40 @@ struct OpenCodeUsageScanner: Sendable {
 
     // MARK: - Parsing
 
+    /// One row per message ID, in first-seen order. When a message is in both tables the `message`
+    /// original is the one counted, the same choice the Codex attribution scan makes, so an
+    /// upgrade does not change what an old message contributes. Rows without an ID stay independent.
+    private static func deduplicated(_ rows: [Row]) -> [Row] {
+        var result: [Row] = []
+        var indexByID: [String: Int] = [:]
+        for row in rows {
+            guard let id = row.id else {
+                result.append(row)
+                continue
+            }
+            if let index = indexByID[id] {
+                if row.isLegacy, !result[index].isLegacy { result[index] = row }
+            } else {
+                indexByID[id] = result.count
+                result.append(row)
+            }
+        }
+        return result
+    }
+
     private struct Row {
         var ms: Double
         var cost: Double
         var tokens: Int
         var model: String
+        var id: String?
+        /// From the OpenCode 1 `message` table.
+        var isLegacy = false
     }
 
     /// Parse the `json_group_array(json_array(...))` payload: an array of
-    /// `[time_created, cost, tokensTotal, modelID, providerID]`. Rows with a missing timestamp/cost or a
-    /// non-string providerID are skipped at this boundary.
+    /// `[time_created, cost, tokensTotal, modelID, providerID, id, isLegacy]`. Rows with a missing timestamp/cost
+    /// or a non-string providerID are skipped at this boundary.
     private static func parseRows(_ json: String) -> [Row] {
         guard let data = json.data(using: .utf8),
               let parsed = (try? JSONSerialization.jsonObject(with: data)) as? [Any]
@@ -152,7 +186,9 @@ struct OpenCodeUsageScanner: Sendable {
             else { continue }
             let tokens = ProviderParse.clampedTokenCount(entry[2])
             let model = (entry[3] as? String) ?? ""
-            rows.append(Row(ms: ms, cost: cost, tokens: tokens, model: model))
+            let id = entry.count >= 6 ? (entry[5] as? String)?.nilIfEmpty : nil
+            let isLegacy = entry.count >= 7 && ProviderParse.number(entry[6]) == 1
+            rows.append(Row(ms: ms, cost: cost, tokens: tokens, model: model, id: id, isLegacy: isLegacy))
         }
         return rows
     }
@@ -162,29 +198,69 @@ struct OpenCodeUsageScanner: Sendable {
     /// SQL literal built from `hostedProviderIDs`, so the tracked list has one source of truth.
     private static let providerFilter = "(" + hostedProviderIDs.map { "'\($0)'" }.joined(separator: ",") + ")"
 
-    static func dataSQL(cutoffMs: Int) -> String {
+    /// OpenCode 1 writes `message` rows with flat `role` / `modelID` / `providerID`. OpenCode 2 writes
+    /// `session_message` rows with a `type` column and a nested `$.model`, and may omit
+    /// `$.tokens.total`, so the total falls back to the sum of the token buckets. A completed
+    /// compaction is billed model output too.
+    private static let modelID = "COALESCE(json_extract(data,'$.model.id'),json_extract(data,'$.modelID'))"
+    private static let providerID =
+        "COALESCE(json_extract(data,'$.model.providerID'),json_extract(data,'$.providerID'))"
+    private static let totalTokens = """
+        COALESCE(json_extract(data,'$.tokens.total'),
+                          COALESCE(json_extract(data,'$.tokens.input'),0)
+                          + COALESCE(json_extract(data,'$.tokens.output'),0)
+                          + COALESCE(json_extract(data,'$.tokens.reasoning'),0)
+                          + COALESCE(json_extract(data,'$.tokens.cache.read'),0)
+                          + COALESCE(json_extract(data,'$.tokens.cache.write'),0))
+        """
+    private static let messageKind = "json_extract(data,'$.role') = 'assistant'"
+    /// OpenCode 2 reopens one assistant row for every step of a reply: a finished step leaves its
+    /// cost and tokens on the row, and the next step clears `$.time.completed` and `$.finish` until
+    /// it ends. A row caught mid-reply would add partial usage that changes on the next refresh, so
+    /// only a row at rest counts. `message` rows keep their original, ungated rule.
+    private static let sessionMessageKind = """
+        ((type = 'assistant'
+                  AND (json_type(data,'$.time.completed') IN ('integer','real') OR json_type(data,'$.finish') = 'text'))
+                 OR (type = 'compaction' AND json_extract(data,'$.status') = 'completed'))
+        """
+
+    private static func rowsSQL(table: String, kind: String, cutoffMs: Int?) -> String {
+        """
+          SELECT id, time_created, data, \(table == "message" ? 1 : 0) AS legacy FROM \(table)
+          WHERE \(cutoffMs.map { "time_created >= \($0)\n            AND " } ?? "")json_valid(data)
+            AND \(kind)
+            AND \(providerID) IN \(providerFilter)
+            AND json_type(data,'$.cost') IN ('integer','real')
+        """
+    }
+
+    /// The hosted rows of whichever message tables the database holds.
+    private static func source(_ tables: OpenCodeTables, cutoffMs: Int?) -> String {
+        var bodies: [String] = []
+        if tables.contains(.message) {
+            bodies.append(rowsSQL(table: "message", kind: messageKind, cutoffMs: cutoffMs))
+        }
+        if tables.contains(.sessionMessage) {
+            bodies.append(rowsSQL(table: "session_message", kind: sessionMessageKind, cutoffMs: cutoffMs))
+        }
+        return "(\n" + bodies.joined(separator: "\n          UNION ALL\n") + "\n)"
+    }
+
+    static func dataSQL(cutoffMs: Int, tables: OpenCodeTables = .messageLogs) -> String {
         """
         SELECT json_group_array(json_array(
                  time_created,
                  json_extract(data,'$.cost'),
-                 COALESCE(json_extract(data,'$.tokens.total'),0),
-                 json_extract(data,'$.modelID'),
-                 json_extract(data,'$.providerID')))
-        FROM message
-        WHERE time_created >= \(cutoffMs)
-          AND json_valid(data)
-          AND json_extract(data,'$.role') = 'assistant'
-          AND json_extract(data,'$.providerID') IN \(providerFilter)
-          AND json_type(data,'$.cost') IN ('integer','real');
+                 \(totalTokens),
+                 \(modelID),
+                 \(providerID),
+                 id,
+                 legacy))
+        FROM \(source(tables, cutoffMs: cutoffMs));
         """
     }
 
-    static let probeSQL = """
-        SELECT 1 FROM message
-        WHERE json_valid(data)
-          AND json_extract(data,'$.role') = 'assistant'
-          AND json_extract(data,'$.providerID') IN \(providerFilter)
-          AND json_type(data,'$.cost') IN ('integer','real')
-        LIMIT 1;
-        """
+    static func probeSQL(tables: OpenCodeTables = .messageLogs) -> String {
+        "SELECT 1 FROM \(source(tables, cutoffMs: nil))\nLIMIT 1;"
+    }
 }

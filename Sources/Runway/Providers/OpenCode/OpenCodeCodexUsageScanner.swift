@@ -2,8 +2,12 @@ import Foundation
 
 /// Reads Codex-subscription usage produced inside OpenCode and returns it in the same normalized shape
 /// as Codex's native and pi scanners. OpenCode records both ChatGPT OAuth and ordinary OpenAI API-key
-/// traffic as `providerID = openai`, so rows are eligible only while the local OpenCode credential is
-/// explicitly OAuth. This avoids charging API-key traffic to the Codex subscription card.
+/// traffic as provider `openai`, so a database's rows are eligible only while that database's current
+/// OpenCode credential is explicitly OAuth. This avoids charging API-key traffic to the Codex
+/// subscription card.
+///
+/// Reads both the OpenCode 1 `message` table and the OpenCode 2 `session_message` table. OpenCode 2
+/// writes new messages only to the latter, so a `message`-only query finds nothing after an upgrade.
 struct OpenCodeCodexUsageScanner: Sendable {
     private let authStore: OpenCodeAuthStore
     private let sqlite: SQLiteAccessing
@@ -28,13 +32,6 @@ struct OpenCodeCodexUsageScanner: Sendable {
     /// Best-effort supplementary scan: failures are logged loudly but never hide Codex's live quota
     /// meters or native history. This matches pi's role as an optional local source.
     func scan(now: Date, daysBack: Int = 30, pricing: ModelPricing) async -> LogUsageScan? {
-        do {
-            guard try authStore.hasCodexOAuth() else { return nil }
-        } catch {
-            AppLog.warn(LogTag.plugin("opencode"), "Codex OAuth attribution skipped: \(error.localizedDescription)")
-            return nil
-        }
-
         let paths: [String]
         do {
             paths = try databasePaths()
@@ -48,11 +45,27 @@ struct OpenCodeCodexUsageScanner: Sendable {
         let cutoffMs = Int(since.timeIntervalSince1970 * 1000)
         var rows: [Row] = []
         var failures: [String: String] = [:]
+        var readAny = false
+        var anyOAuth = false
         for path in paths {
             do {
-                if let json = try sqlite.queryValue(path: path, sql: Self.dataSQL(cutoffMs: cutoffMs)) {
+                let tables = try OpenCodeTables.probe(path: path, sqlite: sqlite)
+                // Each channel database is judged by its own credential: a stable API key must not
+                // hide preview OAuth usage, and one channel's login time must not bound another's rows.
+                let credential = try authStore.openAICredential(databasePath: path, tables: tables)
+                guard credential.isOAuth else { continue }
+                anyOAuth = true
+                // A database with neither message table has nothing to contribute and does not vote
+                // on whether the scan failed.
+                guard !tables.isDisjoint(with: .messageLogs) else { continue }
+                let sql = Self.dataSQL(cutoffMs: cutoffMs, tables: tables, oauthSinceMs: credential.oauthSinceMs)
+                if let json = try sqlite.queryValue(path: path, sql: sql) {
                     rows.append(contentsOf: Self.parseRows(json))
                 }
+                readAny = true
+            } catch OpenCodeUsageError.credentialsUnreadable(let detail),
+                    OpenCodeUsageError.credentialDatabaseUnreadable(let detail) {
+                failures[path] = "credentials unreadable: \(detail)"
             } catch {
                 failures[path] = error.localizedDescription
             }
@@ -65,10 +78,12 @@ struct OpenCodeCodexUsageScanner: Sendable {
         for path in newlyFailing.sorted() {
             AppLog.warn(
                 LogTag.plugin("opencode"),
-                "Codex usage query failed for \(path): \(failures[path] ?? "unknown error")"
+                "Codex usage read failed for \(path): \(failures[path] ?? "unknown error")"
             )
         }
-        guard failures.count < paths.count else { return nil }
+        // No OAuth channel means nothing to attribute. With one, a scan that read nothing because
+        // every usable database failed is a miss, not an empty history.
+        guard anyOAuth, readAny || failures.isEmpty else { return nil }
 
         var accumulator = DailyUsageAccumulator()
         var dayKeys = DailyUsageAccumulator.DayKeyCache()
@@ -107,9 +122,12 @@ struct OpenCodeCodexUsageScanner: Sendable {
         var model: String
         var tokens: TokenBreakdown
         var reportedTotalTokens: Int
+        /// From the OpenCode 1 `message` table.
+        var isLegacy = false
     }
 
-    /// Decodes `[completedAt, cost, total, model, input, cacheRead, cacheWrite, output, reasoning, id]`.
+    /// Decodes `[completedAt, cost, total, model, input, cacheRead, cacheWrite, output, reasoning, id,
+    /// isLegacy]`.
     static func parseRows(_ json: String) -> [Row] {
         guard let data = json.data(using: .utf8),
               let payload = (try? JSONSerialization.jsonObject(with: data)) as? [Any]
@@ -140,13 +158,18 @@ struct OpenCodeCodexUsageScanner: Sendable {
                 model: ((values[3] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
                 tokens: tokens,
                 // OpenCode's own total is only a fallback: the parsed buckets are what gets priced.
-                reportedTotalTokens: tokens.totalTokens > 0 ? tokens.totalTokens : ProviderParse.clampedTokenCount(values[2])
+                reportedTotalTokens: tokens.totalTokens > 0 ? tokens.totalTokens : ProviderParse.clampedTokenCount(values[2]),
+                isLegacy: values.count >= 11 && ProviderParse.number(values[10]) == 1
             )
         }
     }
 
-    /// OpenCode can copy a session between release-channel databases. Stable message IDs make those
-    /// copies safe to union without double counting; rows without an ID remain independent.
+    /// OpenCode can copy a session between release-channel databases, and OpenCode 2 copies old
+    /// `message` rows into `session_message` under their original IDs while keeping both tables.
+    /// Stable message IDs make those copies safe to union without double counting; rows without an
+    /// ID remain independent. The `message` original wins over its `session_message` copy: the
+    /// migration stamps the copy's completion with the row's last update, which can be a later day,
+    /// and history must not move when OpenCode is upgraded.
     static func deduplicated(_ rows: [Row]) -> [Row] {
         var withoutID: [Row] = []
         var byID: [String: Row] = [:]
@@ -159,6 +182,10 @@ struct OpenCodeCodexUsageScanner: Sendable {
                 byID[id] = row
                 continue
             }
+            if row.isLegacy != existing.isLegacy {
+                if row.isLegacy { byID[id] = row }
+                continue
+            }
             if row.timestamp > existing.timestamp ||
                 (row.timestamp == existing.timestamp && row.reportedTotalTokens > existing.reportedTotalTokens) {
                 byID[id] = row
@@ -167,30 +194,74 @@ struct OpenCodeCodexUsageScanner: Sendable {
         return withoutID + byID.values
     }
 
-    static func dataSQL(cutoffMs: Int) -> String {
-        let creationCutoffMs = cutoffMs - 7 * 86_400_000
-        return """
+    /// Ten usage columns in `parseRows` order, projected over the unioned table bodies so the two
+    /// schemas cannot drift apart. OpenCode 1 stores the model as `$.modelID`, OpenCode 2 as
+    /// `$.model.id`.
+    private static let dataProjection = """
         SELECT json_group_array(json_array(
                  COALESCE(json_extract(data,'$.time.completed'),time_created),
                  json_extract(data,'$.cost'),
                  COALESCE(json_extract(data,'$.tokens.total'),0),
-                 json_extract(data,'$.modelID'),
+                 COALESCE(json_extract(data,'$.model.id'),json_extract(data,'$.modelID')),
                  COALESCE(json_extract(data,'$.tokens.input'),0),
                  COALESCE(json_extract(data,'$.tokens.cache.read'),0),
                  COALESCE(json_extract(data,'$.tokens.cache.write'),0),
                  COALESCE(json_extract(data,'$.tokens.output'),0),
                  COALESCE(json_extract(data,'$.tokens.reasoning'),0),
-                 id))
-        FROM message
-        WHERE time_created >= \(creationCutoffMs)
-          AND json_valid(data)
-          AND COALESCE(json_extract(data,'$.time.completed'),time_created) >= \(cutoffMs)
-          AND json_extract(data,'$.role') = 'assistant'
-          AND json_extract(data,'$.providerID') = 'openai'
-          AND json_type(data,'$.cost') IN ('integer','real')
-          AND json_extract(data,'$.cost') = 0
-          AND (json_type(data,'$.time.completed') IN ('integer','real')
-               OR json_type(data,'$.finish') = 'text');
+                 id,
+                 legacy))
+        FROM
         """
+
+    private static let completedAt = "COALESCE(json_extract(data,'$.time.completed'),time_created)"
+
+    private static let completedAssistant =
+        "(json_type(data,'$.time.completed') IN ('integer','real') OR json_type(data,'$.finish') = 'text')"
+
+    /// One table's eligible rows. `kind` is the per-schema "completed assistant output" predicate.
+    /// The zero-cost filter is shared: the built-in Codex OAuth plugin writes every model rate as
+    /// zero, so a positive cost is API-key traffic that must stay off the Codex card.
+    private static func rowsSQL(table: String, kind: String, creationCutoffMs: Int, extra: String = "") -> String {
+        """
+          SELECT time_created, id, data, \(table == "message" ? 1 : 0) AS legacy FROM \(table)
+          WHERE time_created >= \(creationCutoffMs)
+            AND json_valid(data)
+            AND COALESCE(json_extract(data,'$.model.providerID'),json_extract(data,'$.providerID')) = 'openai'
+            AND json_type(data,'$.cost') IN ('integer','real')
+            AND json_extract(data,'$.cost') = 0
+            AND \(kind)\(extra)
+        """
+    }
+
+    /// The query for one database, naming only the message tables it holds.
+    ///
+    /// `oauthSinceMs` bounds only the `session_message` branch. Zero cost alone does not prove
+    /// subscription usage there (upstream reports pre-release OpenCode builds that recorded zero
+    /// cost for paid API-key traffic too), so those rows count only from the first OAuth login
+    /// still on record.
+    /// `message` rows priced paid traffic correctly and need no bound. Because the bound sits inside
+    /// the branch, the migrated `message` copy of an older row still reaches the union and dedup.
+    static func dataSQL(cutoffMs: Int, tables: OpenCodeTables = .messageLogs, oauthSinceMs: Int? = nil) -> String {
+        let creationCutoffMs = cutoffMs - 7 * 86_400_000
+        var bodies: [String] = []
+        if tables.contains(.message) {
+            bodies.append(rowsSQL(
+                table: "message",
+                kind: "json_extract(data,'$.role') = 'assistant' AND \(completedAssistant)",
+                creationCutoffMs: creationCutoffMs
+            ))
+        }
+        if tables.contains(.sessionMessage) {
+            // A compaction summary is model output too, and completes through `$.status`.
+            bodies.append(rowsSQL(
+                table: "session_message",
+                kind: "((type = 'assistant' AND \(completedAssistant))"
+                    + " OR (type = 'compaction' AND json_extract(data,'$.status') = 'completed'))",
+                creationCutoffMs: creationCutoffMs,
+                extra: oauthSinceMs.map { "\n            AND \(completedAt) >= \($0)" } ?? ""
+            ))
+        }
+        let source = "(\n" + bodies.joined(separator: "\n          UNION ALL\n") + "\n)"
+        return "\(dataProjection) \(source)\nWHERE \(completedAt) >= \(cutoffMs);"
     }
 }
