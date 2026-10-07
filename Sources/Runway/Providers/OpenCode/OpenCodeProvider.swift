@@ -70,8 +70,8 @@ final class OpenCodeProvider: ProviderRuntime {
     /// once per run, not once per 5-minute refresh.
     private var loggedAuthReadFailure = false
 
-    /// The database that supplied the Go key on the most recent complete read of the login, or
-    /// `nil` when that read found no key. A card that has Go meters must not have them blanked by
+    /// The database that supplied the Go key on the most recent read of the login that reached it,
+    /// or `nil` when that read found no key. A card that has Go meters must not have them blanked by
     /// one failed read of that database; if that database was read and no longer has a key, the
     /// user logged out, whatever other database is unreadable. In memory only, so the first refresh
     /// after a launch starts unprotected.
@@ -139,36 +139,40 @@ final class OpenCodeProvider: ProviderRuntime {
         var authReadError: OpenCodeUsageError?
         do {
             let lookup = try await loadOffMainActor { [authStore] in try authStore.goKeyLookup() }
+            if let goKeySource, let detail = lookup.unreadableDatabases[goKeySource] {
+                // The database this card's Go login came from could not be read. Whatever else the
+                // pass found (another channel's key, a bad auth.json), publishing it would replace
+                // and cache over this login's meters because of one busy database, or show another
+                // account's. Fail the refresh instead; the remembered source stays.
+                logAuthReadFailureOnce("credential database unreadable: \(detail)")
+                return ProviderSnapshot.error(
+                    provider: provider, error: OpenCodeUsageError.credentialDatabaseUnreadable(detail: detail)
+                )
+            }
             goKey = lookup.key
             if lookup.key != nil {
                 goKeySource = lookup.source
                 loggedAuthReadFailure = false
+            } else if let detail = lookup.authFileFailure {
+                // Unchanged from before OpenCode 2 support: a bad auth.json does not block the
+                // tiles, and is the error only when there is nothing else to show.
+                logAuthReadFailureOnce("auth.json unreadable: \(detail)")
+                authReadError = .credentialsUnreadable(detail: detail)
             } else if let unreadable = lookup.unreadableDatabases.min(by: { $0.key < $1.key }) {
-                let error = OpenCodeUsageError.credentialDatabaseUnreadable(detail: unreadable.value)
-                if !loggedAuthReadFailure {
-                    loggedAuthReadFailure = true
-                    AppLog.warn(LogTag.plugin("opencode"), "credential database unreadable: \(unreadable.value)")
-                }
-                if let goKeySource, lookup.unreadableDatabases[goKeySource] != nil {
-                    // The database this card's Go login came from could not be read. Publishing
-                    // tiles alone would replace and cache over its meters because of one busy
-                    // database, so fail the refresh instead.
-                    return ProviderSnapshot.error(provider: provider, error: error)
-                }
                 // Either no Go login was in use, or the database that had it was read and no longer
                 // does (a logout). One unreadable database elsewhere, a leftover channel file say,
                 // must not take the local tiles away.
+                logAuthReadFailureOnce("credential database unreadable: \(unreadable.value)")
                 goKeySource = nil
-                authReadError = error
+                authReadError = .credentialDatabaseUnreadable(detail: unreadable.value)
             } else {
                 goKeySource = nil
                 loggedAuthReadFailure = false
             }
         } catch let error as OpenCodeUsageError {
             authReadError = error
-            if case .credentialsUnreadable(let detail) = error, !loggedAuthReadFailure {
-                loggedAuthReadFailure = true
-                AppLog.warn(LogTag.plugin("opencode"), "auth.json unreadable: \(detail)")
+            if case .credentialsUnreadable(let detail) = error {
+                logAuthReadFailureOnce("data directory unreadable: \(detail)")
             }
         } catch {
             authReadError = .credentialsUnreadable(detail: error.localizedDescription)
@@ -273,6 +277,12 @@ final class OpenCodeProvider: ProviderRuntime {
             warning: rejectedKey ? OpenCodeUsageError.unauthorized.localizedDescription : nil,
             loginRequired: rejectedKey
         )
+    }
+
+    private func logAuthReadFailureOnce(_ message: String) {
+        guard !loggedAuthReadFailure else { return }
+        loggedAuthReadFailure = true
+        AppLog.warn(LogTag.plugin("opencode"), message)
     }
 
     private enum GoFetch {
