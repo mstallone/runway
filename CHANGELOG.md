@@ -1,5 +1,84 @@
 # Changelog
 
+## v0.8.17
+
+### New Features
+- Show Claude's usage-limit reset grants in a Rate Limit Resets row ([#164](https://github.com/mstallone/runway/pull/164)) by @mstallone
+- Support Codex Pro 100, Pro 200, and Pro 500 plan labels ([#137](https://github.com/mstallone/runway/pull/137)) by @mstallone
+
+### Bug Fixes
+- Keep the last good OpenCode card whenever its Go key database is unreadable ([#167](https://github.com/mstallone/runway/pull/167)) by @mstallone
+- Restore OpenCode and Codex usage after upgrading to OpenCode 2 ([#165](https://github.com/mstallone/runway/pull/165)) by @mstallone
+- Keep Claude's cached limits on the first rate limit after a relaunch ([#166](https://github.com/mstallone/runway/pull/166)) by @mstallone
+- Show the OpenCode session reset countdown for sessions under 1% ([#163](https://github.com/mstallone/runway/pull/163)) by @mstallone
+- Fix a crash on corrupt token counts and log failures that were silent ([#158](https://github.com/mstallone/runway/pull/158)) by @mstallone
+- Bound the Cursor usage export with a wall-clock deadline ([#152](https://github.com/mstallone/runway/pull/152)) by @mstallone
+- Use Cursor's model-pool percentages for team seats instead of the legacy dollar cap ([#151](https://github.com/mstallone/runway/pull/151)) by @mstallone
+- Keep Grok local spend when a team login has no personal quota ([#148](https://github.com/mstallone/runway/pull/148)) by @mstallone
+- Read the login-shell environment when an rc file prints a banner ([#150](https://github.com/mstallone/runway/pull/150)) by @mstallone
+- Keep Claude usage records whose nested iteration model is null ([#149](https://github.com/mstallone/runway/pull/149)) by @mstallone
+- Show an exhausted Devin weekly quota when the percentage is omitted ([#147](https://github.com/mstallone/runway/pull/147)) by @mstallone
+- Align the provider header to the card and pin the plan to the trailing edge ([#142](https://github.com/mstallone/runway/pull/142)) by @mstallone
+
+### Refactor
+- Move WidgetData pace logic and status-item tooltips to their own files ([#161](https://github.com/mstallone/runway/pull/161)) by @mstallone
+- Split SystemClients.swift along its existing sections ([#160](https://github.com/mstallone/runway/pull/160)) by @mstallone
+- Give repeated helpers one owner ([#159](https://github.com/mstallone/runway/pull/159)) by @mstallone
+- Remove dead production code and parameters nobody varies ([#156](https://github.com/mstallone/runway/pull/156)) by @mstallone
+- Remove production code that only tests used ([#153](https://github.com/mstallone/runway/pull/153)) by @mstallone
+- Remove test-only seams from the keychain, iCloud and scanner code ([#143](https://github.com/mstallone/runway/pull/143)) by @mstallone
+- Remove test-only production seams and manual probe tests ([#138](https://github.com/mstallone/runway/pull/138)) by @mstallone
+
+### Chores
+- Sync pricing with Cursor's table and price Codex Ultrafast ([#145](https://github.com/mstallone/runway/pull/145)) by @mstallone
+- Refresh bundled LiteLLM and models.dev pricing snapshots by @mstallone
+- Fix a timing race in the process-runner session test ([#162](https://github.com/mstallone/runway/pull/162)) by @mstallone
+- Fix comments and docs that describe removed mechanisms ([#157](https://github.com/mstallone/runway/pull/157)) by @mstallone
+- Remove duplicate tests and repair ones that could not fail ([#155](https://github.com/mstallone/runway/pull/155)) by @mstallone
+- Fix provider tests that could not fail for the reason they name ([#154](https://github.com/mstallone/runway/pull/154)) by @mstallone
+- Stop test runs from piling up preferences files ([#146](https://github.com/mstallone/runway/pull/146)) by @mstallone
+- Fix infrastructure tests that could not fail for the reason they name ([#144](https://github.com/mstallone/runway/pull/144)) by @mstallone
+- Check OpenCode and Cursor default layouts through LayoutStore ([#141](https://github.com/mstallone/runway/pull/141)) by @mstallone
+- Consolidate duplicate tests onto their owning suites ([#140](https://github.com/mstallone/runway/pull/140)) by @mstallone
+- Fix tests that could not fail for the reason they name ([#139](https://github.com/mstallone/runway/pull/139)) by @mstallone
+
+---
+
+### Changelog
+**Full Changelog**: [v0.8.16...v0.8.17](https://github.com/mstallone/runway/compare/v0.8.16...v0.8.17)
+
+- [8170cd5](https://github.com/mstallone/runway/commit/8170cd5baa274b17a9636788527f28b5ad9f2c50) Keep the Last Good OpenCode Card Whenever Its Go Key Database Is Unreadable (#167) by @mstallone
+- [8ff8171](https://github.com/mstallone/runway/commit/8ff81710fa2256023153fc90c84ec2d035c5bbdb) Restore OpenCode and Codex Usage After Upgrading to OpenCode 2 (#165) by @mstallone
+- [f5fc134](https://github.com/mstallone/runway/commit/f5fc1348829f3ce6bfcff20016efa051bc77cdee) Keep Claude's Cached Limits on the First Rate Limit After a Relaunch (#166) by @mstallone
+- [e0bdffa](https://github.com/mstallone/runway/commit/e0bdffac077850185f4b41e4557fb04c00bc6e80) Show the OpenCode Session Reset Countdown for Sessions Under 1% (#163) by @mstallone
+- [62adb62](https://github.com/mstallone/runway/commit/62adb625920ef4d6d1692c9e54687ac2041ae9fd) Show Claude's Usage-Limit Reset Grants in a Rate Limit Resets Row (#164) by @mstallone
+- [abcb64c](https://github.com/mstallone/runway/commit/abcb64cea6b798d74e8962804ab84b1d65267e17) Fix a timing race in the process-runner session test (#162) by @mstallone
+- [4cb741f](https://github.com/mstallone/runway/commit/4cb741f13cf2f8dcebbe592d094c8f242c291397) Move WidgetData pace logic and status-item tooltips to their own files (#161) by @mstallone
+- [cfe18bf](https://github.com/mstallone/runway/commit/cfe18bf6d9e42a5780df49b4c6ed3af5e86265cc) Split SystemClients.swift along its existing sections (#160) by @mstallone
+- [e530596](https://github.com/mstallone/runway/commit/e530596a0e53639812608f9509b3d4025dc05c92) Give repeated helpers one owner (#159) by @mstallone
+- [d5b6721](https://github.com/mstallone/runway/commit/d5b67215ae068ada6dc5ae651e5cda60957ae973) Fix a crash on corrupt token counts and log failures that were silent (#158) by @mstallone
+- [18a7ef0](https://github.com/mstallone/runway/commit/18a7ef0d9ca3006a7bb2409306cf3ad02779a16f) Fix comments and docs that describe removed mechanisms (#157) by @mstallone
+- [9c4aef8](https://github.com/mstallone/runway/commit/9c4aef8651aa4a151da7164f304883b8b18e1144) Remove dead production code and parameters nobody varies (#156) by @mstallone
+- [9c0c4ce](https://github.com/mstallone/runway/commit/9c0c4ceaffa1dcedf21a39ea6b72362e2205ee9f) Bound the Cursor Usage Export With a Wall-Clock Deadline (#152) by @mstallone
+- [7d82ee4](https://github.com/mstallone/runway/commit/7d82ee4d9f16ec4e27cffd96a9a738532d3fc6fc) Use Cursor's Model-Pool Percentages for Team Seats Instead of the Legacy Dollar Cap (#151) by @mstallone
+- [5e11b60](https://github.com/mstallone/runway/commit/5e11b6029feadce81c5fde1d83fcd1c40b50d697) Keep Grok Local Spend When a Team Login Has No Personal Quota (#148) by @mstallone
+- [7d197ad](https://github.com/mstallone/runway/commit/7d197ada347a1c73a49f5feaf04b5a8e322a4112) Read the Login-Shell Environment When an Rc File Prints a Banner (#150) by @mstallone
+- [3764901](https://github.com/mstallone/runway/commit/37649017f3d7334fb0f115b0bd940e1c260978d0) Keep Claude Usage Records Whose Nested Iteration Model Is Null (#149) by @mstallone
+- [5770636](https://github.com/mstallone/runway/commit/5770636b2db332140c9542c478b7b195bca5c939) Show an Exhausted Devin Weekly Quota When the Percentage Is Omitted (#147) by @mstallone
+- [46151bd](https://github.com/mstallone/runway/commit/46151bdbd17d08b96bf3105f41cbed4069bc10c7) Remove duplicate tests and repair ones that could not fail (#155) by @mstallone
+- [0d25a2f](https://github.com/mstallone/runway/commit/0d25a2fba1f86f79ca0fea0210683871fee54b73) Fix provider tests that could not fail for the reason they name (#154) by @mstallone
+- [f12d1c6](https://github.com/mstallone/runway/commit/f12d1c6752f351f45a8d1b5538c82731e370c04e) Remove production code that only tests used (#153) by @mstallone
+- [691f779](https://github.com/mstallone/runway/commit/691f779fbde0d62bd6fb4b3e633c32ca61f55faf) Stop test runs from piling up preferences files (#146) by @mstallone
+- [b8f4155](https://github.com/mstallone/runway/commit/b8f4155eb744ad1aecb5a49ad5dfa12a359aae79) Sync Pricing With Cursor's Table and Price Codex Ultrafast (#145) by @mstallone
+- [d217932](https://github.com/mstallone/runway/commit/d217932430b07dfb988ff6de895245c31bea9d6b) Fix infrastructure tests that could not fail for the reason they name (#144) by @mstallone
+- [295e699](https://github.com/mstallone/runway/commit/295e699c0c1f108552bd779a12601e123f6884c4) Align provider header to the card and pin the plan to the trailing edge (#142) by @mstallone
+- [909652b](https://github.com/mstallone/runway/commit/909652b84e78dea3ac534f22505c41e28e604bdb) Remove test-only seams from the keychain, iCloud and scanner code (#143) by @mstallone
+- [9251b44](https://github.com/mstallone/runway/commit/9251b44df87231332135eb0310570dc39a7d881e) Check OpenCode and Cursor default layouts through LayoutStore (#141) by @mstallone
+- [93700c6](https://github.com/mstallone/runway/commit/93700c699a4f4e7187e506b3376fa76e9fd8601f) Consolidate duplicate tests onto their owning suites (#140) by @mstallone
+- [99f2b1a](https://github.com/mstallone/runway/commit/99f2b1a0fb258dc65a937ac6a088bd12fe3ce976) Fix tests that could not fail for the reason they name (#139) by @mstallone
+- [04dd83d](https://github.com/mstallone/runway/commit/04dd83ddf3567a95152317f002078b5aca94c08f) Remove test-only production seams and manual probe tests (#138) by @mstallone
+- [5be1764](https://github.com/mstallone/runway/commit/5be17649f74a4bb2010f00ade4ad1cef754e77a2) Support Codex Pro 100, Pro 200, and Pro 500 plan labels (#137) by @mstallone
+
 ## v0.8.16
 
 ### New Features
