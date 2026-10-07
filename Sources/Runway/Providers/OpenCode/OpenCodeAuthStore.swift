@@ -109,6 +109,10 @@ struct OpenCodeAuthStore: Sendable {
         var unreadableDatabases: [String: String] = [:]
         /// Why `auth.json` could not be read, when a database deferred to it. Log detail only.
         var authFileFailure: String?
+        /// The sources left undecided by that failure: each database that deferred to `auth.json`,
+        /// or the `auth.json` path when there is no database. Any other database was either read
+        /// to an answer or is in `unreadableDatabases`.
+        var undecidedSources: Set<String> = []
     }
 
     /// The loader behind `goAPIKey()`. Throws only for a data directory that cannot be listed.
@@ -127,6 +131,7 @@ struct OpenCodeAuthStore: Sendable {
                 lookup.source = lookup.key == nil ? nil : authFilePath
             } catch OpenCodeUsageError.credentialsUnreadable(let detail) {
                 lookup.authFileFailure = detail
+                lookup.undecidedSources = [authFilePath]
             }
             return lookup
         }
@@ -150,6 +155,7 @@ struct OpenCodeAuthStore: Sendable {
                 lookup.unreadableDatabases[path] = detail
             } catch OpenCodeUsageError.credentialsUnreadable(let detail) {
                 lookup.authFileFailure = lookup.authFileFailure ?? detail
+                lookup.undecidedSources.insert(path)
             }
         }
         return lookup

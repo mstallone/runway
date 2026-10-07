@@ -278,6 +278,70 @@ final class OpenCodeProviderDatabaseTests: XCTestCase {
         XCTAssertEqual(http.requests.count, 1)
     }
 
+    func testLogoutBesideABadAuthFileIsForgottenBeforeTheDatabaseFails() async throws {
+        // The stable database had the key, was then read cleanly with no key (a logout), while the
+        // other channel still defers to an invalid auth.json. A later failed read of the stable
+        // database is not a failed read of a login any more.
+        let dir = try DB(self)
+        try dir.execute(goKeyDatabase("oc_sk_stable"))
+        try dir.execute(DB.openCode118Tables, in: "opencode-next.db")
+        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: usageJSON()))
+        let provider = provider(dir, auth: "not json", http: http)
+
+        let loggedIn = await provider.refresh()
+        XCTAssertNotNil(loggedIn.line(label: "Session"))
+
+        try dir.execute("DELETE FROM credential;")
+        let loggedOut = await provider.refresh()
+        XCTAssertNil(loggedOut.errorText)
+        XCTAssertNotNil(loggedOut.line(label: "Today"))
+        XCTAssertNil(loggedOut.line(label: "Session"))
+
+        try dir.writeCorruptDatabase("opencode.db")
+        let afterwards = await provider.refresh()
+        XCTAssertNil(afterwards.errorText)
+        XCTAssertNil(afterwards.line(label: "Session"))
+        XCTAssertEqual(http.requests.count, 1)
+    }
+
+    func testBadAuthFileKeepsTheSourceThatDefersToIt() async throws {
+        // The key came from auth.json through a database OpenCode 2 never took over. The file then
+        // becomes invalid, which decides nothing about that login, so a failed read of the database
+        // on the next refresh is still a failed read of the login.
+        let dir = try DB(self)
+        try dir.execute(DB.openCode118Tables + DB.message(id: "m1", ms: epochMs("2026-07-12T10:00:00.000Z"), data:
+            #"{"role":"assistant","providerID":"opencode-go","modelID":"glm-5.2","cost":2,"tokens":{"total":500}}"#))
+        let files = FakeFiles([dir.path("auth.json"): authJSON])
+        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: usageJSON()))
+        let now = self.now
+        let provider = OpenCodeProvider(
+            authStore: OpenCodeAuthStore(
+                files: files,
+                environment: FakeEnvironment(["OPENCODE_DATA_DIR": dir.url.path]),
+                homeDirectory: { URL(fileURLWithPath: "/nonexistent") }
+            ),
+            usageClient: OpenCodeUsageClient(http: http),
+            usageScanner: OpenCodeUsageScanner(databasePaths: dir.databasePaths),
+            now: { now }
+        )
+
+        let first = await provider.refresh()
+        XCTAssertNotNil(first.line(label: "Session"))
+
+        files.files[dir.path("auth.json")] = "not json"
+        let badFile = await provider.refresh()
+        XCTAssertNil(badFile.errorText)
+        XCTAssertNotNil(badFile.line(label: "Today"))
+
+        try dir.writeCorruptDatabase("opencode.db")
+        let lockedDatabase = await provider.refresh()
+        XCTAssertEqual(
+            lockedDatabase.errorText,
+            OpenCodeUsageError.credentialDatabaseUnreadable(detail: "").localizedDescription
+        )
+        XCTAssertEqual(http.requests.count, 1)
+    }
+
     func testUnreadableKeyDatabaseDoesNotFallThroughToAnotherChannelsKey() async throws {
         // Two channels, possibly two Go accounts. Losing the stable database mid-run must not show
         // and cache the other channel's meters under the same card.

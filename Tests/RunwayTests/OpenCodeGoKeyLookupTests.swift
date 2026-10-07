@@ -58,6 +58,7 @@ final class OpenCodeGoKeyLookupTests: XCTestCase {
         XCTAssertNil(lookup.source)
         XCTAssertEqual(Array(lookup.unreadableDatabases.keys), [dir.path()])
         XCTAssertNotNil(lookup.authFileFailure)
+        XCTAssertEqual(lookup.undecidedSources, [dir.path("opencode-next.db")])
         // The throwing form reports the file, which is the one the user can fix.
         XCTAssertThrowsError(try store.goAPIKey()) { error in
             guard case OpenCodeUsageError.credentialsUnreadable = error else {
@@ -69,5 +70,6 @@ final class OpenCodeGoKeyLookupTests: XCTestCase {
         let fileOnly = try noDatabase.authStore(auth: "not json").goKeyLookup()
         XCTAssertNil(fileOnly.key)
         XCTAssertNotNil(fileOnly.authFileFailure)
+        XCTAssertEqual(fileOnly.undecidedSources, [noDatabase.path("auth.json")])
     }
 }

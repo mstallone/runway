@@ -158,6 +158,12 @@ final class OpenCodeProvider: ProviderRuntime {
                 // tiles, and is the error only when there is nothing else to show.
                 logAuthReadFailureOnce("auth.json unreadable: \(detail)")
                 authReadError = .credentialsUnreadable(detail: detail)
+                // The bad file leaves open only the sources that defer to it. If the remembered
+                // one was read to an answer and has no key, that is a logout: forget it, or a later
+                // failed read of it would be taken for a failed read of a login.
+                if let source = goKeySource, !lookup.undecidedSources.contains(source) {
+                    goKeySource = nil
+                }
             } else if let unreadable = lookup.unreadableDatabases.min(by: { $0.key < $1.key }) {
                 // Either no Go login was in use, or the database that had it was read and no longer
                 // does (a logout). One unreadable database elsewhere, a leftover channel file say,
