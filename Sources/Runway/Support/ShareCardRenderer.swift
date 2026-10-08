@@ -123,16 +123,17 @@ enum ShareCardRenderer {
         return renderAndCopy(view, label: group.provider.id, layout: layout)
     }
 
-    /// The Total Spend counterpart to `share(group:…)`: renders the aggregate ring card for the
+    /// The Total Spend counterpart to `share(group:…)`: renders the aggregate card for the
     /// currently selected period and metric and copies the PNG to the clipboard, with the same compact
     /// render and the same "Copied to clipboard" confirmation. `total` is passed
-    /// already aggregated — the card computed it for the on-screen ring, so the export can't drift
+    /// already aggregated — the card computed it for the on-screen breakdown, so the export can't drift
     /// from the display. Returns whether the PNG landed on the pasteboard, so the share button can
     /// gate its own "copied" micro-animation on actual success.
     @discardableResult
     static func shareTotalSpend(
         total: TotalSpend,
         metric: TotalSpendMetric,
+        style: TotalSpendBreakdown.Style = .bar,
         appearance: ColorScheme,
         layout: LayoutStore
     ) -> Bool {
@@ -141,7 +142,7 @@ enum ShareCardRenderer {
             playAlertSound()
             return false
         }
-        let view = TotalSpendShareCardView(total: total, metric: metric, appearance: appearance)
+        let view = TotalSpendShareCardView(total: total, metric: metric, style: style, appearance: appearance)
         return renderAndCopy(view, label: metric.title.lowercased(), layout: layout)
     }
 

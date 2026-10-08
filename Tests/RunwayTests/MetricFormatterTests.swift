@@ -57,29 +57,19 @@ final class MetricFormatterTests: XCTestCase {
         XCTAssertEqual(MetricFormatter.costPerMtok(2059.07, style: .full), "$2,059.07/MTok")
     }
 
-    func testTotalSpendRingCenterSplitsValueAndUnit() {
-        let spend = MetricFormatter.totalSpendRingCenter(533, metric: .cost)
-        XCTAssertEqual(spend.primary, "$533")
-        XCTAssertEqual(spend.unit, "dollars")
+    func testTotalSpendTileKeepsThePeriodFigureShort() {
+        XCTAssertEqual(MetricFormatter.totalSpendTile(533.2, metric: .cost), "$533.20")
+        XCTAssertEqual(MetricFormatter.totalSpendTile(2059.07, metric: .cost), "$2.1K")
+        XCTAssertEqual(MetricFormatter.totalSpendTile(12_400_000, metric: .tokens), "12.4M")
+        XCTAssertEqual(MetricFormatter.totalSpendTile(1_500_000_000, metric: .tokens), "1.5B")
+        XCTAssertEqual(MetricFormatter.totalSpendTile(820.6, metric: .tokens), "820.6")
+        // The tile drops the rate's unit; the header's metric menu carries it.
+        XCTAssertEqual(MetricFormatter.totalSpendTile(1.37, metric: .costPerMtok), "$1.37")
+    }
 
-        let spendAbbrev = MetricFormatter.totalSpendRingCenter(2059.07, metric: .cost)
-        XCTAssertEqual(spendAbbrev.primary, "$2.1K")
-        XCTAssertEqual(spendAbbrev.unit, "dollars")
-
-        let tokens = MetricFormatter.totalSpendRingCenter(12_400_000, metric: .tokens)
-        XCTAssertEqual(tokens.primary, "12.4")
-        XCTAssertEqual(tokens.unit, "million")
-
-        let billions = MetricFormatter.totalSpendRingCenter(1_500_000_000, metric: .tokens)
-        XCTAssertEqual(billions.primary, "1.5")
-        XCTAssertEqual(billions.unit, "billion")
-
-        let smallTokens = MetricFormatter.totalSpendRingCenter(820.6, metric: .tokens)
-        XCTAssertEqual(smallTokens.primary, "820.6")
-        XCTAssertEqual(smallTokens.unit, "tokens")
-
-        let rate = MetricFormatter.totalSpendRingCenter(1.37, metric: .costPerMtok)
-        XCTAssertEqual(rate.primary, "$1.37")
-        XCTAssertEqual(rate.unit, "MTok")
+    func testTotalSpendOneLineValueFollowsTheMetric() {
+        XCTAssertEqual(MetricFormatter.totalSpend(2059.07, metric: .cost, style: .full), "$2,059.07")
+        XCTAssertEqual(MetricFormatter.totalSpend(12_400_000, metric: .tokens, style: .row), "12.4M")
+        XCTAssertEqual(MetricFormatter.totalSpend(1.37, metric: .costPerMtok, style: .full), "$1.37/MTok")
     }
 }

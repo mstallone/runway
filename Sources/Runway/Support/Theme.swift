@@ -73,7 +73,13 @@ extension View {
     /// and dark. Drawing the opaque page base first keeps a lifted drag preview solid while it floats;
     /// the preview's depth comes from `ReorderLiftPreview`'s shadow, not a different card surface.
     func cardSurface() -> some View {
-        modifier(CardSurfaceModifier())
+        modifier(CardSurfaceModifier(shape: Theme.cardShape))
+    }
+
+    /// The card surface in a shape other than the standard rounded rectangle (the Total Spend
+    /// card's joined tab) — same fills and translucent treatment, so it can't drift from the cards.
+    func cardSurface<S: Shape>(in shape: S) -> some View {
+        modifier(CardSurfaceModifier(shape: shape))
     }
 
     /// A single-row lifted preview surface: the card surface plus a thin separator hairline that fences
@@ -102,16 +108,17 @@ extension View {
 /// Under the translucent surface treatment (Increase Transparency / the secret-code egg) the opaque page base
 /// is dropped so the behind-window vibrancy backdrop shows through, while the system grouped fill stays
 /// so cards still read as grouped boxes over the desktop.
-private struct CardSurfaceModifier: ViewModifier {
+private struct CardSurfaceModifier<S: Shape>: ViewModifier {
+    let shape: S
     @Environment(\.popoverSurfaceTreatment) private var treatment
 
     func body(content: Content) -> some View {
         content.background {
             switch treatment {
             case .opaque:
-                Theme.cardShape
+                shape
                     .fill(Theme.traySurface)
-                    .overlay { Theme.cardShape.fill(Theme.cardFill) }
+                    .overlay { shape.fill(Theme.cardFill) }
             case .translucent:
                 // Increase Transparency, party, and drunk: the card carries its own frosted
                 // `.regularMaterial` so metric text stays legible over whatever shows through the
@@ -120,9 +127,9 @@ private struct CardSurfaceModifier: ViewModifier {
                 // standard material — a bare low-opacity fill over the desktop is the "washed out"
                 // anti-pattern. This is a standard material, not `glassEffect`: Liquid Glass stays in the
                 // chrome layer, not the content cards.
-                Theme.cardShape
+                shape
                     .fill(.regularMaterial)
-                    .overlay { Theme.cardShape.fill(Theme.cardFill) }
+                    .overlay { shape.fill(Theme.cardFill) }
             }
         }
     }

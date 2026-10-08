@@ -199,6 +199,12 @@ enum MenuBarPopover {
     /// overlapping animations off-vsync and the footer visibly jitters behind the unfolding rows.
     static var coAnimateExpansion: ((_ providerID: String, _ expanding: Bool) -> Void)?
 
+    /// The same single-clock retarget for dashboard content that knows its own height change — the
+    /// Total Spend card opening a provider's accounts, switching period, or collapsing to its
+    /// headline. Call inside the `withAnimation` that changes the content, with the expected
+    /// change in points (positive grows). The settled measurement corrects any estimate error.
+    static var coAnimateHeightDelta: ((_ delta: CGFloat) -> Void)?
+
     /// Closes the popover. Falls back to ordering the given window out if no owner has installed
     /// a handler (which would be a wiring bug, so it's logged loudly by the caller's absence of
     /// effect rather than silently swallowed here).

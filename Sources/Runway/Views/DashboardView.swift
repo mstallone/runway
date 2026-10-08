@@ -445,6 +445,31 @@ struct DashboardView: View {
                     // a correction when the delta was off (a provider's first-ever toggle).
                     animatedHeight = MenuBarPopover.clampHeight?(ideal) ?? ideal
                 }
+                MenuBarPopover.coAnimateHeightDelta = { delta in
+                    guard didEstablishHeight, animatedHeight > 0, layout.screen == .dashboard else { return }
+                    // Same baseline rule as the caret: a change landing while an earlier morph is
+                    // still settling builds on the driven target, not the mid-flight measurement.
+                    let fromIdeal = expansionSettling
+                        ? animatedHeight
+                        : (heightCoordinator.measuredIdeal[.dashboard] ?? animatedHeight)
+                    // Nothing to learn here — the caller computes its delta fresh each time — so a
+                    // caret toggle's pending learn must not absorb this change's measurement.
+                    pendingExpansion = nil
+                    expansionSettling = true
+                    let ideal = fromIdeal + delta
+                    // Plain assignment: rides the caller's `withAnimation(Motion.spring)`.
+                    animatedHeight = MenuBarPopover.clampHeight?(ideal) ?? ideal
+                    // The settle normally runs off the measurement changes this morph produces.
+                    // Arm it here too, so an estimate that turns out to change nothing can't leave
+                    // the settling marker set with no measurement left to clear it.
+                    measurementSettleTask?.cancel()
+                    measurementSettleTask = Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(600))
+                        guard !Task.isCancelled else { return }
+                        applySettledMeasurement()
+                        measurementSettleTask = nil
+                    }
+                }
             }
             // Reaches `modeBody`, the `PopoverSurface` background, the `.tooMuchTransparency` egg layers
             // (applied on the visual panel above), and every card: drives whether surfaces paint their
