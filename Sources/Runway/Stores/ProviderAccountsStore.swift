@@ -27,6 +27,12 @@ enum ProviderAccountID {
         cardID.firstIndex(of: "@").map { String(cardID[..<$0]) } ?? cardID
     }
 
+    /// The name a family's accounts share ("Claude"), for surfaces that roll several account cards
+    /// into one line. `nil` for providers outside the account-first model, which are their own family.
+    static func familyDisplayName(_ family: String) -> String? {
+        families.contains(family) ? family.capitalized : nil
+    }
+
     /// Whether a card id names an extra account card (`claude@ab12cd34`) rather than a bare
     /// provider id.
     static func isAccountCard(_ cardID: String) -> Bool {

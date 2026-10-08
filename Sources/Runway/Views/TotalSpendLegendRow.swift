@@ -9,7 +9,8 @@ import SwiftUI
 struct TotalSpendLegendRow: View {
     let title: String
     let value: String
-    let color: Color
+    /// `nil` for an account row under its provider: the provider's row already carries the color.
+    let color: Color?
     let fontSize: CGFloat
 
     @Environment(\.popoverIsVisible) private var popoverIsVisible
@@ -22,9 +23,11 @@ struct TotalSpendLegendRow: View {
 
     var body: some View {
         HStack(spacing: 7) {
-            Circle()
-                .fill(color)
-                .frame(width: 8, height: 8)
+            if let color {
+                Circle()
+                    .fill(color)
+                    .frame(width: 8, height: 8)
+            }
             textContent
         }
         .frame(maxWidth: .infinity, alignment: .leading)

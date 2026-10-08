@@ -13,8 +13,8 @@ enum TotalSpendPeriod: String, CaseIterable, Identifiable, Sendable {
     /// but kept as its own accessor so the two meanings can diverge without a hunt).
     var lineLabel: String { rawValue }
 
-    /// Compact segment title for the period switcher — "Last 30 Days" doesn't fit three-across
-    /// in the 320pt popover without shrinking every segment.
+    /// Compact title for the period tiles — "Last 30 Days" doesn't fit three-across in the 320pt
+    /// popover without shrinking every tile.
     var shortLabel: String {
         switch self {
         case .today: "Today"
@@ -24,11 +24,11 @@ enum TotalSpendPeriod: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// Which quantity the Total Spend card's ring, center, and legend show. The title menu persists this
+/// Which quantity the Total Spend card's period totals, share bar, and legend show. The header menu persists this
 /// choice; the aggregator always collects both dollars and tokens so flipping modes doesn't re-scan.
 /// Raw value `apiSpend` is kept so existing installs don't lose their stored Cost selection.
 enum TotalSpendMetric: String, CaseIterable, Identifiable, Sendable {
-    /// Menu order is declaration order: Cost → Cost/MTok → Tokens. Cost is the default.
+    /// Menu order is declaration order: Cost → Cost/MTok → Tokens. Tokens is the default.
     case cost = "apiSpend"
     case costPerMtok
     case tokens
@@ -75,6 +75,10 @@ struct TotalSpendSlice: Identifiable, Equatable {
 
     var id: String { provider.id }
 
+    /// The provider this account belongs to (`claude@ab12cd34` → `claude`). The card groups its
+    /// breakdown by this, so several accounts of one provider read as one line.
+    var family: String { ProviderAccountID.family(of: provider.id) }
+
     /// Dollars per million tokens for this provider alone. `nil` when either side is missing.
     var costPerMtok: Double? {
         guard amountUSD > 0, tokenCount > 0 else { return nil }
@@ -82,8 +86,8 @@ struct TotalSpendSlice: Identifiable, Equatable {
     }
 }
 
-/// One provider's ready-to-draw contribution under a chosen metric: the amount that sizes the ring
-/// and ranks the legend, plus the formatted value surfaces read through `MetricFormatter`.
+/// One provider's ready-to-draw contribution under a chosen metric: the amount that sizes the share
+/// bar and ranks the legend, plus the formatted value surfaces read through `MetricFormatter`.
 struct TotalSpendProjectedSlice: Identifiable, Equatable {
     let provider: Provider
     /// The already-resolved card title (see `TotalSpendSlice.title`) — what the legend renders.
@@ -94,10 +98,13 @@ struct TotalSpendProjectedSlice: Identifiable, Equatable {
     var id: String { provider.id }
 }
 
-/// A period's cross-provider totals under one metric: ranked slices, center value, and estimate flag.
+/// A period's cross-provider totals under one metric: ranked slices, combined value, and estimate flag.
 struct TotalSpendProjection: Equatable {
     let metric: TotalSpendMetric
     let slices: [TotalSpendProjectedSlice]
+    /// The same slices rolled up by provider family, ranked like `slices`. This is what the card
+    /// draws; `slices` stays the flat per-account ranking.
+    let groups: [TotalSpendGroup]
     let centerValue: Double
     let isEstimated: Bool
 
@@ -109,8 +116,12 @@ struct TotalSpendProjection: Equatable {
 struct TotalSpend: Equatable {
     let period: TotalSpendPeriod
     let slices: [TotalSpendSlice]
+    /// Families with more than one account among the aggregated providers, whether or not each
+    /// account spent in this period. Their group is titled by the family ("Claude") in every
+    /// period, so a row never flips between a family name and an account name as periods change.
+    var multiAccountFamilies: Set<String> = []
 
-    /// Filters, ranks, and computes the center value for the title menu's selected metric.
+    /// Filters, ranks, and computes the combined value for the header menu's selected metric.
     func projection(for metric: TotalSpendMetric) -> TotalSpendProjection {
         let included: [(slice: TotalSpendSlice, display: Double)] = slices.compactMap { slice in
             switch metric {
@@ -156,12 +167,18 @@ struct TotalSpend: Equatable {
             estimated = ranked.contains { $0.slice.estimated }
         }
 
-        return TotalSpendProjection(metric: metric, slices: projected, centerValue: center, isEstimated: estimated)
+        return TotalSpendProjection(
+            metric: metric,
+            slices: projected,
+            groups: TotalSpendGroup.make(from: ranked.map(\.slice), metric: metric, multiAccountFamilies: multiAccountFamilies),
+            centerValue: center,
+            isEstimated: estimated
+        )
     }
 }
 
 /// Sums per-provider daily spend into one cross-provider total — the data source for the dashboard's
-/// Total Spend ring card. Pure and synchronous: it reads already-refreshed `ProviderSnapshot`s and
+/// Total Spend card. Pure and synchronous: it reads already-refreshed `ProviderSnapshot`s and
 /// never fetches. A provider contributes when its snapshot carries a `.values` line with the period's
 /// label *and* that line has dollars and/or tokens — idle periods (no line) are excluded, never zero.
 enum TotalSpendAggregator {
@@ -196,6 +213,8 @@ enum TotalSpendAggregator {
                 estimated: dollars.contains(where: \.estimated)
             )
         }
-        return TotalSpend(period: period, slices: slices)
+        let accountsPerFamily = Dictionary(grouping: providers) { ProviderAccountID.family(of: $0.id) }
+        let multiAccountFamilies = Set(accountsPerFamily.filter { $0.value.count > 1 }.keys)
+        return TotalSpend(period: period, slices: slices, multiAccountFamilies: multiAccountFamilies)
     }
 }

@@ -413,16 +413,7 @@ struct DashboardView: View {
             // caret's own `withAnimation`, so rows, panel edge, and footer share one spring clock.
             .onAppear {
                 MenuBarPopover.coAnimateExpansion = { providerID, expanding in
-                    guard didEstablishHeight, animatedHeight > 0, layout.screen == .dashboard else { return }
-                    // The baseline the delta applies to. A SUPERSEDING toggle (an earlier morph is
-                    // still settling) must build on the DRIVEN model target — `animatedHeight`
-                    // already holds where the previous toggle is heading — because `measuredIdeal`
-                    // is still an interpolated mid-flight height; deriving from it could drive a
-                    // rapid expand/collapse below the collapsed height or swallow a second card's
-                    // expansion. A clean toggle uses the settled measurement as before.
-                    let fromIdeal = expansionSettling
-                        ? animatedHeight
-                        : (heightCoordinator.measuredIdeal[.dashboard] ?? animatedHeight)
+                    guard let fromIdeal = panelRetargetBaseline else { return }
                     let key = expansionDeltaKey(for: providerID)
                     let estimate = estimatedExpansionDelta(for: providerID)
                     let delta = expansionDeltas[key] ?? estimate
@@ -444,6 +435,26 @@ struct DashboardView: View {
                     // the change rides that same transaction. The measurement that follows only issues
                     // a correction when the delta was off (a provider's first-ever toggle).
                     animatedHeight = MenuBarPopover.clampHeight?(ideal) ?? ideal
+                }
+                MenuBarPopover.coAnimateHeightDelta = { delta in
+                    guard let fromIdeal = panelRetargetBaseline else { return }
+                    // Nothing to learn here — the caller computes its delta fresh each time — so a
+                    // caret toggle's pending learn must not absorb this change's measurement.
+                    pendingExpansion = nil
+                    expansionSettling = true
+                    let ideal = fromIdeal + delta
+                    // Plain assignment: rides the caller's `withAnimation(Motion.spring)`.
+                    animatedHeight = MenuBarPopover.clampHeight?(ideal) ?? ideal
+                    // The settle normally runs off the measurement changes this morph produces.
+                    // Arm it here too, so an estimate that turns out to change nothing can't leave
+                    // the settling marker set with no measurement left to clear it.
+                    measurementSettleTask?.cancel()
+                    measurementSettleTask = Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(600))
+                        guard !Task.isCancelled else { return }
+                        applySettledMeasurement()
+                        measurementSettleTask = nil
+                    }
                 }
             }
             // Reaches `modeBody`, the `PopoverSurface` background, the `.tooMuchTransparency` egg layers
@@ -508,6 +519,19 @@ struct DashboardView: View {
             revealedRows: revealedExpansionRows(for: group),
             linkCount: group.provider.visibleLinks.count
         )
+    }
+
+    /// The height a co-animated panel retarget builds on, or `nil` when there is no established
+    /// dashboard height to retarget. A SUPERSEDING change (an earlier morph is still settling) must
+    /// build on the DRIVEN model target — `animatedHeight` already holds where the previous change
+    /// is heading — because `measuredIdeal` is still an interpolated mid-flight height; deriving
+    /// from it could drive a rapid expand/collapse below the collapsed height or swallow a second
+    /// card's expansion. A clean change uses the settled measurement.
+    private var panelRetargetBaseline: CGFloat? {
+        guard didEstablishHeight, animatedHeight > 0, layout.screen == .dashboard else { return nil }
+        return expansionSettling
+            ? animatedHeight
+            : (heightCoordinator.measuredIdeal[.dashboard] ?? animatedHeight)
     }
 
     /// The debounced tail of the measurement `onChange`: runs once the screen's content measurement

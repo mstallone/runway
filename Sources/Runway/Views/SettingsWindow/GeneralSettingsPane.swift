@@ -8,6 +8,7 @@ struct GeneralSettingsPane: View {
 
     @State private var launchAtLogin = LaunchAtLoginSetting()
     @AppStorage(TotalSpendSetting.key) private var showTotalSpend = true
+    @AppStorage(TotalSpendLayout.key) private var totalSpendLayout = TotalSpendLayout.fallback
     private let density = DensitySetting.compact
 
     var body: some View {
@@ -19,6 +20,11 @@ struct GeneralSettingsPane: View {
                 SettingsRow("Show Total Spend") {
                     Toggle("", isOn: $showTotalSpend)
                         .settingsSwitchStyle()
+                }
+                if showTotalSpend {
+                    SettingsRow("Total Spend Style") {
+                        SettingsMenuPicker($totalSpendLayout, options: TotalSpendLayout.allCases, label: \.label)
+                    }
                 }
                 SettingsRow("Launch at Login") {
                     Toggle("", isOn: Binding(
