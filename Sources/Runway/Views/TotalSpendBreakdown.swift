@@ -41,7 +41,9 @@ struct TotalSpendBreakdown: View {
                 legend
             }
         case .ring:
-            HStack(spacing: 14) {
+            // Top-aligned: the legend starts level with the ring's top edge and grows downward as
+            // providers open, instead of re-centering against the ring each time.
+            HStack(alignment: .top, spacing: 14) {
                 ring
                 legend
             }
@@ -123,7 +125,11 @@ struct TotalSpendBreakdown: View {
             ForEach(projection.groups) { group in
                 VStack(alignment: .leading, spacing: 0) {
                     groupRow(group)
-                    if group.isExpandable, expanded != nil {
+                    // Present for every provider, open or not: a period switch can change how
+                    // many of a provider's accounts spent, and a block that only exists while
+                    // there are several would be inserted or removed mid-animation instead of
+                    // folding.
+                    if expanded != nil {
                         VStack(alignment: .leading, spacing: TotalSpendCardHeight.legendRowSpacing) {
                             ForEach(group.members) { member in
                                 row(title: member.title, amount: member.displayAmount, color: nil)
@@ -197,8 +203,11 @@ struct TotalSpendBreakdown: View {
                     .foregroundStyle(.tertiary)
                     .frame(width: Self.chevronWidth)
                     .opacity(chevron == nil ? 0 : 1)
+                    .accessibilityHidden(true)
             }
         }
+        // One stop per row for assistive technologies: name, amount, and share together.
+        .accessibilityElement(children: .combine)
     }
 
     /// Reserve the chevron column on every row once any provider can open, so amounts stay aligned.

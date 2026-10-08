@@ -4,7 +4,9 @@ import SwiftUI
 /// number at once, with no period to select. A provider with several accounts opens to list them.
 struct TotalSpendTableView: View {
     let table: TotalSpendTable
-    @Binding var expanded: Set<String>
+    /// The providers whose accounts are listed. `nil` renders a static, fully collapsed table with
+    /// no disclosure controls — the share-card export.
+    var expanded: Binding<Set<String>>?
 
     private let density = DensitySetting.compact
 
@@ -23,7 +25,7 @@ struct TotalSpendTableView: View {
             ForEach(table.rows) { row in
                 VStack(spacing: 0) {
                     rowView(row)
-                    if row.isExpandable {
+                    if row.isExpandable, expanded != nil {
                         VStack(spacing: TotalSpendCardHeight.tableRowSpacing) {
                             ForEach(row.members) { member in
                                 line(
@@ -36,7 +38,7 @@ struct TotalSpendTableView: View {
                             }
                         }
                         .padding(.top, TotalSpendCardHeight.tableRowSpacing)
-                        .accordionReveal(expanded.contains(row.id))
+                        .accordionReveal(isOpen(row))
                     }
                 }
             }
@@ -45,7 +47,7 @@ struct TotalSpendTableView: View {
 
     @ViewBuilder
     private func rowView(_ row: TotalSpendTable.Row) -> some View {
-        let isOpen = expanded.contains(row.id)
+        let isOpen = isOpen(row)
         let content = line(
             leading: {
                 HStack(spacing: 7) {
@@ -53,7 +55,7 @@ struct TotalSpendTableView: View {
                         .fill(TotalSpendPalette.color(for: row.id))
                         .frame(width: 8, height: 8)
                     name(row.title)
-                    if row.isExpandable {
+                    if row.isExpandable, expanded != nil {
                         Image(systemName: isOpen ? "chevron.down" : "chevron.right")
                             .font(.system(size: 8, weight: .semibold))
                             .foregroundStyle(.tertiary)
@@ -64,9 +66,9 @@ struct TotalSpendTableView: View {
         ) {
             $0.font(.system(size: density.supportingPointSize, weight: .medium)).foregroundStyle(.secondary)
         }
-        if row.isExpandable {
+        if row.isExpandable, let expanded {
             Button {
-                if isOpen { expanded.remove(row.id) } else { expanded.insert(row.id) }
+                if isOpen { expanded.wrappedValue.remove(row.id) } else { expanded.wrappedValue.insert(row.id) }
             } label: {
                 content.contentShape(Rectangle())
             }
@@ -76,6 +78,10 @@ struct TotalSpendTableView: View {
         } else {
             content.accessibilityElement(children: .combine)
         }
+    }
+
+    private func isOpen(_ row: TotalSpendTable.Row) -> Bool {
+        row.isExpandable && (expanded?.wrappedValue.contains(row.id) ?? false)
     }
 
     /// One grid line: a flexible leading cell and one fixed-width, trailing-aligned cell per period.

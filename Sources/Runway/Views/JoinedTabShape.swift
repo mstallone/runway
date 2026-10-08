@@ -30,7 +30,11 @@ struct JoinedTabShape: Shape {
     func path(in rect: CGRect) -> Path {
         let count = CGFloat(max(1, tabCount))
         let tabWidth = max(0, (rect.width - tabSpacing * (count - 1)) / count)
-        let left = rect.minX + CGFloat(tabPosition) * (tabWidth + tabSpacing)
+        // A spring carries `tabPosition` a little past its target before settling. Hold the tab
+        // inside the first and last slots, so arriving at either end stops flush with the panel's
+        // edge instead of poking out past it and bouncing back.
+        let position = min(max(tabPosition, 0), Double(max(0, tabCount - 1)))
+        let left = rect.minX + CGFloat(position) * (tabWidth + tabSpacing)
         let right = min(rect.maxX, left + tabWidth)
         let top = rect.minY
         let seam = min(rect.maxY, top + max(0, tabHeight))

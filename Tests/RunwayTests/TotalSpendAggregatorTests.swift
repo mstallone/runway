@@ -332,4 +332,15 @@ final class TotalSpendAggregatorTests: XCTestCase {
         XCTAssertTrue(table.isEmpty)
         XCTAssertEqual(table.totals, [nil, nil, nil])
     }
+
+    func testInfoTooltipCarriesEstimateNoteOnlyForEstimatedDollarMetrics() {
+        let names = ["Claude", "Codex"]
+        let scope = "Only includes Claude and Codex."
+        XCTAssertEqual(
+            TotalSpendInfo.tooltip(providerNames: names, metric: .cost, isEstimated: true),
+            "\(scope) \(WidgetData.localEstimateNote)."
+        )
+        XCTAssertEqual(TotalSpendInfo.tooltip(providerNames: names, metric: .tokens, isEstimated: true), scope)
+        XCTAssertEqual(TotalSpendInfo.tooltip(providerNames: names, metric: .cost, isEstimated: false), scope)
+    }
 }

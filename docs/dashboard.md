@@ -25,8 +25,8 @@ When any enabled provider tracks daily spend (Claude, Codex, Cursor, Grok, Muse,
 Pick how the card looks from the **View** submenu at the bottom of the header's pull-down menu, or with **Total Spend Style** in [Settings](settings.md). Both change the same setting:
 
 - **Table**: providers down, the three periods across, and a **Total** row on top. Every number is visible at once. Providers are ranked by their 30-day amount, so the order stays put from day to day. A provider with nothing for a period shows a dash.
-- **Bar** (the default): three totals across the top show each period's combined amount. Click one to select that period. It joins a panel below it, where a bar split by provider sits over a ranked legend with each provider's amount and share. The other two totals are dimmed.
-- **Pie**: the same tiles over a ring split by provider, with the selected period's total in the middle and a ranked legend beside it.
+- **Bar**: three totals across the top show each period's combined amount. Click one to select that period. It joins a panel below it, where a bar split by provider sits over a ranked legend with each provider's amount and share.
+- **Pie** (the default): the same tiles over a ring split by provider, with the selected period's total in the middle and a ranked legend beside it.
 
 In Bar and Pie, clicking the selected total again closes the panel and leaves the three totals alone. Click any total to open it again on that period. The selected period and the collapsed state persist across restarts.
 
@@ -36,9 +36,9 @@ A pull-down menu at the right end of the header switches what the card measures:
 - **Cost/MTok**: the blended rate across providers that have both spend and tokens. A provider's rate is its dollars over its tokens across all of its accounts. Bar and ring segments are sized by rate, and no share is shown.
 - **Tokens**: combined tokens. Each provider's share is its part of them.
 
-Totals use a short figure (`$533.20`, `$2.1K`, `12.4M`). The Bar legend lists exact amounts. In the legend, hover a row to see a long name in full. Each provider keeps a fixed brand color, and even a tiny share keeps a visible sliver and reads `<1%`. Providers with nothing for the selected metric do not appear. An enabled provider counts even if you have hidden its spend rows in Customize. Other dollar rows, like OpenRouter's API spend, never mix in.
+Totals use a short figure (`$533.20`, `$2.1K`, `12.4M`). Under Cost and Cost/MTok, the Bar legend lists exact dollar amounts. In the legend, hover a row to see a long name in full. Each provider keeps a fixed brand color, and even a tiny share keeps a visible sliver and reads `<1%`. Providers with nothing for the selected metric do not appear. An enabled provider counts even if you have hidden its spend rows in Customize. Other dollar rows, like OpenRouter's API spend, never mix in.
 
-Right-clicking the card and choosing **Share Screenshot** copies a branded PNG of the selected period's total and provider breakdown to your clipboard, like sharing a provider card. The header also carries an ⓘ naming the providers that feed the total. A period with nothing to show for the active metric shows a dash and, when selected, an empty state instead of hiding the card. Turn the card off with **Show Total Spend** at the top of [Settings](settings.md).
+Right-clicking the card and choosing **Share Screenshot** copies a branded PNG to your clipboard, like sharing a provider card. In Bar and Pie it shows the selected period's total and provider breakdown. In Table it shows the whole table. The header also carries an ⓘ naming the providers that feed the total. Under Cost and Cost/MTok it adds a note when any of those dollars are a local estimate. A period with nothing to show for the active metric shows a dash and, when selected, an empty state instead of hiding the card. Turn the card off with **Show Total Spend** at the top of [Settings](settings.md).
 
 ## Rows
 

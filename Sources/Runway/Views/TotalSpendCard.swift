@@ -26,14 +26,18 @@ struct TotalSpendCard: View {
     /// written back to `UserDefaults` rather than `@AppStorage`: an `@AppStorage` write reaches the
     /// view through a defaults observer outside the caller's `withAnimation`, so the card would
     /// snap to its new height while the panel around it animated.
-    @State private var period = TotalSpendPeriod(
-        rawValue: UserDefaults.standard.string(forKey: Self.periodKey) ?? ""
-    ) ?? .today
-    @State private var metric = TotalSpendMetric(
-        rawValue: UserDefaults.standard.string(forKey: Self.metricKey) ?? ""
-    ) ?? .tokens
+    @State private var period = UserDefaults.standard.enumValue(
+        forKey: Self.periodKey, default: TotalSpendPeriod.today
+    )
+    @State private var metric = UserDefaults.standard.enumValue(
+        forKey: Self.metricKey, default: TotalSpendMetric.tokens
+    )
     /// Whether the tiled styles are folded down to the period tiles alone.
     @State private var isCollapsed = UserDefaults.standard.bool(forKey: Self.collapsedKey)
+
+    private static let headerToContentSpacing: CGFloat = 11
+    /// Added to the dashboard's regular section spacing below the card.
+    private static let extraBottomSpacing: CGFloat = 7
 
     private static let periodKey = "runway.totalSpend.period"
     private static let metricKey = "runway.totalSpend.metric"
@@ -43,6 +47,7 @@ struct TotalSpendCard: View {
     /// Providers whose accounts are listed. Session state: closing the popover collapses them.
     @State private var expandedFamilies: Set<String> = []
     @Environment(\.popoverIsVisible) private var popoverIsVisible
+    @Environment(\.popoverSurfaceTreatment) private var surfaceTreatment
     /// One legend line's measured height (see `rowHeightProbe`); the seed is the usual 11pt line.
     @State private var rowHeight: CGFloat = 14
     /// The period tiles' measured height: where the joined tab meets its panel.
@@ -56,10 +61,18 @@ struct TotalSpendCard: View {
         layout.spendCapableProviders
     }
 
-    private func total(for period: TotalSpendPeriod) -> TotalSpend {
+    /// Everything the three period aggregations share, built once per use: the providers to sum,
+    /// their snapshots, and each provider's resolved card title.
+    private struct AggregationInputs {
+        var providers: [Provider]
+        var snapshots: [String: ProviderSnapshot]
+        var titles: [String: String]
+    }
+
+    private var aggregationInputs: AggregationInputs {
         // Accounts that live only on other Macs (synced, no card here) count toward the total and
-        // get their own legend slice ("claude@ab12cd34") — the number should be the whole truth
-        // even when a login isn't set up on this machine.
+        // join their provider's line as one more account ("claude@ab12cd34") — the number should
+        // be the whole truth even when a login isn't set up on this machine.
         var aggregatedProviders = providers
         var aggregatedSnapshots = dataStore.snapshots
         for entry in dataStore.remoteOnlySpend {
@@ -68,29 +81,44 @@ struct TotalSpendCard: View {
         }
         // Titles resolve here — the one place with registry access — so the legend AND the share
         // export (rendered outside the environment) carry live renames.
-        return TotalSpendAggregator.total(
+        let titles = Dictionary(
+            aggregatedProviders.map { ($0.id, container.displayName(for: $0)) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return AggregationInputs(providers: aggregatedProviders, snapshots: aggregatedSnapshots, titles: titles)
+    }
+
+    private func total(for period: TotalSpendPeriod, inputs: AggregationInputs) -> TotalSpend {
+        TotalSpendAggregator.total(
             for: period,
-            providers: aggregatedProviders,
-            snapshots: aggregatedSnapshots,
-            title: { container.displayName(for: $0) }
+            providers: inputs.providers,
+            snapshots: inputs.snapshots,
+            title: { inputs.titles[$0.id] ?? $0.displayName }
         )
     }
 
+    private func projections(inputs: AggregationInputs) -> [TotalSpendProjection] {
+        TotalSpendPeriod.allCases.map { total(for: $0, inputs: inputs).projection(for: metric) }
+    }
+
     var body: some View {
-        // Computed once per body evaluation: each projection re-copies the snapshots dictionary
-        // and re-aggregates every provider, so reading it per subview use multiplies that work.
-        let projections = TotalSpendPeriod.allCases.map { total(for: $0).projection(for: metric) }
-        VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
-            header
+        // Computed once per body evaluation: building the inputs copies the snapshots dictionary
+        // and resolves every title, so doing it per period or per subview multiplies that work.
+        let projections = projections(inputs: aggregationInputs)
+        // The outlined surface needs more air than a filled provider card: without it the line
+        // crowds the header above and the next provider's header below.
+        VStack(alignment: .leading, spacing: Self.headerToContentSpacing) {
+            header(projections: projections)
             content(projections: projections)
         }
+        .padding(.bottom, Self.extraBottomSpacing)
     }
 
     // MARK: - Header
 
     /// Section header matching the provider headers' scale: the section name leading, the metric
     /// menu trailing where a provider header shows its plan.
-    private var header: some View {
+    private func header(projections: [TotalSpendProjection]) -> some View {
         HStack(spacing: 5) {
             Text("Total Spend")
                 .font(.system(size: density.headerPointSize, weight: .semibold))
@@ -99,7 +127,7 @@ struct TotalSpendCard: View {
             Image(systemName: "info.circle")
                 .imageScale(.small)
                 .foregroundStyle(.secondary)
-                .hoverTooltip(infoTooltip)
+                .hoverTooltip(infoTooltip(projections: projections))
             Spacer(minLength: 8)
             metricMenu
         }
@@ -159,16 +187,26 @@ struct TotalSpendCard: View {
     /// Names the providers actually feeding the total — the enabled spend-capable set — instead of a
     /// hardcoded list, so disabling a provider (or a new spend provider shipping) can't make the
     /// tooltip lie about what the total reflects.
-    private var infoTooltip: String {
+    private func infoTooltip(projections: [TotalSpendProjection]) -> String {
         let names = providers.map { container.displayName(for: $0) }
-        return "Only includes \(names.formatted(.list(type: .and)))."
+        return TotalSpendInfo.tooltip(
+            providerNames: names,
+            metric: metric,
+            isEstimated: projections.contains(where: \.isEstimated)
+        )
     }
 
-    private func shareScreenshot() -> Bool {
+    /// Copies the whole grid in Table layout, otherwise the selected period's breakdown in the
+    /// current style — also when the card is folded down to its tiles.
+    private func shareScreenshot() {
+        let inputs = aggregationInputs
         ShareCardRenderer.shareTotalSpend(
-            total: total(for: period),
+            total: total(for: period, inputs: inputs),
             metric: metric,
             style: layoutStyle == .pie ? .ring : .bar,
+            table: layoutStyle == .table
+                ? TotalSpendTable.make(projections: projections(inputs: inputs), metric: metric)
+                : nil,
             appearance: colorScheme,
             layout: layout
         )
@@ -192,7 +230,10 @@ struct TotalSpendCard: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 9)
                 .frame(maxWidth: .infinity)
-                .cardSurface()
+                .background {
+                    Theme.cardShape.fill(legibilityBacking)
+                    Theme.cardShape.strokeBorder(.separator, lineWidth: 1)
+                }
             case .bar, .pie:
                 tiledContent(projections: projections)
             }
@@ -201,7 +242,7 @@ struct TotalSpendCard: View {
         .contentShape(Rectangle())
         .contextMenu {
             Button("Share Screenshot") {
-                _ = shareScreenshot()
+                shareScreenshot()
             }
         }
         // Closing the popover collapses every open provider card; opened providers here follow.
@@ -250,14 +291,31 @@ struct TotalSpendCard: View {
         // One surface for the selected tile and its breakdown. It fades with the breakdown: folded
         // down to the headline, the three totals sit bare on the popover.
         .background {
-            Color.clear
-                .cardSurface(in: JoinedTabShape(
-                    tabPosition: Double(TotalSpendPeriod.allCases.firstIndex(of: period) ?? 0),
-                    tabCount: TotalSpendPeriod.allCases.count,
-                    tabSpacing: TotalSpendPeriodTiles.spacing,
-                    tabHeight: tilesHeight
-                ))
-                .opacity(isCollapsed ? 0 : 1)
+            // The joined shape as an outline with no fill, so the section can't be mistaken for a
+            // provider card. Inset half a point so the 1pt line sits inside the card's bounds and
+            // lines up with the provider cards' edges.
+            let surface = JoinedTabShape(
+                tabPosition: Double(TotalSpendPeriod.allCases.firstIndex(of: period) ?? 0),
+                tabCount: TotalSpendPeriod.allCases.count,
+                tabSpacing: TotalSpendPeriodTiles.spacing,
+                tabHeight: tilesHeight - 0.5
+            )
+            ZStack {
+                surface.fill(legibilityBacking)
+                surface.stroke(.separator, lineWidth: 1)
+            }
+            .padding(0.5)
+            .opacity(isCollapsed ? 0 : 1)
+        }
+    }
+
+    /// Clear on the opaque popover, where the outline alone is the surface. Under the translucent
+    /// treatment the tray is see-through, so the section takes the same frosted material the
+    /// provider cards carry to keep its text legible over whatever shows behind the window.
+    private var legibilityBacking: AnyShapeStyle {
+        switch surfaceTreatment {
+        case .opaque: AnyShapeStyle(.clear)
+        case .translucent: AnyShapeStyle(.regularMaterial)
         }
     }
 

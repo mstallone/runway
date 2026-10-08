@@ -20,7 +20,7 @@ enum TotalSpendLayout: String, Hashable, Sendable, CaseIterable, UserDefaultsBac
     case table
 
     static let key = "totalSpendLayout"
-    static var fallback: TotalSpendLayout { .bar }
+    static var fallback: TotalSpendLayout { .pie }
 
     var label: String {
         switch self {

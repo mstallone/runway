@@ -21,9 +21,9 @@ This Mac updates its record after a five-minute refresh batch, a manual refresh,
 
 Histories match by **account**, not by card name. Each device's record notes which account every card belongs to (an opaque account or organization identifier, never an email), so the same account merges into the same card everywhere, even when one Mac shows it as the main card and another as an extra account card.
 
-An account you use on another Mac but have no login for here does not become a card. It appears as its own slice in **Total Spend**, named by its account code ("claude@ab12cd34"), so the number at the top covers all your Macs. That code is the same id the account's card carries on any Mac it is signed in on. When you log that account in locally, its card appears under that same id with the cross-machine history attached.
+An account you use on another Mac but have no login for here does not become a card. Its spend joins that provider's line in **Total Spend**, so the number at the top covers all your Macs. Open the provider's line to see it listed as its own account, named by its account code ("claude@ab12cd34"). That code is the same id the account's card carries on any Mac it is signed in on. When you log that account in locally, its card appears under that same id with the cross-machine history attached.
 
-If a synced record cannot identify the account behind a main Claude or Codex card, Runway keeps its spend in one remote family slice instead of attaching it to a different local account or dropping it from Total Spend.
+If a synced record cannot identify the account behind a main Claude or Codex card, Runway keeps its spend as one remote account under that provider's Total Spend line instead of attaching it to a different local account or dropping it from Total Spend.
 
 Devices running an older Runway read their own format but report this device's newer record as "update Runway". Update both sides to sync multi-account machines.
 

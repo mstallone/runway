@@ -1,11 +1,10 @@
 import SwiftUI
 
 /// The period switch and the headline numbers in one control: each tile shows its period's
-/// combined total. The tiles are bare text on the popover — the selected one reads at full strength
-/// and its neighbors recede — and the surface that marks the selection is drawn by the card behind
-/// them (`JoinedTabShape`), joined to the breakdown it opens. With no selection the card is
-/// collapsed to this headline alone, and all three totals read at full strength. Pointing at a
-/// receded tile steps its text up a shade; there is no hover background.
+/// combined total. The tiles are bare text on the popover, all three at full strength, and the
+/// surface that marks the selection is drawn by the card behind them (`JoinedTabShape`), joined to
+/// the breakdown it opens. With no selection the card is collapsed to this headline alone.
+/// Pointing at an unselected tile dims its text a step; there is no hover background.
 struct TotalSpendPeriodTiles: View {
     /// One projection per `TotalSpendPeriod.allCases` entry, in that order.
     let projections: [TotalSpendProjection]
@@ -34,23 +33,21 @@ struct TotalSpendPeriodTiles: View {
 
     private func periodTile(_ candidate: TotalSpendPeriod, projection: TotalSpendProjection) -> some View {
         let isSelected = candidate == selection
-        // Collapsed, no tile is the selected one, so none of them recedes.
-        let isProminent = isSelected || selection == nil
-        let isHovered = hovered == candidate
+        // Every total stays at full strength so all three are readable at a glance; the surface
+        // behind the selected one marks the selection. Pointing at another total dims it a step,
+        // which is the cue that it responds to a click.
+        let isDimmed = hovered == candidate && !isSelected
         return Button {
             select(candidate)
         } label: {
             VStack(alignment: .leading, spacing: 1) {
                 Text(candidate.shortLabel)
                     .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
-                    .foregroundStyle(isProminent || isHovered ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
+                    .foregroundStyle(isDimmed ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary))
                     .lineLimit(1)
                 Text(tileValue(projection))
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundStyle(
-                        isProminent ? AnyShapeStyle(.primary)
-                            : isHovered ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary)
-                    )
+                    .foregroundStyle(isDimmed ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
