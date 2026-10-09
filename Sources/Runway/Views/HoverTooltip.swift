@@ -26,7 +26,30 @@ extension View {
     /// shows nothing, so call sites can pass an optional and get no tooltip when it is blank. The
     /// text is also exposed as an accessibility hint — the part `.help()` gave VoiceOver.
     func hoverTooltip(_ text: String?) -> some View {
-        modifier(HoverTooltipModifier(text: text))
+        modifier(HoverTooltipModifier(content: text.flatMap { $0.isEmpty ? nil : .text($0) }))
+    }
+
+    /// The same tooltip — same dwell, same placement, no animation, click-through — showing a
+    /// tile's detail card (title, then label and value pairs) instead of a line of text. `nil`
+    /// shows nothing.
+    func hoverDetail(title: String, _ detail: WidgetData.TileDetail?) -> some View {
+        modifier(HoverTooltipModifier(content: detail.map { .detail(title: title, $0) }))
+    }
+}
+
+/// What a tooltip shows.
+private enum TooltipContent: Equatable {
+    case text(String)
+    case detail(title: String, WidgetData.TileDetail)
+
+    /// What VoiceOver reads as the target's hint — the part `.help()` gave it.
+    var accessibilityHint: String {
+        switch self {
+        case .text(let text):
+            return text
+        case .detail(_, let detail):
+            return (detail.rows.map { "\($0.label) \($0.value)" } + [detail.note].compactMap { $0 }).joined(separator: ", ")
+        }
     }
 }
 
@@ -93,7 +116,7 @@ private struct TooltipAnchorView: NSViewRepresentable {
 }
 
 private struct HoverTooltipModifier: ViewModifier {
-    let text: String?
+    let content: TooltipContent?
     @Environment(\.tooltipDepth) private var depth
     @Environment(\.hoverTooltipsDisabled) private var disabled
     /// Stable per-target identity, so the presenter can track which targets are currently hovered and
@@ -106,29 +129,24 @@ private struct HoverTooltipModifier: ViewModifier {
     @State private var isHovering = false
 
     /// `nil` (no tooltip) for a missing or blank string, collapsing the two "absent" cases.
-    private var resolved: String? {
-        guard let text, !text.isEmpty else { return nil }
-        return text
-    }
-
     @ViewBuilder
-    func body(content: Content) -> some View {
+    func body(content view: Content) -> some View {
         if disabled {
             // Off-screen renders (share cards): no anchor view, no hover tracking — an AppKit-backed
             // anchor would rasterize as a placeholder artifact in the exported PNG.
-            content
+            view
         } else {
-            decorated(content)
+            decorated(view)
         }
     }
 
-    private func decorated(_ content: Content) -> some View {
-        content
+    private func decorated(_ view: Content) -> some View {
+        view
             // Descendants nest one level deeper, so a child target outranks this one when a hover sits
             // inside both.
             .environment(\.tooltipDepth, depth + 1)
             .background { TooltipAnchorView(anchor: anchor) }
-            .accessibilityHint(resolved ?? "")
+            .accessibilityHint(content?.accessibilityHint ?? "")
             // Continuous (not plain `onHover`) so the presenter always has the live hover state; it
             // reads the cursor itself at show time, so the reported location is unused here.
             .onContinuousHover { phase in
@@ -137,7 +155,7 @@ private struct HoverTooltipModifier: ViewModifier {
                     isHovering = true
                     syncPresenter()
                 case .ended:
-                    // Always exit, regardless of `resolved`: if the text went nil/empty while hovered,
+                    // Always exit, regardless of `content`: if it went nil while hovered,
                     // a guarded-out `.ended` would leave this target in the presenter and its tooltip
                     // would linger.
                     isHovering = false
@@ -147,7 +165,7 @@ private struct HoverTooltipModifier: ViewModifier {
             // Text can change while the cursor sits still (e.g. a meter tooltip refreshing to a no-tip
             // state on its 30s tick), with no hover event to react to — reconcile so the bubble updates
             // or clears.
-            .onChange(of: resolved) { syncPresenter() }
+            .onChange(of: content) { syncPresenter() }
             // A row can be torn down (scroll, screen switch, popover close) without an `.ended`, so
             // clear our entry here too or the panel could linger.
             .onDisappear {
@@ -160,8 +178,8 @@ private struct HoverTooltipModifier: ViewModifier {
     /// it when there's no text. A no-op when not hovered (so a text change off-hover does nothing).
     private func syncPresenter() {
         guard isHovering else { return }
-        if let resolved {
-            TooltipPresenter.shared.enter(id: id, text: resolved, depth: depth, anchor: anchor)
+        if let content {
+            TooltipPresenter.shared.enter(id: id, content: content, depth: depth, anchor: anchor)
         } else {
             TooltipPresenter.shared.exit(id: id)
         }
@@ -175,7 +193,7 @@ private final class TooltipPresenter {
     static let shared = TooltipPresenter()
 
     private struct Target {
-        let text: String
+        let content: TooltipContent
         let depth: Int
         let anchor: TooltipAnchor
     }
@@ -186,7 +204,7 @@ private final class TooltipPresenter {
     /// The target currently on screen (and its text, to detect a live text change), and the one a
     /// pending reveal is scheduled for.
     private var shownID: UUID?
-    private var shownText: String?
+    private var shownContent: TooltipContent?
     private var pendingID: UUID?
     private var revealTask: Task<Void, Never>?
 
@@ -247,8 +265,8 @@ private final class TooltipPresenter {
         panel.contentView = host
     }
 
-    func enter(id: UUID, text: String, depth: Int, anchor: TooltipAnchor) {
-        active[id] = Target(text: text, depth: depth, anchor: anchor)
+    func enter(id: UUID, content: TooltipContent, depth: Int, anchor: TooltipAnchor) {
+        active[id] = Target(content: content, depth: depth, anchor: anchor)
         refresh()
     }
 
@@ -276,9 +294,9 @@ private final class TooltipPresenter {
             return
         }
         if shownID == top.key {                     // already the right target on screen
-            if shownText != top.value.text {        // its text changed live — re-present, don't reposition away
+            if shownContent != top.value.content {  // it changed live — re-present, don't reposition away
                 present(top.value)
-                shownText = top.value.text
+                shownContent = top.value.content
             }
             return
         }
@@ -289,7 +307,7 @@ private final class TooltipPresenter {
         if let shownID, let shown = active[shownID], top.value.depth > shown.depth {
             present(top.value)
             self.shownID = top.key
-            shownText = top.value.text
+            shownContent = top.value.content
             cancelPending()
             return
         }
@@ -310,7 +328,7 @@ private final class TooltipPresenter {
             guard !Task.isCancelled, let self else { return }
             self.present(target)
             self.shownID = id
-            self.shownText = target.text
+            self.shownContent = target.content
             self.pendingID = nil
             self.revealTask = nil
         }
@@ -324,7 +342,7 @@ private final class TooltipPresenter {
 
     private func hide() {
         shownID = nil
-        shownText = nil
+        shownContent = nil
         if panel.isVisible { panel.orderOut(nil) }
     }
 
@@ -350,10 +368,21 @@ private final class TooltipPresenter {
     /// (there's no public `Text` API for it). A handful of extra layout passes, only at reveal time.
     /// Leaves `host.rootView` holding whichever bubble it settled on, which is the one shown.
     private func measuredSize(for target: Target) -> CGSize {
-        func fit(maxTextWidth: CGFloat?) -> CGSize {
-            host.rootView = AnyView(TooltipBubble(text: target.text, maxTextWidth: maxTextWidth))
+        func fit(_ view: some View) -> CGSize {
+            host.rootView = AnyView(view)
             host.layoutSubtreeIfNeeded()
             return host.fittingSize
+        }
+        let text: String
+        switch target.content {
+        case .text(let string):
+            text = string
+        case .detail(let title, let detail):
+            // A detail card sets its own width, so its fitting size is final.
+            return fit(TooltipDetailBubble(title: title, detail: detail))
+        }
+        func fit(maxTextWidth: CGFloat?) -> CGSize {
+            fit(TooltipBubble(text: text, maxTextWidth: maxTextWidth))
         }
         let natural = fit(maxTextWidth: nil)
         guard natural.width > maxTooltipWidth else { return natural }
@@ -429,7 +458,7 @@ private struct TooltipBubble: View {
         let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
         label
             .padding(.horizontal, Self.horizontalPadding)
-            .padding(.vertical, 5)
+            .padding(.vertical, 4)
             .background { shape.fill(Color(nsColor: .windowBackgroundColor)) }
             .overlay { shape.strokeBorder(.separator, lineWidth: 0.5) }
     }
@@ -437,7 +466,7 @@ private struct TooltipBubble: View {
     @ViewBuilder
     private var label: some View {
         let content = Text(text)
-            .font(.system(size: 12))
+            .font(.system(size: 11))
             .foregroundStyle(.primary)
             .multilineTextAlignment(.center)
         if let maxTextWidth {
@@ -448,5 +477,18 @@ private struct TooltipBubble: View {
         } else {
             content.fixedSize()
         }
+    }
+}
+
+/// A tile's detail card in the tooltip's chrome.
+private struct TooltipDetailBubble: View {
+    let title: String
+    let detail: WidgetData.TileDetail
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+        TileDetailView(title: title, detail: detail)
+            .background { shape.fill(Color(nsColor: .windowBackgroundColor)) }
+            .overlay { shape.strokeBorder(.separator, lineWidth: 0.5) }
     }
 }

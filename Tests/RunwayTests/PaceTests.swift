@@ -94,30 +94,30 @@ final class PaceTests: XCTestCase {
     }
 
     func testTooltipShowsNumericProjectionAtReset() {
-        XCTAssertEqual(weeklyData(used: 30).meterState(now: now).tooltip, "~40% left at reset")
-        XCTAssertEqual(weeklyData(used: 46).meterState(now: now).tooltip, "~92% used at reset")
-        XCTAssertEqual(weeklyData(used: 60).meterState(now: now).tooltip, "~20% over limit at reset")
+        XCTAssertEqual(weeklyData(used: 30).meterState(now: now).projection, "~40% left")
+        XCTAssertEqual(weeklyData(used: 46).meterState(now: now).projection, "~92% used")
+        XCTAssertEqual(weeklyData(used: 60).meterState(now: now).projection, "~20% over limit")
     }
 
     func testZeroUsageFallsBackToPlainLevelBar() {
         // An untouched meter has no pace story: calm level bar, no projection tooltip.
         XCTAssertEqual(weeklyData(used: 0).meterState(now: now), .level(.normal))
-        XCTAssertNil(weeklyData(used: 0).meterState(now: now).tooltip)
+        XCTAssertNil(weeklyData(used: 0).meterState(now: now).projection)
     }
 
     func testTooltipRedOverageFlooredToOnePercent() {
-        XCTAssertEqual(weeklyData(used: 50.2).meterState(now: now).tooltip, "~1% over limit at reset")
+        XCTAssertEqual(weeklyData(used: 50.2).meterState(now: now).projection, "~1% over limit")
     }
 
     func testSpentReadsLimitReached() {
         XCTAssertEqual(weeklyData(used: 100).meterState(now: now), .spent)
-        XCTAssertEqual(weeklyData(used: 100).meterState(now: now).tooltip, "Limit reached")
+        XCTAssertNil(weeklyData(used: 100).meterState(now: now).projection)
         let nearlyEmpty = WidgetData(title: "Credits", icon: .providerMark("codex"), kind: .dollars,
                                      used: 99.999, limit: 100)
         XCTAssertEqual(nearlyEmpty.meterState(now: now), .spent)
         let withHeadroom = WidgetData(title: "Credits", icon: .providerMark("codex"), kind: .dollars,
                                       used: 99.0, limit: 100)
-        XCTAssertNil(withHeadroom.meterState(now: now).tooltip)
+        XCTAssertNil(withHeadroom.meterState(now: now).projection)
     }
 
     func testSpareCopyOnlyWhenAmber() {
@@ -144,7 +144,7 @@ final class PaceTests: XCTestCase {
         XCTAssertNil(eta)
         XCTAssertNotNil(tick(data))
         XCTAssertNil(spare(data))
-        XCTAssertEqual(data.meterState(now: now).tooltip, "~100% used at reset")
+        XCTAssertEqual(data.meterState(now: now).projection, "~100% used")
     }
 
     func testProjectedExactlyAtLimitIsRedNotAmber() {
@@ -279,7 +279,7 @@ final class PaceTests: XCTestCase {
         // "~100% left at reset" plus an even-pace tick when Always Show Pacing was on.
         let data = pacedData(used: 0, elapsed: 0.03, alwaysShowPacing: true)
         XCTAssertEqual(data.meterState(now: now), .level(.normal))
-        XCTAssertNil(data.meterState(now: now).tooltip)
+        XCTAssertNil(data.meterState(now: now).projection)
         XCTAssertNil(tick(data))
     }
 
@@ -288,6 +288,6 @@ final class PaceTests: XCTestCase {
                               used: 12, limit: 20)
         data.alwaysShowPacing = true
         XCTAssertNil(tick(data))
-        XCTAssertNil(data.meterState(now: now).tooltip)
+        XCTAssertNil(data.meterState(now: now).projection)
     }
 }

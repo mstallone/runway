@@ -51,18 +51,9 @@ enum TotalSpendMetric: String, CaseIterable, Identifiable, Sendable {
         case .tokens: "No token data for this period"
         }
     }
-
-    /// Dollar-backed modes can inherit the local-estimate note when any contributor's spend is imputed.
-    var usesDollarEstimateNote: Bool {
-        switch self {
-        case .cost, .costPerMtok: true
-        case .tokens: false
-        }
-    }
 }
 
-/// One provider's contribution to a period's total: dollars and tokens from the same spend line,
-/// plus whether the dollars are a local estimate (log-scanned providers) or measured (Cursor's CSV).
+/// One provider's contribution to a period's total: dollars and tokens from the same spend line.
 struct TotalSpendSlice: Identifiable, Equatable {
     let provider: Provider
     /// The card title, resolved by the aggregation's caller through the one name resolver — so the
@@ -71,7 +62,6 @@ struct TotalSpendSlice: Identifiable, Equatable {
     let title: String
     let amountUSD: Double
     let tokenCount: Double
-    let estimated: Bool
 
     var id: String { provider.id }
 
@@ -93,12 +83,11 @@ struct TotalSpendProjectedSlice: Identifiable, Equatable {
     /// The already-resolved card title (see `TotalSpendSlice.title`) — what the legend renders.
     let title: String
     let displayAmount: Double
-    let estimated: Bool
 
     var id: String { provider.id }
 }
 
-/// A period's cross-provider totals under one metric: ranked slices, combined value, and estimate flag.
+/// A period's cross-provider totals under one metric: ranked slices and the combined value.
 struct TotalSpendProjection: Equatable {
     let metric: TotalSpendMetric
     let slices: [TotalSpendProjectedSlice]
@@ -106,7 +95,6 @@ struct TotalSpendProjection: Equatable {
     /// draws; `slices` stays the flat per-account ranking.
     let groups: [TotalSpendGroup]
     let centerValue: Double
-    let isEstimated: Bool
 
     var isEmpty: Bool { slices.isEmpty }
 }
@@ -146,33 +134,27 @@ struct TotalSpend: Equatable {
             TotalSpendProjectedSlice(
                 provider: $0.slice.provider,
                 title: $0.slice.title,
-                displayAmount: $0.display,
-                estimated: $0.slice.estimated
+                displayAmount: $0.display
             )
         }
 
         let center: Double
-        let estimated: Bool
         switch metric {
         case .cost:
             center = ranked.reduce(0) { $0 + $1.slice.amountUSD }
-            estimated = ranked.contains { $0.slice.estimated }
         case .tokens:
             center = ranked.reduce(0) { $0 + $1.slice.tokenCount }
-            estimated = false
         case .costPerMtok:
             let usd = ranked.reduce(0) { $0 + $1.slice.amountUSD }
             let tokens = ranked.reduce(0) { $0 + $1.slice.tokenCount }
             center = tokens > 0 ? (usd / tokens) * 1_000_000 : 0
-            estimated = ranked.contains { $0.slice.estimated }
         }
 
         return TotalSpendProjection(
             metric: metric,
             slices: projected,
             groups: TotalSpendGroup.make(from: ranked.map(\.slice), metric: metric, multiAccountFamilies: multiAccountFamilies),
-            centerValue: center,
-            isEstimated: estimated
+            centerValue: center
         )
     }
 }
@@ -209,8 +191,7 @@ enum TotalSpendAggregator {
                 provider: provider,
                 title: title(provider),
                 amountUSD: max(amount, 0),
-                tokenCount: max(tokens, 0),
-                estimated: dollars.contains(where: \.estimated)
+                tokenCount: max(tokens, 0)
             )
         }
         let accountsPerFamily = Dictionary(grouping: providers) { ProviderAccountID.family(of: $0.id) }

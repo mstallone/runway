@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ReorderLift {
     enum Payload {
-        case dashboardProvider(provider: Provider, plan: String?, rows: [WidgetData], errorMessage: String? = nil, errorIsConnectPrompt: Bool = false, errorAllowsRefresh: Bool = true)
+        case dashboardProvider(provider: Provider, plan: String?, rows: [WidgetData], expandBoundaryIndex: Int? = nil, limitColumns: Int? = nil, errorMessage: String? = nil, errorIsConnectPrompt: Bool = false, errorAllowsRefresh: Bool = true)
         case dashboardMetric(data: WidgetData)
         case customizeProviderRow(provider: Provider, isEnabled: Bool, metricCount: Int)
         case customizeMetric(title: String)
@@ -60,11 +60,13 @@ struct ReorderLiftPreview: View {
     @ViewBuilder
     private var preview: some View {
         switch lift.payload {
-        case .dashboardProvider(let provider, let plan, let rows, let errorMessage, let errorIsConnectPrompt, let errorAllowsRefresh):
+        case .dashboardProvider(let provider, let plan, let rows, let expandBoundaryIndex, let limitColumns, let errorMessage, let errorIsConnectPrompt, let errorAllowsRefresh):
             dashboardProviderPreview(
                 provider: provider,
                 plan: plan,
                 rows: rows,
+                expandBoundaryIndex: expandBoundaryIndex,
+                limitColumns: limitColumns,
                 errorMessage: errorMessage,
                 errorIsConnectPrompt: errorIsConnectPrompt,
                 errorAllowsRefresh: errorAllowsRefresh
@@ -82,17 +84,19 @@ struct ReorderLiftPreview: View {
         provider: Provider,
         plan: String?,
         rows: [WidgetData],
+        expandBoundaryIndex: Int?,
+        limitColumns: Int?,
         errorMessage: String?,
         errorIsConnectPrompt: Bool,
         errorAllowsRefresh: Bool
     ) -> some View {
-        // Same anatomy as the live dashboard section (`WidgetGroupedListView.section` + `metricContainer`):
+        // Same anatomy as the live dashboard section (`WidgetGroupedListView.section`):
         // Header over the shared metric card, at the compact layout's header→card spacing. The
         // preview keeps the compact notice and any available rows; its controls are inert.
         VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
             ProviderSectionHeader(provider: provider, plan: plan)
 
-            DashboardMetricCard {
+            DashboardMetricCard(isLifted: true) {
                 if let errorMessage {
                     ProviderErrorCardView(
                         message: errorMessage,
@@ -102,9 +106,7 @@ struct ReorderLiftPreview: View {
                         onRefresh: {}
                     )
                 }
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                    WidgetRowView(data: row)
-                }
+                StaticMetricRows(rows: rows, expandBoundaryIndex: expandBoundaryIndex, limitColumns: limitColumns)
             }
         }
     }

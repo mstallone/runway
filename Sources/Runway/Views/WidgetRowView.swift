@@ -2,22 +2,13 @@ import SwiftUI
 
 /// One metric as a row inside a provider's grouped list container. The provider icon is drawn once in the
 /// section header (not per row), so a row shows only the metric. Two layouts:
-/// - **Bounded** (`limit != nil`, meter row): a label line (right-aligned flame + run-out time when
-///   projected to run out before reset, or "~3% spare" when cutting it close), then a full-width
-///   capsule meter (color = pace verdict; in the amber state a tick splits the projected spare
-///   cushion off the bar; hovering shows the verdict), then a primary text row ("50% left" ⟷ "Resets in 4d 17h").
+/// - **Bounded** (`limit != nil`): only the exhausted-week message. Limits themselves are never
+///   rows; a card draws them as a grid of tiles (`MetricTileGrid`, laid out by `MeterTileLayout`).
 /// - **Unbounded** (`limit == nil`, text-only row): **no bar**. Label on the left, a single right-aligned
 ///   descriptive line ("1,503 left") and an optional secondary line ("on-device estimate").
 /// Rows size to their own content (variable height). Same `WidgetData` the menu bar uses — only layout differs.
 struct WidgetRowView: View {
     let data: WidgetData
-    /// Flips the global relative/absolute reset display. Supplied where the row has the data store
-    /// (the dashboard list); `nil` in static contexts like the drag-reorder preview, where the reset
-    /// label stays plain text.
-    var onToggleResetDisplay: (() -> Void)?
-    /// Flips the global Used/Left meter style — the headline's counterpart to the reset toggle.
-    /// Same supply rules as `onToggleResetDisplay`.
-    var onToggleMeterStyle: (() -> Void)?
     /// True when this text-only row sits directly under another text-only row. Rows don't know
     /// their neighbors — the list supplies it — and the compact layout pulls consecutive one-liners
     /// into a single cluster.
@@ -28,9 +19,6 @@ struct WidgetRowView: View {
     /// Backs the resets popover's claim flow; `nil` outside the live dashboard (previews, share
     /// renders), which renders the timeline read-only.
     @Environment(\.codexResetClaim) private var codexResetClaim
-    /// Party easter egg: fill meter bars with the party gradient instead of the severity color. Off by
-    /// default everywhere else.
-    @Environment(\.popoverPartyMode) private var partyMode
     /// The popover's shared 30s clock for relative reset/expiry text. Reading `halfMinute` in `body`
     /// (only for rows that show a date) re-renders the row when it ticks; the clock itself stops
     /// while the popover is closed, so the retained hidden tree never ticks. Deliberately NOT a
@@ -40,14 +28,9 @@ struct WidgetRowView: View {
     /// `ImageRenderer` for share cards, where no clock exists — nil simply means static text,
     /// which is what a one-shot render wants.
     @Environment(DashboardClock.self) private var clock: DashboardClock?
-
-    /// Both row fonts come from the compact layout definition. The sizes are explicit because semantic
+    /// The row font comes from the compact layout definition. The size is explicit because semantic
     /// `.headline.weight(.regular)` does not match `.headline` on macOS, and `minimumScaleFactor`
-    /// was shrinking only the trailing value.
-    private var labelFont: Font {
-        .system(size: density.labelPointSize, weight: .semibold)
-    }
-
+    /// was shrinking only the trailing value. Names use the same size in semibold.
     private var supportingFont: Font {
         .system(size: density.supportingPointSize, weight: .regular)
     }
@@ -62,209 +45,51 @@ struct WidgetRowView: View {
         rowContent
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
-        // Bar rows are multi-line and earn breathing room; single-line text rows (Today / Yesterday /
-        // Last 30 Days) stay tighter so consecutive ones read as a cluster, not evenly-spaced
-        // full-height rows. This differentiation — not the fonts — is what kills the "jumpy" rhythm.
-        // All values come from the compact layout definition; a text row pulls up against a preceding
-        // text row (`condensedTop`).
+        // Consecutive text rows (Today / Yesterday / Last 30 Days) pull up against each other
+        // (`condensedTop`) so they read as one cluster under the tiles.
         .padding(.top, topPadding)
         .padding(.bottom, bottomPadding)
     }
 
     private var topPadding: CGFloat {
-        if data.isBounded { return density.barRowPadding }
+        if data.isBounded { return density.meterRowPadding }
         return condensedTop ? density.condensedTextRowTopPadding : density.textRowPadding
     }
 
     private var bottomPadding: CGFloat {
-        data.isBounded ? density.barRowPadding : density.textRowPadding
+        data.isBounded ? density.meterRowPadding : density.textRowPadding
     }
 
     @ViewBuilder
     private var rowContent: some View {
         if let title = data.exhaustedWeeklyTitle {
-            VStack(alignment: .leading, spacing: density.rowInnerSpacing) {
+            // The one shape that is not a tile: an account that cannot be used is a single faded
+            // line — the message, and when it is back.
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(title)
-                    .font(labelFont)
-                    .foregroundStyle(.primary)
-                Text(data.exhaustedWeeklyResetText)
-                    .font(supportingFont)
-                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 0)
+                ViewThatFits(in: .horizontal) {
+                    Text(data.exhaustedWeeklyResetNote())
+                    Text(data.exhaustedWeeklyResetNote(countdownOnly: true))
+                }
             }
+            .font(supportingFont)
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .opacity(Theme.unavailableOpacity)
         } else if data.isChart, data.hasData {
             // The sparkline owns its own label + bars; a chart with no real points falls through to the
             // unbounded "No data" row below (and so descriptor template data never leaks here).
             UsageSparkline(data: data)
-        } else if data.isBounded {
-            boundedRow
         } else {
             unboundedRow
-        }
-    }
-
-    /// Bounded: label (+ run-out warning) → meter → primary text row.
-    /// The label, bar, and reading are one perceptual unit, so they sit on the tight step of the
-    /// grid (`rowInnerSpacing`); the row's vertical padding provides the separation from
-    /// neighboring rows.
-    private var boundedRow: some View {
-        let state = data.meterState()
-        return VStack(alignment: .leading, spacing: density.rowInnerSpacing) {
-            boundedLabelRow(state)
-            meter(state)
-            primaryTextRow
-        }
-    }
-
-    /// Label with the pace warning right-aligned on the same line — one slot, escalating with the
-    /// `MeterState`. Spent: a flame + "Limit reached",
-    /// the terminal state that outranks any pace projection. Running out: a flame + projected
-    /// run-out time, read as "Limit in 3h 45m" ⟷ "Limit today at 11:49 PM" (following the global
-    /// countdown/exact mode) — clicking the time flips the global mode like the reset label. Close
-    /// to limit: a quiet "~3% spare" — the cushion projected at reset. Healthy / level / no-data:
-    /// nothing unless "always show pacing" surfaces projection on blue. Only the flame carries
-    /// the severity color — tint on glass is reserved for the symbol while copy
-    /// stays secondary like the row's other supporting text; the bar below carries the color.
-    /// Hovering shows the pace projection at reset. The warning gets the space; the title truncates.
-    private func boundedLabelRow(_ state: WidgetData.MeterState) -> some View {
-        HStack(spacing: 6) {
-            Text(data.title)
-                .font(labelFont)
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-            warning(state)
-        }
-    }
-
-    /// The single escalating warning slot, switching exhaustively over the state so the copy can
-    /// never contradict the bar. The flame cases share one builder; the amber and (always-show-pacing)
-    /// blue cases are plain text.
-    @ViewBuilder
-    private func warning(_ state: WidgetData.MeterState) -> some View {
-        switch state {
-        case .spent:
-            flameWarning(text: "Limit reached", state: state, accessibility: "Limit reached")
-        case .runningOut(let eta, _):
-            // `eta == nil` is the float-edge case: the flame stands alone (the projection lives in
-            // the tooltip), rather than printing a misleading time. A shown time reads "Limit in 3h
-            // 45m" (or the exact "Limit today at …"), carrying its own verb and following the global
-            // countdown/exact mode, so — exactly like the reset label — clicking it flips that mode
-            // (lifted reorder previews pass no toggle and render it inert).
-            flameWarning(text: eta, state: state,
-                         accessibility: eta ?? "Will reach limit",
-                         action: eta == nil ? nil : onToggleResetDisplay)
-        case .closeToLimit(let spare, _):
-            Spacer(minLength: 8)
-            Text(spare)
-                .font(supportingFont)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .hoverTooltip(state.tooltip)
-        case .healthy where data.alwaysShowPacing:
-            // "Always show pacing" surfaces the projection on the otherwise-silent on-track row: the
-            // same quiet secondary note as the amber case, but the cushion ("~33% left at reset")
-            // rather than the spare. No flame (blue isn't a warning) and no hover tooltip — the copy
-            // already *is* the projection the amber case hides in its tooltip.
-            if let projection = state.tooltip {
-                Spacer(minLength: 8)
-                Text(projection)
-                    .font(supportingFont)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-        case .noData, .healthy, .level:
-            EmptyView()
-        }
-    }
-
-    /// Flame icon + optional label text, carrying the state's projection tooltip — shared by the
-    /// spent and running-out cases. Only the flame is severity-tinted; the copy stays secondary
-    /// (tint on glass is reserved for the symbol). An optional `action` wraps the warning in a
-    /// plain button (the run-out time's countdown/exact toggle).
-    @ViewBuilder
-    private func flameWarning(text: String?, state: WidgetData.MeterState,
-                              accessibility: String, action: (() -> Void)? = nil) -> some View {
-        Spacer(minLength: 8)
-        let label = HStack(spacing: 3) {
-            Image(systemName: "flame.fill")
-                .font(.system(size: density.supportingPointSize - 1))
-                .foregroundStyle(severityColor(state.severity))
-                .accessibilityHidden(true) // the warning text alongside carries the message
-            if let text {
-                Text(text)
-                    .font(supportingFont)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-        }
-        .foregroundStyle(.secondary)
-        .hoverTooltip(state.tooltip)
-        .accessibilityLabel(accessibility)
-
-        if let action {
-            Button(action: action) { label }
-                .buttonStyle(.plain)
-        } else {
-            label
         }
     }
 
     /// Bar/copy color for a severity, or the inactive gray when there's none (the no-data track).
     private func severityColor(_ severity: WidgetData.MeterSeverity?) -> AnyShapeStyle {
         severity.map(Theme.meterFill) ?? AnyShapeStyle(Color.secondary)
-    }
-
-    /// Primary line under the bar: value+mode word on the left ("50% left"), reset/limit context on
-    /// the right. The headline is the Used/Left toggle (click to flip the global meter style, with
-    /// the opposite reading in its tooltip) — the exact counterpart of the reset label's toggle.
-    private var primaryTextRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            headlineText
-            Spacer(minLength: 8)
-            trailingContext
-        }
-        .font(supportingFont)
-        .lineLimit(1)
-    }
-
-    // The headline value is the row's payload — the number the user opened the popover to read —
-    // so it sits at `.primary` (vibrant full-contrast on the popover glass); the surrounding
-    // context (reset countdown, deficit) stays `.secondary`.
-    @ViewBuilder
-    private var headlineText: some View {
-        if data.hasMeterStyleToggle, let onToggleMeterStyle {
-            Button(action: onToggleMeterStyle) {
-                Text(data.headline)
-                    .foregroundStyle(.primary)
-                    .contentTransition(.numericText())
-            }
-            .buttonStyle(.plain)
-            .hoverTooltip(data.meterStyleTooltip)
-        } else {
-            Text(data.headline)
-                .foregroundStyle(.primary)
-                .contentTransition(.numericText())
-        }
-    }
-
-    /// Reset/limit context on the trailing edge. When it's a concrete reset countdown it becomes a
-    /// click target that flips the global relative/absolute mode (with the opposite format in its
-    /// tooltip). Otherwise it's plain text.
-    @ViewBuilder
-    private var trailingContext: some View {
-        if let text = data.boundedTrailingText() {
-            if data.hasResetLabel(), let onToggleResetDisplay {
-                Button(action: onToggleResetDisplay) {
-                    Text(text).foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .hoverTooltip(data.resetTooltip())
-            } else {
-                Text(text).foregroundStyle(.secondary)
-                    .hoverTooltip(data.resetTooltip())
-            }
-        }
     }
 
     /// Unbounded: no bar. Label on the left, with a single right-aligned descriptive line ("1,503 left")
@@ -317,8 +142,10 @@ struct WidgetRowView: View {
                 HStack(spacing: 4) {
                     expiryStatusDot
                     Text(data.unboundedDetail)
-                        .font(supportingFont)
-                        .foregroundStyle(.primary) // the value is the row's payload — match the bounded headline
+                        // The value is the row's payload, so it carries the weight — the same
+                        // name-quiet, reading-strong order as a limit tile.
+                        .font(.system(size: density.supportingPointSize, weight: .medium))
+                        .foregroundStyle(.primary)
                         .contentTransition(.numericText())
                         .lineLimit(isTextBadge ? 2 : 1)
                         .fixedSize(horizontal: !isTextBadge, vertical: false)
@@ -428,9 +255,9 @@ struct WidgetRowView: View {
     private var labelColumn: some View {
         HStack(spacing: 4) {
             Text(data.title)
-                // Same point size as the trailing value so the single-line row reads tight;
-                // semibold alone keeps the name/value hierarchy.
-                .font(.system(size: density.supportingPointSize, weight: .semibold))
+                // Same size and weight as a meter row's name, so every row in the card starts the
+                // same way.
+                .font(supportingFont)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
@@ -450,65 +277,5 @@ struct WidgetRowView: View {
                 .hoverTooltip(data.unknownModelTooltip)
                 .accessibilityLabel("This period used a model with unknown pricing")
         }
-    }
-
-    /// Full-width capsule meter — the Tahoe-era level-indicator form (capsule, full-height
-    /// leading-anchored fill, like the redesigned Slider / Control Center). Deliberately NOT the
-    /// native linear `Gauge`/`ProgressView`, which Tahoe left as the thin legacy bar. The fill is
-    /// a flat **system color** carrying the pace verdict (blue = well within limits, yellow =
-    /// projected to land inside the last 10%, red = projected to run out; `Theme.meterFill` /
-    /// `MeterState.severity`) at full strength on the opaque popover surface; the earlier
-    /// provider-brand gradient was removed deliberately so the bar's color always reads as state.
-    /// Empty + colorless without data. A thin tick marks the even-pace line — where usage would sit
-    /// if it burned evenly across the reset window — on yellow and red bars always, and on blue when
-    /// "always show pacing" is on. The tick rides in an overlay so it pokes out top and bottom without
-    /// changing the bar's height. Hovering shows the pace projection (`MeterState.tooltip`).
-    private func meter(_ state: WidgetData.MeterState) -> some View {
-        let tick = data.paceTick(for: state)
-        return GeometryReader { proxy in
-            // Track + fill define the bar's height; the tick rides in an `.overlay` so its taller frame
-            // pokes out top and bottom without stretching the capsules. (As a ZStack sibling it grew the
-            // stack and the flexible capsules stretched with it, so a tick'd bar read as a thicker bar.)
-            ZStack(alignment: .leading) {
-                // Semantic quaternary fill (not an opacity-faded color) so the track stays vibrant
-                // on glass and adapts to Increase Contrast / Reduce Transparency.
-                Capsule().fill(.quaternary)
-                Capsule()
-                    .fill(partyMode ? PartyMode.meterFill : severityColor(state.severity))
-                    .frame(width: fillWidth(track: proxy.size.width))
-            }
-            .overlay(alignment: .leading) {
-                if let tick {
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(Color.primary.opacity(0.55))
-                        .frame(width: Self.paceTickWidth, height: density.meterHeight + Self.paceTickOverhang)
-                        .offset(x: paceTickOffset(track: proxy.size.width, fraction: tick))
-                }
-            }
-        }
-        .frame(height: density.meterHeight)
-        .animation(Motion.spring, value: data.fraction)
-        .accessibilityHidden(true)
-        .hoverTooltip(state.tooltip)
-    }
-
-    private static let paceTickWidth: CGFloat = 2
-    /// How much taller than the bar the tick is, so it pokes out slightly above and below (half each
-    /// end). The bar itself stays at `meterHeight` regardless — the tick lives in an overlay.
-    private static let paceTickOverhang: CGFloat = 4
-
-    /// Leading offset that centers the tick on its fraction, clamped so the tick never pokes past
-    /// either rounded end of the track.
-    private func paceTickOffset(track: CGFloat, fraction: Double) -> CGFloat {
-        let centered = track * fraction - Self.paceTickWidth / 2
-        return min(max(centered, 0), max(track - Self.paceTickWidth, 0))
-    }
-
-    /// Fill width with a minimum-visible rule: any non-zero fraction renders at least a full circle
-    /// (width = bar height) so 1–2% never squashes into an invisible sliver — the same idea as the
-    /// menu-bar bars' minimum fill.
-    private func fillWidth(track: CGFloat) -> CGFloat {
-        guard data.hasData, data.fraction > 0 else { return 0 }
-        return max(density.meterHeight, track * data.fraction)
     }
 }

@@ -62,23 +62,6 @@ final class ShareCardRendererTests: XCTestCase {
         XCTAssertGreaterThan(rep.pixelsHigh, 0)
     }
 
-    func testCondensedTextRowIndicesFollowNeighborRuleAndExpandBoundary() {
-        func row(_ title: String, bounded: Bool) -> WidgetData {
-            WidgetData(title: title, icon: .providerMark("claude"), kind: bounded ? .percent : .dollars,
-                       used: 1, limit: bounded ? 100 : nil)
-        }
-        let meter = row("Session", bounded: true)
-        let text = row("Today", bounded: false)
-
-        // A text row condenses only directly under another text row; the first row never does.
-        XCTAssertEqual(ShareCardView.condensedTextRowIndices([meter, text, text, text]), [2, 3])
-        XCTAssertEqual(ShareCardView.condensedTextRowIndices([text, meter, text]), [])
-        // The expand caret splits the run: the first expanded row starts a new cluster.
-        XCTAssertEqual(ShareCardView.condensedTextRowIndices([text, text, text]), [1, 2])
-        XCTAssertEqual(ShareCardView.condensedTextRowIndices([text, text, text], boundary: 1), [2])
-        XCTAssertEqual(ShareCardView.condensedTextRowIndices([text, text, text, text], boundary: 2), [1, 3])
-    }
-
     func testTextRowAfterSubtitleKeepsNormalTopSpacing() {
         var credits = WidgetData(
             title: "AI Credits Used",

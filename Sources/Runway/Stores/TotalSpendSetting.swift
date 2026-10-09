@@ -1,14 +1,14 @@
 import Foundation
 
 /// Whether the cross-provider Total Spend card shows at the top of the dashboard. On by default;
-/// the toggle sits at the top of Settings → General. Hiding it only affects the card — the
+/// the toggle sits in Settings → Appearance → Dashboard. Hiding it only affects the card — the
 /// per-provider spend rows it aggregates stay wherever the user put them.
 enum TotalSpendSetting {
     static let key = "showTotalSpend"
 }
 
 /// How the Total Spend card draws its breakdown. Every style groups accounts under their provider;
-/// the choice sits under **Show Total Spend** in Settings → General and in the **View** submenu of
+/// the choice sits under **Show Total Spend** in Settings → Appearance → Dashboard and in the **View** submenu of
 /// the card's own header menu.
 enum TotalSpendLayout: String, Hashable, Sendable, CaseIterable, UserDefaultsBacked {
     /// Declaration order is the menu order: Pie → Bar → Table.

@@ -16,10 +16,13 @@ struct ShareCardView: View {
     var plan: String?
     let rows: [WidgetData]
     let appearance: ColorScheme
-    /// Index in `rows` where the On Demand rows begin (the Always Visible count), so the
-    /// neighbor-aware condensing treats the expand caret as a hard boundary the way the live dashboard
-    /// does. `nil` when the provider is collapsed (no expanded section).
+    /// Index in `rows` where the On Demand rows begin (the Always Visible count): where the divider
+    /// goes, and a hard boundary for tiles and condensing, as on the live dashboard. `nil` when the
+    /// provider is collapsed (no expanded section).
     var expandBoundaryIndex: Int? = nil
+    /// The column count the provider's accounts share for their Always Visible limits, so the
+    /// export lays its tiles out as the card on screen does.
+    var limitColumns: Int? = nil
     /// The live card title when it differs from the launch-baked `provider.displayName` (a rename can
     /// land mid-session). Passed explicitly — this view renders in an `ImageRenderer`, outside the
     /// app's environment, so it can't read the account registry itself.
@@ -91,26 +94,7 @@ struct ShareCardView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
             }
-            let condensed = Self.condensedTextRowIndices(rows, boundary: expandBoundaryIndex)
-            ForEach(Array(rows.enumerated()), id: \.offset) { index, data in
-                WidgetRowView(data: data, condensedTop: condensed.contains(index))
-            }
+            StaticMetricRows(rows: rows, expandBoundaryIndex: expandBoundaryIndex, limitColumns: limitColumns)
         }
     }
-
-    /// Flat indices of text-only rows that condense under another text-only row — the neighbor-aware rule
-    /// the live dashboard applies (shared via `WidgetData.condensedTextRowOffsets`), so a run of one-liners
-    /// (Today / Yesterday / Last 30 Days) clusters in the export the same way it does in the popover. The
-    /// expand caret is a hard boundary: each segment (always-shown, then expanded) is scanned separately,
-    /// never across, and its segment-local offsets are mapped back to flat `rows` indices.
-    static func condensedTextRowIndices(_ rows: [WidgetData], boundary: Int? = nil) -> Set<Int> {
-        let edges = boundary.map { [0, $0, rows.count] } ?? [0, rows.count]
-        var indices = Set<Int>()
-        for (lower, upper) in zip(edges, edges.dropFirst()) {
-            let offsets = WidgetData.condensedTextRowOffsets(in: Array(rows[lower..<upper]))
-            indices.formUnion(offsets.map { lower + $0 })
-        }
-        return indices
-    }
-
 }

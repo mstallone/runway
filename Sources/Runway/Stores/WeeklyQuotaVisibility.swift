@@ -2,6 +2,16 @@
 enum WeeklyQuotaVisibility {
     private static let weeklyKeys: Set<String> = ["weekly", "geminiWeekly", "nonGeminiWeekly", "sparkWeekly"]
 
+    /// The one weekly limit every model on the account draws from. Spending it blocks the
+    /// account; the other weekly keys are independent pools.
+    private static let sharedWeeklyKey = "weekly"
+
+    /// Whether `descriptor` meters the account's shared weekly limit, so that exhausting it
+    /// leaves the account unusable (an independent pool's weekly does not).
+    static func blocksAccount(_ descriptor: WidgetDescriptor) -> Bool {
+        descriptor.limitResources.contains { $0.key == sharedWeeklyKey }
+    }
+
     /// A bounded metric with real data whose usage has reached its limit.
     private static func isExhausted(_ value: WidgetData) -> Bool {
         guard value.hasData, let limit = value.limit, limit > 0,
@@ -20,7 +30,7 @@ enum WeeklyQuotaVisibility {
             guard isExhausted(data(descriptor)) else { return [] }
             return descriptor.limitResources.map(\.key)
         })
-        if exhausted.contains("weekly") { return true }
+        if exhausted.contains(sharedWeeklyKey) { return true }
         let pools = ["geminiSession": "geminiWeekly", "geminiWeekly": "geminiWeekly",
                      "nonGeminiSession": "nonGeminiWeekly", "nonGeminiWeekly": "nonGeminiWeekly",
                      "spark": "sparkWeekly", "sparkWeekly": "sparkWeekly"]

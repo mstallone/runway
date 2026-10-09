@@ -42,11 +42,9 @@ final class ResetDisplayTests: XCTestCase {
 
         data.resetDisplayMode = .relative
         XCTAssertEqual(data.boundedTrailingText()?.hasPrefix("Resets in "), true)
-        XCTAssertEqual(data.resetTooltip()?.hasPrefix("Resets "), true)         // opposite = absolute
 
         data.resetDisplayMode = .absolute
         XCTAssertEqual(data.boundedTrailingText()?.hasPrefix("Resets "), true)
-        XCTAssertEqual(data.resetTooltip()?.hasPrefix("Resets in "), true)      // opposite = relative
     }
 
     func testFreshSessionWindowShowsNotStarted() {
@@ -60,13 +58,13 @@ final class ResetDisplayTests: XCTestCase {
         data.resetsAt = now.addingTimeInterval(period / 2)
         XCTAssertEqual(data.boundedTrailingText(now: now), "Not started")
         XCTAssertFalse(data.hasResetLabel(now: now))
-        XCTAssertEqual(data.resetTooltip(now: now), WidgetData.freshSessionTooltip)
+        XCTAssertEqual(data.notStartedTooltip(now: now), WidgetData.freshSessionTooltip)
         // The bar and its hover must not contradict "Not started": a calm level state, no pace
         // projection and no tick — even with pacing forced on and the window well past minimumElapsed.
         data.alwaysShowPacing = true
         let state = data.meterState(now: now)
         XCTAssertEqual(state, .level(.normal))
-        XCTAssertNil(state.tooltip)
+        XCTAssertNil(state.projection)
         XCTAssertNil(data.paceTick(for: state, now: now))
     }
 
@@ -88,7 +86,7 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertTrue(data.isFreshSessionWindow(now: now))
         XCTAssertEqual(data.boundedTrailingText(now: now), "Not started")
         XCTAssertFalse(data.hasResetLabel(now: now))
-        XCTAssertEqual(data.resetTooltip(now: now), WidgetData.freshSessionTooltip)
+        XCTAssertEqual(data.notStartedTooltip(now: now), WidgetData.freshSessionTooltip)
         XCTAssertEqual(data.meterState(now: now), .level(.normal))
 
         // Usage with no reset is a started window with nothing to count down to, not a fresh one.
@@ -387,7 +385,7 @@ final class ResetDisplayTests: XCTestCase {
                               kind: .dollars, used: 12, limit: 20)
         data.resetDisplayMode = .absolute
         XCTAssertFalse(data.hasResetLabel())        // no resetsAt → not a clickable reset
-        XCTAssertNil(data.resetTooltip())
+        XCTAssertNil(data.notStartedTooltip())
         XCTAssertEqual(data.boundedTrailingText(), "$20 limit") // falls back to limit context, unflipped
     }
 }

@@ -185,7 +185,7 @@ final class OpenCodeProviderTests: XCTestCase {
             XCTAssertFalse(data.isFreshSessionWindow(now: now))
             XCTAssertEqual(data.boundedTrailingText(now: now)?.hasPrefix("Resets in "), true)
             XCTAssertTrue(data.hasResetLabel(now: now))
-            XCTAssertNotEqual(data.resetTooltip(now: now), WidgetData.freshSessionTooltip)
+            XCTAssertNil(data.notStartedTooltip(now: now))
         }
     }
 
@@ -201,7 +201,7 @@ final class OpenCodeProviderTests: XCTestCase {
             XCTAssertTrue(data.isFreshSessionWindow(now: now))
             XCTAssertEqual(data.boundedTrailingText(now: now), "Not started")
             XCTAssertFalse(data.hasResetLabel(now: now))
-            XCTAssertEqual(data.resetTooltip(now: now), WidgetData.freshSessionTooltip)
+            XCTAssertEqual(data.notStartedTooltip(now: now), WidgetData.freshSessionTooltip)
             XCTAssertEqual(data.meterState(now: now), .level(.normal))
             // The stored snapshot does not go stale into a countdown as the clock moves on.
             let later = now.addingTimeInterval(20 * 60)

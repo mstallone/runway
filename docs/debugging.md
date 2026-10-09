@@ -57,7 +57,7 @@ The launch-time account pass (which account is signed in at the Claude and Codex
 
 ## Profile the UI
 
-`script/profile_ui.sh` measures popover performance end to end. It builds and stages the dev app, relaunches it with `RUNWAY_UI_PROFILE=1`, and an in-app driver walks the popover through scripted phases: a cold open, twelve warm open/close cycles, ten screen switches, ten caret toggles, a forced refresh with the panel open, and an idle soak. The script prints per-phase stats from the log: open latency split into layout and order-front, close cost, and main-queue stalls.
+`script/profile_ui.sh` measures popover performance end to end. It builds and stages the dev app, relaunches it with `RUNWAY_UI_PROFILE=1`, and an in-app driver walks the popover through scripted phases: a cold open, twelve warm open/close cycles, ten screen switches, ten card expand toggles, a forced refresh with the panel open, and an idle soak. The script prints per-phase stats from the log: open latency split into layout and order-front, close cost, and main-queue stalls.
 
 Run it before and after any change to the popover render path and compare. Reference numbers on Apple Silicon (August 2026): warm open in the low tens of milliseconds to first frame, and few or no stalls in the warm-cycles phase.
 

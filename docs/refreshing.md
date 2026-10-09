@@ -33,7 +33,7 @@ When a provider stops responding, Runway cuts it off after a per-provider ceilin
 
 The last good normalized history is preserved too, so a temporary provider failure, or a successful limit refresh whose local log scan is temporarily unavailable, does not remove this Mac's previous contribution from an iCloud-combined spend total.
 
-When a login or fetch failure leaves bars without data, the dashboard replaces the empty rows with one compact message. Available and cached metrics remain in their saved positions, including On Demand rows behind the caret. This also applies to warning-only results that still provide local spend. The message offers **Refresh** or **Connect** when appropriate; notices that ask you to wait have no retry button. Without a failure notice, rows that have never had data still show "No data".
+When a login or fetch failure leaves bars without data, the dashboard replaces the empty rows with one compact message. Available and cached metrics remain in their saved positions, including On Demand rows in the card's expanded section. This also applies to warning-only results that still provide local spend. The message offers **Refresh** or **Connect** when appropriate; notices that ask you to wait have no retry button. Without a failure notice, a row that has never had data still shows "No data", except a limit with no data on a card that has other usage to show, which is left out.
 
 ## Stale data
 

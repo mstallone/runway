@@ -14,8 +14,4 @@ enum ResetDisplayMode: String, Hashable, Sendable, CaseIterable {
         case .absolute: return "Exact Time"
         }
     }
-
-    mutating func toggle() {
-        self = self == .relative ? .absolute : .relative
-    }
 }

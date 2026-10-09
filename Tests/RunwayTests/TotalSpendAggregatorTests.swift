@@ -2,7 +2,7 @@ import XCTest
 @testable import Runway
 
 /// Covers the Total Spend card's aggregation and metric projection: which providers contribute,
-/// how slices rank per metric, Cost/MTok math, and when the combined number counts as estimated.
+/// how slices rank per metric, and Cost/MTok math.
 final class TotalSpendAggregatorTests: XCTestCase {
     private let claude = Provider(id: "claude", displayName: "Claude", icon: .providerMark("claude"))
     private let codex = Provider(id: "codex", displayName: "Codex", icon: .providerMark("codex"))
@@ -20,12 +20,11 @@ final class TotalSpendAggregatorTests: XCTestCase {
     private func spendLine(
         _ label: String,
         dollars: Double? = nil,
-        tokens: Double? = 1_000_000,
-        estimated: Bool = false
+        tokens: Double? = 1_000_000
     ) -> MetricLine {
         var values: [MetricValue] = []
         if let dollars {
-            values.append(MetricValue(number: dollars, kind: .dollars, estimated: estimated))
+            values.append(MetricValue(number: dollars, kind: .dollars))
         }
         if let tokens {
             values.append(MetricValue(number: tokens, kind: .count, label: "tokens"))
@@ -35,7 +34,7 @@ final class TotalSpendAggregatorTests: XCTestCase {
 
     func testSumsDollarsAndTokensAcrossProviders() {
         let snapshots = [
-            "claude": snapshot(claude, lines: [spendLine("Today", dollars: 2.50, tokens: 100_000, estimated: true)]),
+            "claude": snapshot(claude, lines: [spendLine("Today", dollars: 2.50, tokens: 100_000)]),
             "cursor": snapshot(cursor, lines: [spendLine("Today", dollars: 7.25, tokens: 500_000)])
         ]
 
@@ -107,19 +106,6 @@ final class TotalSpendAggregatorTests: XCTestCase {
         XCTAssertEqual(total.projection(for: .cost).centerValue, 4.00, accuracy: 0.0001)
         XCTAssertTrue(total.projection(for: .tokens).isEmpty)
         XCTAssertTrue(total.projection(for: .costPerMtok).isEmpty)
-    }
-
-    func testTotalIsEstimatedWhenAnySliceIsEstimated() {
-        let snapshots = [
-            "claude": snapshot(claude, lines: [spendLine("Today", dollars: 2.00, estimated: true)]),
-            "cursor": snapshot(cursor, lines: [spendLine("Today", dollars: 4.00)])
-        ]
-
-        let total = TotalSpendAggregator.total(for: .today, providers: [claude, cursor], snapshots: snapshots)
-
-        XCTAssertTrue(total.projection(for: .cost).isEstimated)
-        XCTAssertTrue(total.projection(for: .costPerMtok).isEstimated)
-        XCTAssertFalse(total.projection(for: .tokens).isEstimated)
     }
 
     func testCostPerMtokRanksByRateAndBlendsTotals() {
@@ -331,16 +317,5 @@ final class TotalSpendAggregatorTests: XCTestCase {
         let table = TotalSpendTable.make(projections: projections, metric: .cost)
         XCTAssertTrue(table.isEmpty)
         XCTAssertEqual(table.totals, [nil, nil, nil])
-    }
-
-    func testInfoTooltipCarriesEstimateNoteOnlyForEstimatedDollarMetrics() {
-        let names = ["Claude", "Codex"]
-        let scope = "Only includes Claude and Codex."
-        XCTAssertEqual(
-            TotalSpendInfo.tooltip(providerNames: names, metric: .cost, isEstimated: true),
-            "\(scope) \(WidgetData.localEstimateNote)."
-        )
-        XCTAssertEqual(TotalSpendInfo.tooltip(providerNames: names, metric: .tokens, isEstimated: true), scope)
-        XCTAssertEqual(TotalSpendInfo.tooltip(providerNames: names, metric: .cost, isEstimated: false), scope)
     }
 }
