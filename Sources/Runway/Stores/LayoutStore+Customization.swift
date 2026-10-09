@@ -207,11 +207,15 @@ extension LayoutStore {
     /// Reorder whole providers when `dragged`'s header is dropped onto `target`'s. Works on the currently
     /// shown (enabled) provider order; disabled providers keep their relative tail position.
     /// Returns whether the order actually changed — the drag gestures key haptics off it.
+    ///
+    /// With `among`, only those cards trade places and every other card keeps its slot: the
+    /// dashboard's grouped view reorders a provider's accounts this way, so swapping two accounts
+    /// can never move the provider's card past its neighbors.
     @discardableResult
-    func reorderProvider(dragged: String, target: String) -> Bool {
+    func reorderProvider(dragged: String, target: String, among members: [String]? = nil) -> Bool {
         recordingUndoStep {
             let shown = customizeGroups.map(\.provider.id)
-            guard let next = Self.reordered(shown, dragged: dragged, target: target) else { return false }
+            guard let next = Self.reordered(shown, dragged: dragged, target: target, among: members) else { return false }
             // Reorder only the visible slots in the raw persisted sequence. Unknown ids may be
             // account cards absent from this launch's registry, and disabled providers are hidden
             // from `customizeGroups`; both keep their exact positions while the visible ids move
@@ -398,6 +402,16 @@ extension LayoutStore {
     /// Pure reorder: remove `dragged`, reinsert it adjacent to `target` (after it when moving down, before
     /// it when moving up). Returns nil when either id is missing or they're identical. Mirrors the proven
     /// macOS drag-reorder math from crafcat7/Peakmon (Apache-2.0).
+    /// `reordered` confined to `members`: they are reordered among themselves and written back into
+    /// the slots they already occupy in `ids`, leaving every other id where it was.
+    static func reordered(_ ids: [String], dragged: String, target: String, among members: [String]?) -> [String]? {
+        guard let members else { return reordered(ids, dragged: dragged, target: target) }
+        let slots = ids.filter(members.contains)
+        guard let next = reordered(slots, dragged: dragged, target: target) else { return nil }
+        var replacements = next.makeIterator()
+        return ids.map { members.contains($0) ? replacements.next() ?? $0 : $0 }
+    }
+
     static func reordered(_ ids: [String], dragged: String, target: String) -> [String]? {
         guard dragged != target,
               let from = ids.firstIndex(of: dragged),

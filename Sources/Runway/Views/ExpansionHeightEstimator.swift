@@ -4,7 +4,7 @@ import CoreGraphics
 /// only the animation clock): everything here is deterministic row math, unit-tested in
 /// `ExpansionHeightEstimatorTests`.
 ///
-/// The guess must mirror `WidgetGroupedListView.metricContainer`'s render path exactly:
+/// The guess must mirror the live card's render path (`ResolvedCard.rows`) exactly:
 /// - only applicability-filtered rows render (a Copilot seat's other-plan metrics never appear);
 /// - when that filtering empties the Always Visible side, the card PROMOTES the applicable
 ///   On Demand rows above the caret, leaving the expansion metric-less (links only);
@@ -45,15 +45,28 @@ enum ExpansionHeightEstimator {
     static func estimatedDelta(revealedRows: [Row], linkCount: Int) -> CGFloat {
         let datas = revealedRows.map(\.data)
         let condensed = WidgetData.condensedTextRowOffsets(in: datas)
-        let rows = datas.enumerated().reduce(CGFloat(0)) { sum, row in
-            sum + estimatedRowHeight(row.element, condensedTop: condensed.contains(row.offset))
+        let segments = MeterTileLayout.segments(Array(datas.enumerated()), data: \.element)
+        let rows = segments.reduce(CGFloat(0)) { sum, segment in
+            switch segment {
+            case .grid(let grid):
+                sum + estimatedTileGridHeight(rows: grid.rows.count)
+            case .row(let row):
+                sum + estimatedRowHeight(row.element, condensedTop: condensed.contains(row.offset))
+            }
         }
-        return rows + estimatedLinksRowHeight(linkCount: linkCount)
+        let links = estimatedLinksRowHeight(linkCount: linkCount)
+        // The hairline between Always Visible and On Demand exists only while the card is open.
+        return rows + links + (rows + links > 0 ? separatorRowHeight : 0)
     }
 
+    /// The open card's separator row: a 1pt line inside its vertical padding (see
+    /// `WidgetGroupedListView.expandedSeparator`).
+    static let separatorRowHeight: CGFloat = 1 + separatorRowPadding * 2
+    static let separatorRowPadding: CGFloat = 4
+
     /// One row's estimated rendered height, mirroring `WidgetRowView`'s anatomy branch by branch
-    /// (chart → sparkline, bounded → label/meter/reading, unbounded → one line plus optional
-    /// subtitle) on the compact density constants. Line heights are rounded-up approximations of
+    /// (chart → sparkline, bounded → the exhausted message or a lone tile, unbounded → one
+    /// line plus optional subtitle) on the compact density constants. Line heights are rounded-up approximations of
     /// the resolved fonts; the settled measurement still corrects and learns the exact value, this
     /// only has to land close enough that the first toggle's correction is invisible.
     static func estimatedRowHeight(_ data: WidgetData, condensedTop: Bool) -> CGFloat {
@@ -65,13 +78,29 @@ enum ExpansionHeightEstimator {
             // row's content height is the taller of the two, not their sum.
             return density.textRowPadding * 2 + max(labelLine, density.trendChartHeight)
         }
-        if data.isBounded {
-            return density.barRowPadding * 2 + labelLine + density.rowInnerSpacing * 2
-                + density.meterHeight + supportingLine
+        if data.exhaustedWeeklyTitle != nil {
+            return density.meterRowPadding * 2 + supportingLine
         }
         let top = condensedTop ? density.condensedTextRowTopPadding : density.textRowPadding
         let subtitle: CGFloat = data.unboundedSubtitle == nil ? 0 : supportingLine
         return top + density.textRowPadding + labelLine + subtitle
+    }
+
+    /// A tile grid's estimated height: its padding, its rows of tiles, and the gaps between them
+    /// (see `MetricTileGrid`). Every tile is the same height, whatever its state.
+    static func estimatedTileGridHeight(rows: Int) -> CGFloat {
+        guard rows > 0 else { return 0 }
+        return MeterTileLayout.topPadding + MeterTileLayout.bottomPadding
+            + CGFloat(rows) * estimatedTileHeight + CGFloat(rows - 1) * MeterTileLayout.rowSpacing
+    }
+
+    /// One tile's four lines: name, reading, bar, time (see `MetricTileView`).
+    static var estimatedTileHeight: CGFloat {
+        let density = DensitySetting.compact
+        let nameLine: CGFloat = 14
+        let readingLine: CGFloat = 16
+        let timeLine: CGFloat = 12
+        return nameLine + readingLine + density.meterHeight + MetricTileView.barPadding * 2 + timeLine + 3
     }
 
     /// The quick-links row's estimated height: small bordered buttons (~22pt) in up-to-three-across

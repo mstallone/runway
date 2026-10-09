@@ -7,7 +7,6 @@ struct TotalSpendGroup: Identifiable, Equatable {
     let family: String
     let title: String
     let displayAmount: Double
-    let estimated: Bool
     let members: [TotalSpendProjectedSlice]
 
     var id: String { family }
@@ -45,7 +44,6 @@ struct TotalSpendGroup: Identifiable, Equatable {
                 family: family,
                 title: title,
                 displayAmount: amount,
-                estimated: members.contains(where: \.estimated),
                 members: members.map { member in
                     let memberAmount: Double
                     switch metric {
@@ -56,8 +54,7 @@ struct TotalSpendGroup: Identifiable, Equatable {
                     return TotalSpendProjectedSlice(
                         provider: member.provider,
                         title: member.title,
-                        displayAmount: memberAmount,
-                        estimated: member.estimated
+                        displayAmount: memberAmount
                     )
                 }
             )
@@ -162,15 +159,5 @@ struct TotalSpendTable: Equatable {
             return (left ?? 0) > (right ?? 0)
         }
         return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
-    }
-}
-
-/// The header's info note: which providers feed the total, plus the local-estimate caveat when a
-/// dollar-backed metric includes imputed spend.
-enum TotalSpendInfo {
-    static func tooltip(providerNames: [String], metric: TotalSpendMetric, isEstimated: Bool) -> String {
-        let scope = "Only includes \(providerNames.formatted(.list(type: .and)))."
-        guard isEstimated, metric.usesDollarEstimateNote else { return scope }
-        return "\(scope) \(WidgetData.localEstimateNote)."
     }
 }

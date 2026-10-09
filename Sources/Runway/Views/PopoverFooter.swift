@@ -41,7 +41,7 @@ struct PopoverFooter: View {
             .padding(.horizontal, horizontalPadding)
             .frame(height: height)
             .frame(maxWidth: .infinity)
-            .barGlass()
+            .modifier(FooterSurface())
             .overlay(alignment: .top) {
                 if layout.shareConfirmation {
                     shareCopiedPill
@@ -148,5 +148,26 @@ struct PopoverFooter: View {
             return "\(minutes)m"
         }
         return "\(totalSeconds)s"
+    }
+}
+
+/// The footer sits on the page surface like the dashboard's sections, not on a bar of its own. On
+/// macOS 26+ the soft bottom scroll edge fades content as it passes beneath, so the footer draws
+/// nothing. macOS 15 has no such fade, so the footer paints the page surface (frosted under the
+/// translucent treatment) to keep scrolled content out from under its text.
+private struct FooterSurface: ViewModifier {
+    @Environment(\.popoverSurfaceTreatment) private var treatment
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            content
+        } else {
+            content.background {
+                switch treatment {
+                case .opaque: Theme.traySurface
+                case .translucent: Rectangle().fill(.regularMaterial)
+                }
+            }
+        }
     }
 }

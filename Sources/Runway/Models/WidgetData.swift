@@ -176,28 +176,25 @@ struct WidgetData: Hashable {
             }
         }
 
-        /// Hover-tooltip detail shared by the bar, the spare note, and the flame: a short numeric
-        /// projection of where pace lands at reset, adding the one figure the row doesn't already
-        /// show. Blue → the projected cushion ("~35% left at reset"); amber → projected usage
-        /// ("~92% used at reset"), the complement of the visible "~N% spare"; red → the overage
-        /// ("~12% over limit at reset"), or "~100% used at reset" when projected to land right at
-        /// the limit (the promoted-onTrack case, ≤ limit, so there's no overage). `nil` where there's
-        /// no pace story (no data, or a plain absolute-band level); terminal "Limit reached" when spent.
-        var tooltip: String? {
+        /// Where pace lands at reset: the one figure a tile does not print, shown in its hover
+        /// detail. Blue → the projected cushion ("~35% left"); amber → projected usage ("~92%
+        /// used"); red → the overage ("~12% over limit"), or "~100% used" when projected to land
+        /// right at the limit (the promoted-onTrack case, ≤ limit, so there's no overage). `nil`
+        /// where there's no pace story (no data, a plain absolute-band level, or spent).
+        var projection: String? {
             switch self {
-            case .noData, .level: return nil
-            case .spent: return "Limit reached"
+            case .noData, .level, .spent: return nil
             case .healthy(let projectedFraction):
                 let left = Int(((1 - projectedFraction) * 100).rounded())
-                return "~\(left)% left at reset"
+                return "~\(left)% left"
             case .closeToLimit(_, let projectedFraction):
                 let used = Int((projectedFraction * 100).rounded())
-                return "~\(used)% used at reset"
+                return "~\(used)% used"
             case .runningOut(_, let projectedFraction):
-                guard projectedFraction > 1 else { return "~100% used at reset" }
+                guard projectedFraction > 1 else { return "~100% used" }
                 // Floored to 1% so a bar projected even slightly over never reads "~0% over limit".
                 let over = max(1, Int(((projectedFraction - 1) * 100).rounded()))
-                return "~\(over)% over limit at reset"
+                return "~\(over)% over limit"
             }
         }
 

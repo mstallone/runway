@@ -77,6 +77,41 @@ enum ShareCardRenderer {
         displayName: String? = nil
     ) -> Bool {
         let isExpanded = layout.isProviderExpanded(group.provider.id)
+        let card = rows(for: group, dataStore: dataStore, layout: layout)
+        let rows = isExpanded ? card.always + card.expanded : card.always
+        // The provider's accounts share their limit columns on the dashboard; resolve the siblings
+        // the same way so the export matches the card it is taken from.
+        let family = ProviderAccountID.family(of: group.provider.id)
+        let limitColumns = MeterTileLayout.limitColumnsByFamily(
+            layout.dashboardGroups(dataStore: dataStore)
+                .filter { ProviderAccountID.family(of: $0.provider.id) == family }
+                .map { sibling in
+                    let always = self.rows(for: sibling, dataStore: dataStore, layout: layout).always
+                    return (family: family, limits: MeterTileLayout.limitGridSize(MeterTileLayout.segments(always, data: { $0 })))
+                }
+        )[family]
+        let view = ShareCardView(
+            provider: group.provider,
+            plan: dataStore.plan(for: group.provider.id),
+            rows: rows,
+            appearance: appearance,
+            expandBoundaryIndex: isExpanded && !card.expanded.isEmpty ? card.always.count : nil,
+            limitColumns: limitColumns,
+            displayNameOverride: displayName,
+            errorMessage: card.message,
+            errorIsConnectPrompt: dataStore.noticeIsConnectPrompt(for: group.provider.id)
+        )
+        return renderAndCopy(view, label: group.provider.id, layout: layout)
+    }
+
+    /// A card's rows as the dashboard shows them: its notice, its Always Visible rows, and its On
+    /// Demand rows, after account-aware filtering and the promotion that keeps a card from being
+    /// header-only.
+    private static func rows(
+        for group: ProviderGroup,
+        dataStore: WidgetDataStore,
+        layout: LayoutStore
+    ) -> (message: String?, always: [WidgetData], expanded: [WidgetData]) {
         let message = dataStore.usageUnavailableMessage(
             for: group.provider.id,
             placedDescriptors: (group.alwaysShownWidgets + group.expandedWidgets).compactMap { widget in
@@ -85,42 +120,22 @@ enum ShareCardRenderer {
                 return descriptor
             }
         )
-        let rawAlwaysRows = group.alwaysShownWidgets.compactMap { widget -> WidgetData? in
-            guard let descriptor = layout.descriptor(for: widget),
-                  dataStore.isMetricApplicable(descriptor)
-            else {
-                return nil
+        func resolve(_ widgets: [PlacedWidget], presenting: Bool) -> [WidgetData] {
+            widgets.compactMap { widget -> WidgetData? in
+                guard let descriptor = layout.descriptor(for: widget),
+                      dataStore.isMetricApplicable(descriptor)
+                else { return nil }
+                let data = dataStore.data(for: descriptor)
+                guard message == nil || data.hasData else { return nil }
+                return presenting ? WeeklyQuotaVisibility.presentation(data, descriptor: descriptor) : data
             }
-            let data = dataStore.data(for: descriptor)
-            guard message == nil || data.hasData else { return nil }
-            return WeeklyQuotaVisibility.presentation(data, descriptor: descriptor)
         }
-        let rawExpandedRows = group.expandedWidgets.compactMap { widget -> WidgetData? in
-            guard let descriptor = layout.descriptor(for: widget),
-                  dataStore.isMetricApplicable(descriptor)
-            else {
-                return nil
-            }
-            let data = dataStore.data(for: descriptor)
-            return message == nil || data.hasData ? data : nil
-        }
-        // Match the dashboard's invariant after account-aware filtering: if no applicable metric remains
-        // Always Visible, promote On Demand rows unless a compact notice already fills the card.
-        let promote = rawAlwaysRows.isEmpty && message == nil
-        let alwaysRows = promote ? rawExpandedRows : rawAlwaysRows
-        let expandedRows = promote ? [] : rawExpandedRows
-        let rows = isExpanded ? alwaysRows + expandedRows : alwaysRows
-        let view = ShareCardView(
-            provider: group.provider,
-            plan: dataStore.plan(for: group.provider.id),
-            rows: rows,
-            appearance: appearance,
-            expandBoundaryIndex: isExpanded ? alwaysRows.count : nil,
-            displayNameOverride: displayName,
-            errorMessage: message,
-            errorIsConnectPrompt: dataStore.noticeIsConnectPrompt(for: group.provider.id)
-        )
-        return renderAndCopy(view, label: group.provider.id, layout: layout)
+        let always = resolve(group.alwaysShownWidgets, presenting: true)
+        let expanded = resolve(group.expandedWidgets, presenting: false)
+        // Match the dashboard's invariant after account-aware filtering: if no applicable metric
+        // remains Always Visible, promote On Demand rows unless a compact notice already fills the card.
+        let promote = always.isEmpty && message == nil
+        return (message, promote ? expanded : always, promote ? [] : expanded)
     }
 
     /// The Total Spend counterpart to `share(group:…)`: renders the aggregate card for the

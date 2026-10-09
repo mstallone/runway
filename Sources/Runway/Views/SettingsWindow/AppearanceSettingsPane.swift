@@ -1,11 +1,15 @@
 import SwiftUI
 
-/// The Settings window's Appearance pane: how the menu bar and popover look, and how usage reads.
+/// The Settings window's Appearance pane: how the menu bar and popover look, how the dashboard is
+/// laid out, and how usage reads.
 struct AppearanceSettingsPane: View {
     @Environment(AppContainer.self) private var container
 
     @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system
     @AppStorage(TimeFormatSetting.key) private var timeFormat = TimeFormatSetting.auto
+    @AppStorage(TotalSpendSetting.key) private var showTotalSpend = true
+    @AppStorage(TotalSpendLayout.key) private var totalSpendLayout = TotalSpendLayout.fallback
+    @AppStorage(AccountCardGrouping.key) private var groupsAccounts = false
     private let density = DensitySetting.compact
 
     var body: some View {
@@ -64,6 +68,24 @@ struct AppearanceSettingsPane: View {
                     if transparency.partyPaused {
                         SettingsInlineNotice("macOS Reduce Transparency or Increase Contrast is on, so the party stays paused.")
                     }
+                }
+            }
+            SettingsSection("Dashboard") {
+                // The dashboard's cross-provider Total Spend card; at least one enabled spend-capable
+                // provider must exist, so this toggle can't conjure it up alone.
+                SettingsRow("Show Total Spend") {
+                    Toggle("", isOn: $showTotalSpend)
+                        .settingsSwitchStyle()
+                }
+                if showTotalSpend {
+                    SettingsRow("Total Spend Style") {
+                        SettingsMenuPicker($totalSpendLayout, options: TotalSpendLayout.allCases, label: \.label)
+                    }
+                }
+                // Several logins of one provider share a card under one provider header.
+                SettingsRow("Group Accounts by Provider") {
+                    Toggle("", isOn: $groupsAccounts)
+                        .settingsSwitchStyle()
                 }
             }
             SettingsSection("Usage Display") {

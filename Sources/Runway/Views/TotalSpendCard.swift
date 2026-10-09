@@ -42,7 +42,7 @@ struct TotalSpendCard: View {
     private static let periodKey = "runway.totalSpend.period"
     private static let metricKey = "runway.totalSpend.metric"
     private static let collapsedKey = "runway.totalSpend.collapsed"
-    /// Table, Bar, or Pie — chosen in Settings → General.
+    /// Table, Bar, or Pie — chosen in Settings → Appearance → Dashboard.
     @AppStorage(TotalSpendLayout.key) private var layoutStyle = TotalSpendLayout.fallback
     /// Providers whose accounts are listed. Session state: closing the popover collapses them.
     @State private var expandedFamilies: Set<String> = []
@@ -108,7 +108,7 @@ struct TotalSpendCard: View {
         // The outlined surface needs more air than a filled provider card: without it the line
         // crowds the header above and the next provider's header below.
         VStack(alignment: .leading, spacing: Self.headerToContentSpacing) {
-            header(projections: projections)
+            header
             content(projections: projections)
         }
         .padding(.bottom, Self.extraBottomSpacing)
@@ -118,16 +118,12 @@ struct TotalSpendCard: View {
 
     /// Section header matching the provider headers' scale: the section name leading, the metric
     /// menu trailing where a provider header shows its plan.
-    private func header(projections: [TotalSpendProjection]) -> some View {
+    private var header: some View {
         HStack(spacing: 5) {
             Text("Total Spend")
                 .font(.system(size: density.headerPointSize, weight: .semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
-            Image(systemName: "info.circle")
-                .imageScale(.small)
-                .foregroundStyle(.secondary)
-                .hoverTooltip(infoTooltip(projections: projections))
             Spacer(minLength: 8)
             metricMenu
         }
@@ -182,18 +178,6 @@ struct TotalSpendCard: View {
         let item = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
         item.submenu = submenu
         return item
-    }
-
-    /// Names the providers actually feeding the total — the enabled spend-capable set — instead of a
-    /// hardcoded list, so disabling a provider (or a new spend provider shipping) can't make the
-    /// tooltip lie about what the total reflects.
-    private func infoTooltip(projections: [TotalSpendProjection]) -> String {
-        let names = providers.map { container.displayName(for: $0) }
-        return TotalSpendInfo.tooltip(
-            providerNames: names,
-            metric: metric,
-            isEstimated: projections.contains(where: \.isEstimated)
-        )
     }
 
     /// Copies the whole grid in Table layout, otherwise the selected period's breakdown in the
@@ -259,6 +243,13 @@ struct TotalSpendCard: View {
                 // Clicking the selected tile again folds the card down to the headline; any tile
                 // opens it back up on that period.
                 let collapses = !isCollapsed && candidate == period
+                // Opening from the headline lands on the clicked period already in place: the
+                // joined tab and breakdown switch with no animation, so only the reveal moves.
+                if isCollapsed {
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) { period = candidate }
+                }
                 animate(projections, period: candidate, collapsed: collapses) {
                     if !collapses { period = candidate }
                     isCollapsed = collapses

@@ -17,8 +17,6 @@ final class WidgetPercentClampTests: XCTestCase {
         XCTAssertEqual(remaining.valueText, "100%")
         XCTAssertEqual(remaining.boundedHeadline, "100% left")
         XCTAssertEqual(remaining.menuBarValue, "100%")
-        // The flip tooltip was the path that leaked "-5% used" even in the default mode.
-        XCTAssertEqual(remaining.meterStyleTooltip, "0% used")
 
         // Used mode: the headline itself was the visible "-5% used" bug.
         store.meterStyle = .used
@@ -26,7 +24,6 @@ final class WidgetPercentClampTests: XCTestCase {
         XCTAssertEqual(used.valueText, "0%")
         XCTAssertEqual(used.boundedHeadline, "0% used")
         XCTAssertEqual(used.menuBarValue, "0%")
-        XCTAssertEqual(used.meterStyleTooltip, "100% left")
     }
 
     func testOverHundredPercentSampleNeverRendersOverHundred() async {

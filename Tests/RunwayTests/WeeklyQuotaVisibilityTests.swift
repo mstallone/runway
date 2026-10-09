@@ -11,19 +11,21 @@ final class WeeklyQuotaVisibilityTests: XCTestCase {
                               used: 100, limit: 100)
         let exhausted = WeeklyQuotaVisibility.presentation(data, descriptor: weekly)
         XCTAssertEqual(exhausted.exhaustedWeeklyTitle, "Usage Exhausted")
-        XCTAssertEqual(exhausted.exhaustedWeeklyResetText, "Reset Time Unavailable")
+        XCTAssertEqual(exhausted.exhaustedWeeklyResetNote(), "Reset Time Unavailable")
         XCTAssertEqual(exhausted.used, 100)
         XCTAssertEqual(exhausted.limit, 100)
         data.resetsAt = Date(timeIntervalSince1970: 1_800_000_000)
         let dated = WeeklyQuotaVisibility.presentation(data, descriptor: weekly)
         let reset = data.resetsAt!
-        let exactDate = reset.formatted(.dateTime.month(.abbreviated).day())
-            + " at " + TimeFormatSetting.current.shortTime(reset)
+        // The note pairs the countdown with the exact time; the exact part is covered with a fixed
+        // calendar in `MetricTileTests`, so this checks the countdown through the presentation.
         for (seconds, expected) in [(190_800.0, "Resets in 2d 5h"), (10_800.0, "Resets in 3h"),
                                     (1_200.0, "Resets in 20m"), (60.0, "Resets soon"),
                                     (-60.0, "Resets soon")] {
-            XCTAssertEqual(dated.exhaustedWeeklyResetText(now: reset.addingTimeInterval(-seconds)),
-                           "\(expected) · \(exactDate)")
+            XCTAssertEqual(
+                dated.exhaustedWeeklyResetNote(now: reset.addingTimeInterval(-seconds), countdownOnly: true),
+                expected
+            )
         }
         let restored = WidgetData(title: "Weekly", icon: weekly.sample.icon, kind: .percent,
                                   used: 99.9, limit: 100)

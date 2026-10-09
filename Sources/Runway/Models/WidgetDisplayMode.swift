@@ -11,8 +11,4 @@ enum WidgetDisplayMode: String, Hashable, Sendable, CaseIterable {
         case .remaining: return "Left"
         }
     }
-
-    mutating func toggle() {
-        self = self == .used ? .remaining : .used
-    }
 }

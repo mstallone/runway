@@ -1,31 +1,18 @@
 import KeyboardShortcuts
 import SwiftUI
 
-/// The Settings window's General pane: app behavior (Total Spend card, login item, global
-/// shortcut), iCloud sync, and privacy.
+/// The Settings window's General pane: app behavior (login item, global shortcut), iCloud sync,
+/// and privacy.
 struct GeneralSettingsPane: View {
     @Environment(AppContainer.self) private var container
 
     @State private var launchAtLogin = LaunchAtLoginSetting()
-    @AppStorage(TotalSpendSetting.key) private var showTotalSpend = true
-    @AppStorage(TotalSpendLayout.key) private var totalSpendLayout = TotalSpendLayout.fallback
     private let density = DensitySetting.compact
 
     var body: some View {
         @Bindable var privacy = container.privacy
         return VStack(alignment: .leading, spacing: density.sectionSpacing) {
             SettingsSection("General") {
-                // The dashboard's cross-provider Total Spend card; at least one enabled spend-capable
-                // provider must exist, so this toggle can't conjure it up alone.
-                SettingsRow("Show Total Spend") {
-                    Toggle("", isOn: $showTotalSpend)
-                        .settingsSwitchStyle()
-                }
-                if showTotalSpend {
-                    SettingsRow("Total Spend Style") {
-                        SettingsMenuPicker($totalSpendLayout, options: TotalSpendLayout.allCases, label: \.label)
-                    }
-                }
                 SettingsRow("Launch at Login") {
                     Toggle("", isOn: Binding(
                         get: { launchAtLogin.isEnabled },

@@ -44,6 +44,7 @@ final class ExpansionHeightEstimatorTests: XCTestCase {
             XCTAssertEqual(
                 ExpansionHeightEstimator.estimatedDelta(revealedRows: revealed, linkCount: 0),
                 ExpansionHeightEstimator.estimatedRowHeight(textData(), condensedTop: false)
+                    + ExpansionHeightEstimator.separatorRowHeight
             )
         }
     }
@@ -70,9 +71,26 @@ final class ExpansionHeightEstimatorTests: XCTestCase {
     func testRowHeightsFollowRenderedAnatomy() {
         let condensedText = ExpansionHeightEstimator.estimatedRowHeight(textData(), condensedTop: true)
         let text = ExpansionHeightEstimator.estimatedRowHeight(textData(), condensedTop: false)
-        let meter = ExpansionHeightEstimator.estimatedRowHeight(meterData(), condensedTop: false)
         XCTAssertLessThan(condensedText, text, "A condensed text row pulls up against its neighbor")
-        XCTAssertLessThan(text, meter, "A meter row stacks label, bar, and reading")
+    }
+
+    func testLimitsArePricedAsOneTileGrid() {
+        let one = ExpansionHeightEstimator.estimatedTileGridHeight(rows: 1)
+        XCTAssertGreaterThan(ExpansionHeightEstimator.estimatedTileGridHeight(rows: 2), one)
+        let revealed = (0..<3).map {
+            ExpansionHeightEstimator.Row(id: "limit\($0)", data: meterData(), isApplicable: true)
+        }
+        XCTAssertEqual(
+            ExpansionHeightEstimator.estimatedDelta(revealedRows: revealed, linkCount: 0),
+            one + ExpansionHeightEstimator.separatorRowHeight,
+            "Three limits share one row of tiles"
+        )
+        var exhausted = meterData()
+        exhausted.exhaustedWeeklyTitle = "Usage Exhausted"
+        XCTAssertLessThan(
+            ExpansionHeightEstimator.estimatedRowHeight(exhausted, condensedTop: false), one,
+            "The exhausted-week message is one line, with no tile"
+        )
     }
 
     func testChartRowPricesLabelBesideTheBarsNotStacked() {

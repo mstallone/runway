@@ -77,6 +77,16 @@ extension WidgetData {
         return .level(.normal)
     }
 
+    /// When the limit runs out at the current burn rate, or `nil` when it is not on course to (or
+    /// has no reset window to pace against). The date behind `MeterState.runningOut`'s `eta` copy.
+    func runOutDate(now: Date = Date()) -> Date? {
+        guard let ctx = paceContext,
+              let seconds = Pace.secondsToRunOut(used: used, limit: ctx.limit, resetsAt: ctx.resetsAt,
+                                                 periodDuration: ctx.period, now: now)
+        else { return nil }
+        return now.addingTimeInterval(seconds)
+    }
+
     /// Even-pace tick position on the bar (0...1), or `nil` when hidden. Always the elapsed fraction
     /// of the reset window, framed like the fill (Used view → share used at an even burn; Left view →
     /// share remaining). Yellow and red pace states always show it; blue `healthy` only when
@@ -155,29 +165,9 @@ extension WidgetData {
     /// once you send your first message, so there's no live countdown to show yet.
     static let freshSessionTooltip = "Sessions start after you send your first message."
 
-    /// Hover tooltip for the reset label: the *opposite* format from what's shown. A fresh
-    /// ("Not started") session explains itself instead of showing a reset time, since the window
-    /// hasn't begun counting down.
-    func resetTooltip(now: Date = Date()) -> String? {
-        if isFreshSessionWindow(now: now) { return Self.freshSessionTooltip }
-        guard hasResetLabel(now: now), let resetsAt else { return nil }
-        return resetDisplayMode == .absolute
-            ? Formatters.resetRelativeLabel(until: resetsAt, now: now)
-            : Formatters.resetAbsoluteLabel(at: resetsAt, now: now)
-    }
-
-    /// True when the bounded headline is a flippable Used/Left reading (so the row makes it the
-    /// clickable meter-style toggle). False for unbounded rows, overridden values, and no-data rows.
-    var hasMeterStyleToggle: Bool {
-        hasData && isBounded && valueTextOverride == nil
-    }
-
-    /// Hover tooltip for the bounded headline: the *opposite* meter style from what's shown
-    /// (e.g. headline "95% left" → tooltip "5% used"), mirroring `resetTooltip`'s flip pattern.
-    var meterStyleTooltip: String? {
-        guard hasMeterStyleToggle, let limit else { return nil }
-        let opposite = displayMode == .remaining ? used : max(0, limit - used)
-        let word = (displayMode == .remaining ? WidgetDisplayMode.used : .remaining).label.lowercased()
-        return "\((valuePrefix ?? "") + format(opposite)) \(word)"
+    /// Hover copy for a "Not started" session, the one thing its time line cannot say for itself.
+    /// `nil` for every other limit: a reset already prints its time.
+    func notStartedTooltip(now: Date = Date()) -> String? {
+        isFreshSessionWindow(now: now) ? Self.freshSessionTooltip : nil
     }
 }

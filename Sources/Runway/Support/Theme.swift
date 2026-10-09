@@ -60,6 +60,10 @@ enum Theme {
     /// floating drag preview always matches the live card's shape.
     static let cardCornerRadius: CGFloat = 12
 
+    /// How far an unavailable account recedes: its mark, its name, and its one line, the way the
+    /// menu bar fades an exhausted account's icon.
+    static let unavailableOpacity: Double = 0.45
+
     /// The rounded rectangle shared by every card surface (live and lifted), so the shape is defined once.
     static var cardShape: RoundedRectangle {
         RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
@@ -74,6 +78,14 @@ extension View {
     /// the preview's depth comes from `ReorderLiftPreview`'s shadow, not a different card surface.
     func cardSurface() -> some View {
         modifier(CardSurfaceModifier())
+    }
+
+    /// The dashboard's section surface: a hairline outline with no fill, shared by the provider
+    /// cards and Total Spend so the popover reads as one list of sections. Under the translucent
+    /// treatment the tray is see-through, so the section takes the frosted material the filled
+    /// cards carry to keep its text legible over whatever shows behind the window.
+    func cardOutline() -> some View {
+        modifier(CardOutlineModifier())
     }
 
     /// A single-row lifted preview surface: the card surface plus a thin separator hairline that fences
@@ -124,6 +136,20 @@ private struct CardSurfaceModifier: ViewModifier {
                     .fill(.regularMaterial)
                     .overlay { Theme.cardShape.fill(Theme.cardFill) }
             }
+        }
+    }
+}
+
+/// Backs `cardOutline`.
+private struct CardOutlineModifier: ViewModifier {
+    @Environment(\.popoverSurfaceTreatment) private var treatment
+
+    func body(content: Content) -> some View {
+        content.background {
+            if treatment == .translucent {
+                Theme.cardShape.fill(.regularMaterial)
+            }
+            Theme.cardShape.strokeBorder(.separator, lineWidth: 1)
         }
     }
 }

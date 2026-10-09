@@ -10,8 +10,6 @@ While Settings is open, Runway briefly appears in the Dock, the same as during a
 
 | Setting | Options | What it does |
 |---|---|---|
-| Show Total Spend | on/off | Whether the cross-provider [Total Spend](dashboard.md#total-spend) card shows at the top of the dashboard. On by default. The card appears whenever at least one enabled provider tracks spend (Claude, Codex, Cursor, Grok, Muse, OpenCode, Sakana Fugu). |
-| Total Spend Style | Pie / Bar / Table | How the Total Spend card draws its breakdown. Table shows providers down and periods across. Bar and Pie show period tiles over a share bar or a ring. Pie by default. Hidden while Show Total Spend is off. The same choice is in the **View** submenu of the card's header menu. See [Total Spend](dashboard.md#total-spend). |
 | Launch at Login | on/off | Registers the app as a login item. The system's login-item registry is the source of truth. |
 | Global Shortcut | record a shortcut | Toggles the popover from anywhere. Click the field and press a combo. The ⓧ clears it. |
 
@@ -34,13 +32,21 @@ While Settings is open, Runway briefly appears in the Dock, the same as during a
 | Time Format | Auto / 12-hour / 24-hour | How exact times read ("Resets today at 6:38 PM" vs "18:38"). Auto follows the system. |
 | Increase Transparency | Off / On | Off by default. On makes the popover translucent so your desktop shows through, with frosted surfaces behind the numbers and footer controls. It pauses when the macOS **Reduce Transparency** or **Increase Contrast** accessibility setting is on, and a note says so. |
 
+### Dashboard
+
+| Setting | Options | What it does |
+|---|---|---|
+| Show Total Spend | on/off | Whether the cross-provider [Total Spend](dashboard.md#total-spend) card shows at the top of the dashboard. On by default. The card appears whenever at least one enabled provider tracks spend (Claude, Codex, Cursor, Grok, Muse, OpenCode, Sakana Fugu). |
+| Total Spend Style | Pie / Bar / Table | How the Total Spend card draws its breakdown. Table shows providers down and periods across. Bar and Pie show period tiles over a share bar or a ring. Pie by default. Hidden while Show Total Spend is off. The same choice is in the **View** submenu of the card's header menu. See [Total Spend](dashboard.md#total-spend). |
+| Group Accounts by Provider | Off / On | Off by default gives every account its own card. On puts all accounts of one provider (several Claude or Codex logins) in a single card under one provider header. See [Dashboard](dashboard.md). |
+
 ### Usage Display
 
 | Setting | Options | What it does |
 |---|---|---|
-| Show Usage As | Used / Left | Whether bounded metrics read "48% used" or "52% left". Same toggle as clicking a headline. |
-| Reset Times | Countdown / Exact time | "Resets in 3h 25m" vs "Resets today at 6:38 PM". Same toggle as clicking a reset label. |
-| Always Show Pacing | Off / On | Off by default shows pacing only when a metric is close to or over its limit. On shows it on every metric with a reset window: on-track rows gain their projection ("~33% left at reset") and an even-pace tick. Metrics without a reset window have no pace to show. A metric with nothing used yet stays plain. |
+| Show Usage As | Used / Left | Whether bounded metrics read "48% used" or "52% left". |
+| Reset Times | Countdown / Exact time | A countdown ("3h 25m") vs the exact time ("6:38 PM"). |
+| Always Show Pacing | Off / On | Off by default shows pacing only when a metric is close to or over its limit. On shows it on every metric with a reset window: on-track limits gain the even-pace tick on their bar, and hovering the tile gives the projection ("~33% left at reset"). Metrics without a reset window have no pace to show. A metric with nothing used yet stays plain. |
 
 ## Notifications
 
