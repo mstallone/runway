@@ -229,6 +229,7 @@ final class LocalLimitsAPITests: XCTestCase {
             "antigravity": ["geminiSession", "geminiWeekly", "nonGeminiSession", "nonGeminiWeekly"],
             "copilot": ["premiumCredits", "extraUsage", "orgCredits", "orgSpend", "chat", "completions"],
             "devin": ["daily", "weekly", "extraUsageBalance"],
+            "fireworks": ["monthlySpend"],
             "grok": ["weekly", "rateLimitResets"],
             "kimi": ["session", "weekly"],
             "muse": ["session", "weekly"],

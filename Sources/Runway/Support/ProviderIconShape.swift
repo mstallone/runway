@@ -105,6 +105,7 @@ enum ProviderMarks {
         case "claude": return "sparkle"
         case "codex": return "circle.hexagongrid"
         case "cursor": return "cube"
+        case "fireworks": return "flame"
         case "grok": return "bolt.fill"
         case "kimi": return "moon.stars"
         case "muse": return "sparkles"
@@ -176,6 +177,17 @@ enum SVGPath {
         func readPoint(relative: Bool) -> CGPoint? {
             guard let x = readNumber(), let y = readNumber() else { return nil }
             return relative ? CGPoint(x: current.x + x, y: current.y + y) : CGPoint(x: x, y: y)
+        }
+
+        /// Arc flags are single `0`/`1` characters and may sit directly beside each other and the
+        /// following coordinate (e.g. `a1.64 1.64 0 003.038.002`), so they can't go through
+        /// `readNumber`, which would swallow `003.038` as one value.
+        func readFlag() -> Bool? {
+            skipSeparators()
+            guard i < n, chars[i] == "0" || chars[i] == "1" else { return nil }
+            let value = chars[i] == "1"
+            i += 1
+            return value
         }
 
         func reflected() -> CGPoint {
@@ -374,18 +386,16 @@ enum SVGPath {
                 if let radiusX = readNumber(),
                    let radiusY = readNumber(),
                    let rotation = readNumber(),
-                   let largeArcFlag = readNumber(),
-                   let sweepFlag = readNumber(),
-                   let end = readPoint(relative: cmd == "a"),
-                   (largeArcFlag == 0 || largeArcFlag == 1),
-                   (sweepFlag == 0 || sweepFlag == 1) {
+                   let largeArcFlag = readFlag(),
+                   let sweepFlag = readFlag(),
+                   let end = readPoint(relative: cmd == "a") {
                     addArc(
                         to: end,
                         radiusX: radiusX,
                         radiusY: radiusY,
                         rotationDegrees: rotation,
-                        largeArc: largeArcFlag == 1,
-                        sweep: sweepFlag == 1
+                        largeArc: largeArcFlag,
+                        sweep: sweepFlag
                     )
                     current = end
                 } else { failed = true }

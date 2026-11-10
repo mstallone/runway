@@ -11,7 +11,7 @@ final class ProviderCatalogOrderTests: XCTestCase {
 
         XCTAssertEqual(ids, [
             "claude", "codex", "cursor",
-            "antigravity", "copilot", "devin", "grok", "kimi", "muse",
+            "antigravity", "copilot", "devin", "fireworks", "grok", "kimi", "muse",
             "opencode", "openrouter", "sakana", "zai"
         ])
     }

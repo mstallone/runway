@@ -151,7 +151,7 @@ final class ResetDisplayTests: XCTestCase {
         // usage reads 0 for a started window under 1%.
         let providers: [ProviderRuntime] = [
             ClaudeProvider(), CodexProvider(), CursorProvider(),
-            AntigravityProvider(), CopilotProvider(), DevinProvider(),
+            AntigravityProvider(), CopilotProvider(), DevinProvider(), FireworksProvider(),
             GrokProvider(), OpenRouterProvider(), ZAIProvider(),
             KimiProvider(), MuseProvider(), OpenCodeProvider(), SakanaProvider()
         ]

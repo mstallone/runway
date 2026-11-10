@@ -37,6 +37,7 @@ Runway is a fork of OpenUsage rebuilt for speed. We measured both on the same ma
 - **[Copilot](docs/providers/copilot.md)**: AI credits, extra usage, organization billing, chat and completions
 - **[Cursor](docs/providers/cursor.md)**: credits, total usage, Grok Bot, Cursor Models, Other Models, requests, on-demand, per-day spend
 - **[Devin](docs/providers/devin.md)**: weekly and daily quota, extra usage balance
+- **[Fireworks](docs/providers/fireworks.md)**: monthly spend against the account's monthly spend limit
 - **[Grok](docs/providers/grok.md)**: weekly shared pool, pay-as-you-go, local daily spend
 - **[Kimi](docs/providers/kimi.md)**: five-hour and weekly Kimi Code quota, Extra Usage balance and monthly spend
 - **[Muse](docs/providers/muse.md)**: five-hour and weekly Muse Code subscription quota from the Meta browser dashboard, local daily spend

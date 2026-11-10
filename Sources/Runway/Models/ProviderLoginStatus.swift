@@ -10,7 +10,7 @@ enum ProviderLoginStatus {
     static func requiresLogin(_ error: Error) -> Bool {
         switch error {
         case is DevinAuthError, is MuseAuthError, is CopilotAuthError, is CursorAuthError,
-             is CodexAuthError, is SakanaAuthError, is GrokAuthError:
+             is CodexAuthError, is SakanaAuthError, is GrokAuthError, is FireworksAuthError:
             return true
         case let error as ClaudeAuthError:
             if case .invalidOAuthURL = error { return false }

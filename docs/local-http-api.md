@@ -90,6 +90,7 @@ For bounded resources, `unit` follows the provider's live metric format. Cursor 
 | Antigravity | `geminiSession`, `geminiWeekly`, `nonGeminiSession`, `nonGeminiWeekly` |
 | Copilot | `premiumCredits`, `extraUsage`, `orgCredits`, `orgSpend`, `chat`, `completions` |
 | Devin | `daily`, `weekly`, `extraUsageBalance` |
+| Fireworks | `monthlySpend` |
 | Grok | `weekly`, `rateLimitResets` |
 | Kimi | `session`, `weekly` |
 | OpenCode | `session`, `weekly`, `monthly` |

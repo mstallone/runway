@@ -29,12 +29,20 @@ final class ProviderMarksTests: XCTestCase {
     }
 
     func testStandardProviderMarksLoad() {
-        for id in ["claude", "codex", "cursor", "kimi", "muse", "sakana"] {
+        for id in ["claude", "codex", "cursor", "fireworks", "kimi", "muse", "sakana"] {
             let mark = ProviderMarks.mark(for: id)
             XCTAssertNotNil(mark, "\(id) should load")
             XCTAssertFalse(mark?.pathData.isEmpty ?? true, "\(id) mark must carry SVG path data")
             XCTAssertFalse(mark?.path.isEmpty ?? true, "\(id) mark must cache its parsed vector path")
         }
+    }
+
+    func testFireworksMarkParsesCompactArcFlagsAcrossItsFullArtworkBounds() throws {
+        // The Fireworks SVG packs arc flags against the following coordinate (`0 003.038.002`).
+        // A parser that reads flags as numbers stops at the first arc, leaving only a partial mark.
+        let mark = try XCTUnwrap(ProviderMarks.mark(for: "fireworks"))
+        XCTAssertGreaterThan(mark.bounds.width, 20, "Fireworks mark must span all three shards")
+        XCTAssertGreaterThan(mark.bounds.height, 10, "Fireworks mark must span its full height")
     }
 
     func testKimiArcMarkParsesAcrossItsFullArtworkBounds() throws {

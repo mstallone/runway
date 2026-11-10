@@ -52,6 +52,7 @@ enum ProviderCatalog {
             AntigravityProvider(),
             CopilotProvider(defaults: defaults),
             DevinProvider(),
+            FireworksProvider(),
             GrokProvider(),
             KimiProvider(),
             MuseProvider(),

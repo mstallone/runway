@@ -23,6 +23,8 @@ enum DefaultLayout {
 
         "devin.daily", "devin.weekly", "devin.extra",
 
+        "fireworks.monthlySpend",
+
         "grok.weekly", "grok.rateLimitResets", "grok.trend",
         "grok.today", "grok.yesterday", "grok.last30",
 

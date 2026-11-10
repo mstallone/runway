@@ -31,6 +31,7 @@ What each provider tracks, where its credentials come from, and what its errors 
 - [Copilot](providers/copilot.md)
 - [Cursor](providers/cursor.md)
 - [Devin](providers/devin.md)
+- [Fireworks](providers/fireworks.md)
 - [Grok](providers/grok.md)
 - [Kimi](providers/kimi.md)
 - [Muse](providers/muse.md)
